@@ -4,10 +4,10 @@
 #include "Gaudi/Property.h"
 #include "GaudiAlg/GaudiAlgorithm.h"
 
-class EmptyAlg : public GaudiAlgorithm {
+class ActsAlg : public GaudiAlgorithm {
 public:
-  explicit EmptyAlg(const std::string&, ISvcLocator*);
-  virtual ~EmptyAlg();
+  explicit ActsAlg(const std::string&, ISvcLocator*);
+  virtual ~ActsAlg();
   /**  Initialize.
    *   @return status code
    */
