@@ -14,8 +14,3 @@ function(set_test_env _testname)
     )
 endfunction()
 
-add_test(NAME HelloWorldAlg
-  WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-  COMMAND k4run k4ActsTracking/options/createHelloWorld.py)
-set_test_env(HelloWorldAlg)
-
