@@ -9,6 +9,10 @@
 #include <DDRec/SurfaceHelper.h>
 #include <DDRec/SurfaceManager.h>
 
+#include <Acts/Plugins/DD4hep/DD4hepDetectorElement.hpp>
+#include <Acts/Visualization/GeometryView3D.hpp>
+#include <Acts/Visualization/ObjVisualization3D.hpp>
+
 #include <string>
 
 using dd4hep::DetElement;
@@ -20,12 +24,18 @@ namespace {
    *
    */
 
+  std::shared_ptr<Acts::DD4hepDetectorElement> createDetectorElement(const dd4hep::rec::Surface& srf) {
+    return std::make_shared<Acts::DD4hepDetectorElement>(srf.detElement(), "XZ");
+  }
+
   static long addActsExtensions(dd4hep::Detector& description, int, char**) {
     const std::string LOG_SOURCE("AddActsExtensions");
     printout(PrintLevel::INFO, LOG_SOURCE, "Running plugin");
 
     //Getting the surface manager
     dd4hep::rec::SurfaceManager& surfMan = *description.extension<dd4hep::rec::SurfaceManager>();
+
+    std::map<std::tuple<int, int, int>, std::vector<std::shared_ptr<Acts::DD4hepDetectorElement>>> layers{};
 
     dd4hep::rec::SurfaceHelper      ds(description.world());
     dd4hep::rec::SurfaceList const& detSL   = ds.surfaceList();
@@ -38,6 +48,9 @@ namespace {
         continue;
 
       dd4hep::BitFieldCoder* cellIDcoder = nullptr;
+
+      std::cout << ddsurf->type() << std::endl;
+      printout(PrintLevel::INFO, LOG_SOURCE, "%u", ddsurf->type());
       if (ddsurf->type().isSensitive() and not ddsurf->type().isHelper()) {
         // surface is sensitive, assuming it has a readout
         auto detectorName = ddsurf->detElement().type();
@@ -51,6 +64,7 @@ namespace {
           continue;
         }
       } else {
+        printout(PrintLevel::INFO, LOG_SOURCE, "Not sensitive");
         continue;
       }
       counter++;
@@ -59,6 +73,22 @@ namespace {
       auto        layerNumber = cellIDcoder->get(ddsurf->id(), "layer");
       printout(PrintLevel::INFO, LOG_SOURCE, "Found Surface at %s in layer %d at radius %3.2f mm", path.c_str(),
                layerNumber, ddsurf->origin().rho());
+
+      for (const auto& field : cellIDcoder->fields()) {
+        // std::cout << "field: " << field.name() << std::endl;
+        std::cout << field.name() << ": " << cellIDcoder->get(ddsurf->id(), field.name()) << std::endl;
+      }
+      std::cout << "---" << std::endl;
+
+      std::shared_ptr<Acts::DD4hepDetectorElement> actsElement = createDetectorElement(*ddsurf);
+
+      std::tuple key{
+          cellIDcoder->get(ddsurf->id(), "system"),
+          cellIDcoder->get(ddsurf->id(), "layer"),
+          cellIDcoder->get(ddsurf->id(), "barrel"),
+      };
+
+      layers[key].push_back(actsElement);
 
       //fixme: replace this with the ACTS type to be used as an extension
       dd4hep::rec::DoubleParameters* para = nullptr;
@@ -74,6 +104,18 @@ namespace {
         break;
       }
     }  // for all surfaces
+
+    Acts::GeometryContext gctx;
+    for (const auto& [key, elements] : layers) {
+      Acts::ObjVisualization3D vis;
+      const auto [system, layer, barrel] = key;
+      for (const auto& element : elements) {
+        Acts::GeometryView3D::drawSurface(vis, element->surface(), gctx);
+      }
+      std::stringstream ss;
+      ss << system << "_" << layer << "_" << barrel << ".obj";
+      vis.write(ss.str());
+    }
 
     return 42;
   }
