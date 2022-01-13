@@ -65,12 +65,12 @@ namespace {
       double dy = box->GetDY();
       double dz = box->GetDZ();
       ACTS_VERBOSE(dx << " " << dy << " " << dz);
-      if (axes == "yzx") {
-        bounds    = std::make_shared<Acts::RectangleBounds>(dy, dz);
-        thickness = dx;
-      } else if (axes == "xyz") {
+      if (axes == "xyz") {
         bounds    = std::make_shared<Acts::RectangleBounds>(dx, dy);
         thickness = dz;
+      } else if (axes == "yzx") {
+        bounds    = std::make_shared<Acts::RectangleBounds>(dy, dz);
+        thickness = dx;
       } else {
         throw std::runtime_error{"Axes " + axes + " not yet implemented"};
       }
