@@ -18,15 +18,15 @@ This repository contains the necessary tools to use ACTS functionality in Key4he
 
 * k4FWCore
 
-## Installation
+## Compilation and testing
 
 
 ```
+source /cvmfs/sw-nightlies.hsf.org/key4hep/setup.sh
 mkdir build install
 cd build;
-cmake .. -DCMAKE_INSTALL_PREFIX=../install
-make install
-
-
+cmake .. -DCMAKE_INSTALL_PREFIX=../install -G Ninja
+ninja
+ctest
 ```
 
