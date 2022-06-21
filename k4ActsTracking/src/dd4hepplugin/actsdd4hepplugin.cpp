@@ -37,6 +37,7 @@ namespace {
     double                              thickness;
     if (const auto* trapezoid1 = dynamic_cast<const TGeoTrd1*>(&shape); trapezoid1 != nullptr) {
       ACTS_VERBOSE("Have TGeoTrd1");
+      throw std::runtime_error{"TGeoTrd1 not implemented yet"};
     } else if (const auto* trapezoid2 = dynamic_cast<const TGeoTrd2*>(&shape); trapezoid2 != nullptr) {
       ACTS_VERBOSE("Have TGeoTrd2");
 
@@ -144,7 +145,7 @@ namespace {
       }
 
       if (!found) {
-        ACTS_ERROR("Unable to find permutation of axis for correct surface normal");
+        ACTS_ERROR("Unable to find permutation of axes for correct surface normal");
         throw std::runtime_error("Unable to find permutation of axis for correct surface normal");
       }
 
