@@ -8,9 +8,10 @@ gaudi_add_module(k4ActsTrackingPlugins
 file(GLOB _dd4hep_plugin_sources src/dd4hepplugin/*.cpp)
 add_dd4hep_plugin(k4ActsDD4hepPlugin SHARED ${_dd4hep_plugin_sources})
 target_link_libraries(k4ActsDD4hepPlugin DD4hep::DDCore DD4hep::DDRec DD4hep::DDG4 DD4hep::DDParsers)
+target_link_libraries(k4ActsDD4hepPlugin ActsCore ActsPluginDD4hep)
 
 
-SET(compile_flags -Wformat-security -Wno-long-long -Wdeprecated -fdiagnostics-color=auto -Wall -Wextra -pedantic)
+SET(compile_flags -Wformat-security -Wno-long-long -Wdeprecated -Wall -Wextra -pedantic)
 
 target_compile_options(k4ActsTrackingPlugins PUBLIC ${compile_flags})
 target_compile_options(k4ActsDD4hepPlugin PUBLIC  ${compile_flags})
