@@ -8,6 +8,9 @@ EmptyAlg::~EmptyAlg() {}
 
 StatusCode EmptyAlg::initialize() { return StatusCode::SUCCESS; }
 
-StatusCode EmptyAlg::execute() { return StatusCode::SUCCESS; }
+StatusCode EmptyAlg::execute() {
+  std::cout << "HALLO WELT!" << std::endl;
+  return StatusCode::SUCCESS;
+}
 
 StatusCode EmptyAlg::finalize() { return StatusCode::SUCCESS; }
