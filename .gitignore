@@ -55,3 +55,6 @@ CTestTestfile.cmake
 CPackSourceConfig.cmake
 CPackConfig.cmake
 cmake_install.cmake
+
+spack-build-*
+spack-configure-args.txt
