@@ -44,5 +44,3 @@ on:
 #        source ${{ matrix.SETUP }};\
 #        cd build;\
 #        ninja -k0 && ctest --output-on-failure;'
-
-
