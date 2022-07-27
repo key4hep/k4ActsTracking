@@ -1,7 +1,14 @@
 file(GLOB _plugin_sources src/components/*.cpp)
 gaudi_add_module(k4ActsTrackingPlugins
   SOURCES ${_plugin_sources}
-  LINK Gaudi::GaudiKernel Gaudi::GaudiAlgLib k4FWCore::k4FWCore EDM4HEP::edm4hep)
+  LINK
+  Gaudi::GaudiKernel Gaudi::GaudiAlgLib
+  k4FWCore::k4FWCore
+  EDM4HEP::edm4hep
+  DD4hep::DDCore DD4hep::DDRec
+  ActsCore ActsPluginDD4hep
+  ActsDD4hep::ActsDD4hep
+  )
 
 set(GAUDI_GENCONF_DIR "genConfDir")
 
@@ -13,4 +20,3 @@ function(set_test_env _testname)
     K4ACTSTRACKING=${CMAKE_CURRENT_LIST_DIR}/
     )
 endfunction()
-
