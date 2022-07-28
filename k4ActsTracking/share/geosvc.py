@@ -8,9 +8,7 @@ from Configurables import ActsGeoSvc
 algList = []
 
 a = ActsGeoSvc("ActsGeoSvc")
-a.detectors = [
-    os.environ["ODD_XML"]
-]
+a.detectors = [os.environ["ODD_XML"]]
 a.debugGeometry = True
 a.outputFileName = "MyObjFile"
 from Configurables import ApplicationMgr
