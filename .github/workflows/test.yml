@@ -50,4 +50,5 @@ jobs:
         export ODD_XML=$PWD/install/share/OpenDataDetector/xml/OpenDataDetector.xml;\
         export CTEST_OUTPUT_ON_FAILURE=1;\
         source $PWD/install/bin/this_odd.sh;\
+        echo $LD_LIBRARY_PATH;\
         cmake --build build -- test;'
