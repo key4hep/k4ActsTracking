@@ -26,13 +26,6 @@ jobs:
          source ${{ matrix.SETUP }};\
          cmake -S . -B build -GNinja -DCMAKE_INSTALL_PREFIX=$PWD/install -DCMAKE_CXX_STANDARD=17;'
 
-    - name: Build package
-      run: |
-        docker exec CI_container /bin/bash -c 'cd ./Package;\
-        source ${{ matrix.SETUP }};\
-        cmake --build build;\
-        cmake --install build;'
-
     - name: Build Open Data Detector
       run: |
         docker exec CI_container /bin/bash -c 'cd ./Package;\
@@ -42,6 +35,14 @@ jobs:
         cmake -S OpenDataDetector -B build_odd -GNinja -DCMAKE_CXX_STANDARD=17 -DCMAKE_INSTALL_PREFIX=$PWD/install;\
         cmake --build build_odd;\
         cmake --install build_odd;'
+
+    - name: Build package
+      run: |
+        docker exec CI_container /bin/bash -c 'cd ./Package;\
+        source ${{ matrix.SETUP }};\
+        source $PWD/install/bin/this_odd.sh;\
+        cmake --build build;\
+        cmake --install build;'
 
     - name: Test
       run: |
