@@ -23,6 +23,6 @@ endfunction()
 
 add_test(NAME GeoSvc
          WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
-         COMMAND gaudirun.py ${CMAKE_CURRENT_SOURCE_DIR}/python/geosvc.py
+         COMMAND gaudirun.py ${CMAKE_CURRENT_LIST_DIR}/share/geosvc.py
                                                )
  set_test_env(GeoSvc)
