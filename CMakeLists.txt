@@ -6,6 +6,7 @@ find_package(ROOT COMPONENTS RIO Tree)
 find_package(EDM4HEP)
 find_package(k4FWCore)
 find_package(Acts)
+find_package(ActsDD4hep)
 
 #---------------------------------------------------------------
 # Load macros and functions for Gaudi-based projects
