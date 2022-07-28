@@ -24,7 +24,7 @@ jobs:
          git submodule init;\
          git submodule update;\
          source ${{ matrix.SETUP }};\
-         cmake -S . -B build -GNinja -DCMAKE_INSTALL_PREFIX=$PWD/../install -DCMAKE_CXX_STANDARD=17;'
+         cmake -S . -B build -GNinja -DCMAKE_INSTALL_PREFIX=$PWD/install -DCMAKE_CXX_STANDARD=17;'
 
     - name: Build package
       run: |
@@ -39,13 +39,14 @@ jobs:
         source ${{ matrix.SETUP }};\
         git clone https://gitlab.cern.ch/acts/OpenDataDetector.git;\
         mkdir build_odd;\
-        cmake -S OpenDataDetector -B build_odd -GNinja -DCMAKE_CXX_STANDARD=17 -DCMAKE_INSTALL_PREFIX=$PWD/../install;\
+        cmake -S OpenDataDetector -B build_odd -GNinja -DCMAKE_CXX_STANDARD=17 -DCMAKE_INSTALL_PREFIX=$PWD/install;\
         cmake --build build_odd;\
         cmake --install build_odd;'
 
-#    - name: Test
-#      run: |
-#        docker exec CI_container /bin/bash -c 'cd ./Package;\
-#        source ${{ matrix.SETUP }};\
-#        cd build;\
-#        ninja -k0 && ctest --output-on-failure;'
+    - name: Test
+      run: |
+        docker exec CI_container /bin/bash -c 'cd ./Package;\
+        source ${{ matrix.SETUP }};\
+        export ODD_XML=$PWD/install/share/OpenDataDetector/xml/OpenDataDetector.xml;\
+        source $PWD/install/bin/this_odd.sh;\
+        ctest --output-on-failure

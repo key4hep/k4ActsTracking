@@ -20,3 +20,9 @@ function(set_test_env _testname)
     K4ACTSTRACKING=${CMAKE_CURRENT_LIST_DIR}/
     )
 endfunction()
+
+add_test(NAME GeoSvc
+         WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+         COMMAND gaudirun.py ${CMAKE_CURRENT_SOURCE_DIR}/python/geosvc.py
+                                               )
+ set_test_env(GeoSvc)
