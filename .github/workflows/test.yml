@@ -24,20 +24,25 @@ jobs:
          git submodule init;\
          git submodule update;\
          source ${{ matrix.SETUP }};\
-         cd build;\
-         cmake -DCMAKE_INSTALL_PREFIX=../install -DCMAKE_CXX_STANDARD=17  -DCMAKE_CXX_FLAGS=" -fdiagnostics-color=always " -G Ninja ..;'
-    - name: Compile 
+         cmake -S . -B build -GNinja -DCMAKE_INSTALL_PREFIX=$PWD/../install -DCMAKE_CXX_STANDARD=17;'
+
+    - name: Build package
       run: |
         docker exec CI_container /bin/bash -c 'cd ./Package;\
         source ${{ matrix.SETUP }};\
-        cd build;\
-        ninja -k0;'
-#    - name: Install
-#      run: |
-#        docker exec CI_container /bin/bash -c 'cd ./Package;\
-#          source ${{ matrix.SETUP }};\
-#          cd build;\
-#          ninja -k0 install;'
+        cmake --build build;\
+        cmake --install build;'
+
+    - name: Build Open Data Detector
+      run: |
+        docker exec CI_container /bin/bash -c 'cd ./Package;\
+        source ${{ matrix.SETUP }};\
+        git clone https://gitlab.cern.ch/acts/OpenDataDetector.git;\
+        mkdir build_odd;\
+        cmake -S OpenDataDetector -B build_odd -GNinja -DCMAKE_CXX_STANDARD=17 -DCMAKE_INSTALL_PREFIX=$PWD/../install;\
+        cmake --build build_odd;\
+        cmake --install build_odd;'
+
 #    - name: Test
 #      run: |
 #        docker exec CI_container /bin/bash -c 'cd ./Package;\

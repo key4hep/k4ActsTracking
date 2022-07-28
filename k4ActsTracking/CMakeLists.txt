@@ -4,9 +4,10 @@ gaudi_add_module(k4ActsTrackingPlugins
   LINK
   Gaudi::GaudiKernel Gaudi::GaudiAlgLib
   k4FWCore::k4FWCore
-  EDM4HEP::edm4hep
-  DD4hep::DDCore DD4hep::DDRec
   ActsCore ActsPluginDD4hep
+  DD4hep::DDCore 
+  # DD4hep::DDRec
+  # EDM4HEP::edm4hep
   )
 
 set(GAUDI_GENCONF_DIR "genConfDir")

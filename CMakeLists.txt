@@ -2,15 +2,15 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.18)
 
 project(k4ActsTracking)
 
-find_package(ROOT COMPONENTS RIO Tree)
-find_package(EDM4HEP)
-find_package(k4FWCore)
-find_package(Acts)
+find_package(ROOT REQUIRED COMPONENTS RIO Tree)
+find_package(EDM4HEP REQUIRED)
+find_package(k4FWCore REQUIRED)
+find_package(Acts REQUIRED)
 
 #---------------------------------------------------------------
 # Load macros and functions for Gaudi-based projects
 
-find_package(Gaudi)
+find_package(Gaudi REQUIRED)
 #---------------------------------------------------------------
 
 include(GNUInstallDirs)
