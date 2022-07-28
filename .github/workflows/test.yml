@@ -49,4 +49,4 @@ jobs:
         source ${{ matrix.SETUP }};\
         export ODD_XML=$PWD/install/share/OpenDataDetector/xml/OpenDataDetector.xml;\
         source $PWD/install/bin/this_odd.sh;\
-        ctest --output-on-failure
+        ctest --output-on-failure;'
