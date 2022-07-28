@@ -27,4 +27,4 @@ jobs:
       - name: Install black
         run: pip install black
       - name: Run formatting
-        run: black --check
+        run: black --check .
