@@ -5,6 +5,8 @@ from Gaudi.Configuration import *
 
 from Configurables import ActsGeoSvc
 
+print("\n".join(os.environ["LD_LIBRARY_PATH"].split(":")))
+
 algList = []
 
 a = ActsGeoSvc("ActsGeoSvc")
