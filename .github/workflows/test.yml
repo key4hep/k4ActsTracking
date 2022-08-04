@@ -48,7 +48,7 @@ jobs:
       run: |
         docker exec CI_container /bin/bash -c 'cd ./Package;\
         source ${{ matrix.SETUP }};\
-        export ODD_XML=$PWD/install/share/OpenDataDetector/xml/OpenDataDetector.xml;\
+        export OPENDATADETECTOR=$PWD/install/share/OpenDataDetector/;\
         source $PWD/install/bin/this_odd.sh;\
         source build/k4actstrackingenv.sh;\
         gaudirun.py k4ActsTracking/share/geosvc.py;'
