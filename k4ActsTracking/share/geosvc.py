@@ -10,7 +10,7 @@ print("\n".join(os.environ["LD_LIBRARY_PATH"].split(":")))
 algList = []
 
 a = ActsGeoSvc("ActsGeoSvc")
-a.detectors = [os.path.join(os.environ["OPENDATADETECTOR"], 'xml/OpenDataDetector.xml')]
+a.detectors = [os.path.join(os.environ["OPENDATADETECTOR"], "xml/OpenDataDetector.xml")]
 a.debugGeometry = True
 a.outputFileName = "MyObjFile"
 from Configurables import ApplicationMgr
