@@ -34,16 +34,16 @@ namespace Acts {
   class Surface;
 }  // namespace Acts
 
-class GAUDI_API IGeoSvc : virtual public IService {
+class GAUDI_API IActsGeoSvc : virtual public IService {
 public:
   using VolumeSurfaceMap = std::unordered_map<uint64_t, const Acts::Surface*>;
 
 public:
-  DeclareInterfaceID(IGeoSvc, 1, 0);
+  DeclareInterfaceID(IActsGeoSvc, 1, 0);
 
   virtual const Acts::TrackingGeometry& trackingGeometry() const = 0;
 
-  virtual ~IGeoSvc() {}
+  virtual ~IActsGeoSvc() {}
 };
 
 #endif  // IGEOSVC_H
