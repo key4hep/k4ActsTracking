@@ -23,7 +23,7 @@ project(k4ActsTracking)
 find_package(ROOT COMPONENTS RIO Tree)
 find_package(EDM4HEP)
 find_package(k4FWCore)
-find_package(Acts)
+find_package(Acts REQUIRED COMPONENTS Core PluginDD4hep)
 find_package(DD4hep)
 
 #---------------------------------------------------------------
