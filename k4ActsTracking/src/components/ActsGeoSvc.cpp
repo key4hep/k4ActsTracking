@@ -22,6 +22,7 @@
 #include "Acts/MagneticField/MagneticFieldContext.hpp"
 #include "Acts/Plugins/DD4hep/ConvertDD4hepDetector.hpp"
 #include "Acts/Surfaces/PlaneSurface.hpp"
+#include "Acts/Utilities/Logger.hpp"
 #include "Acts/Visualization/GeometryView3D.hpp"
 #include "Acts/Visualization/ObjVisualization3D.hpp"
 #include "DD4hep/Printout.h"
@@ -67,9 +68,10 @@ StatusCode ActsGeoSvc::initialize() {
   double            layerEnvelopeZ        = Acts::UnitConstants::mm;
   double            defaultLayerThickness = Acts::UnitConstants::fm;
   using Acts::sortDetElementsByID;
-  m_trackingGeo = Acts::convertDD4hepDetector(m_dd4hepGeo->world(), m_actsLoggingLevel, bTypePhi, bTypeR, bTypeZ,
-                                              layerEnvelopeR, layerEnvelopeZ, defaultLayerThickness,
-                                              sortDetElementsByID, m_trackingGeoCtx, m_materialDeco);
+  auto logger   = Acts::getDefaultLogger("k4ActsTracking", m_actsLoggingLevel);
+  m_trackingGeo = Acts::convertDD4hepDetector(m_dd4hepGeo->world(), *logger, bTypePhi, bTypeR, bTypeZ, layerEnvelopeR,
+                                              layerEnvelopeZ, defaultLayerThickness, sortDetElementsByID,
+                                              m_trackingGeoCtx, m_materialDeco);
 
   /// Setting geometry debug option
   if (m_debugGeometry == true) {
