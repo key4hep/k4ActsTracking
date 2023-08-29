@@ -21,8 +21,6 @@
 #include "Acts/Geometry/TrackingGeometry.hpp"
 #include "Acts/MagneticField/MagneticFieldContext.hpp"
 #include "Acts/Plugins/DD4hep/ConvertDD4hepDetector.hpp"
-#include "Acts/Plugins/Json/JsonMaterialDecorator.hpp"
-#include "Acts/Plugins/Json/MaterialMapJsonConverter.hpp"
 #include "Acts/Surfaces/PlaneSurface.hpp"
 #include "Acts/Visualization/GeometryView3D.hpp"
 #include "Acts/Visualization/ObjVisualization3D.hpp"
