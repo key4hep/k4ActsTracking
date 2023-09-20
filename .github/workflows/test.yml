@@ -28,9 +28,9 @@ jobs:
           ninja install;
         '
 
-#    - name: Run tests (CTest)
-#      run: |
-#        docker exec k4Acts_CI /bin/bash -c 'source ${{ matrix.SETUP }};
-#          cd k4Acts/build;
-#          ctest --output-on-failure;
-#        '
+    - name: Run tests (CTest)
+      run: |
+        docker exec k4Acts_CI /bin/bash -c 'source ${{ matrix.SETUP }};
+          cd k4Acts/build;
+          ctest --output-on-failure;
+        '

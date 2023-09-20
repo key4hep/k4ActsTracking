@@ -45,3 +45,4 @@ endif()
 include(CTest)
 
 add_subdirectory(k4ActsTracking)
+add_subdirectory(test)
