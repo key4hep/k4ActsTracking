@@ -17,7 +17,7 @@
  * limitations under the License.
  */
 
-#include "GeoSvc.h"
+#include "ActsGeoSvc.h"
 #include "Acts/Geometry/TrackingGeometry.hpp"
 #include "Acts/MagneticField/MagneticFieldContext.hpp"
 #include "Acts/Plugins/DD4hep/ConvertDD4hepDetector.hpp"
@@ -32,11 +32,11 @@
 
 using namespace Gaudi;
 
-DECLARE_COMPONENT(GeoSvc)
+DECLARE_COMPONENT(ActsGeoSvc)
 
-GeoSvc::GeoSvc(const std::string& name, ISvcLocator* svc) : base_class(name, svc), m_log(msgSvc(), name) {}
+ActsGeoSvc::ActsGeoSvc(const std::string& name, ISvcLocator* svc) : base_class(name, svc), m_log(msgSvc(), name) {}
 
-GeoSvc::~GeoSvc() {
+ActsGeoSvc::~ActsGeoSvc() {
   if (m_dd4hepGeo != nullptr) {
     try {
       m_dd4hepGeo->destroyInstance();
@@ -46,7 +46,7 @@ GeoSvc::~GeoSvc() {
   }
 }
 
-StatusCode GeoSvc::initialize() {
+StatusCode ActsGeoSvc::initialize() {
   if (m_xmlFileNames.size() > 0) {
     m_log << MSG::INFO << "Loading xml files from:  '" << m_xmlFileNames << "'" << endmsg;
   } else {
@@ -92,13 +92,13 @@ StatusCode GeoSvc::initialize() {
   return StatusCode::SUCCESS;
 }
 
-StatusCode GeoSvc::execute() { return StatusCode::SUCCESS; }
+StatusCode ActsGeoSvc::execute() { return StatusCode::SUCCESS; }
 
-StatusCode GeoSvc::finalize() { return StatusCode::SUCCESS; }
+StatusCode ActsGeoSvc::finalize() { return StatusCode::SUCCESS; }
 
-StatusCode GeoSvc::buildDD4HepGeo() {
+StatusCode ActsGeoSvc::buildDD4HepGeo() {
   m_dd4hepGeo = &(dd4hep::Detector::getInstance());
-  m_dd4hepGeo->addExtension<IGeoSvc>(this);
+  m_dd4hepGeo->addExtension<IActsGeoSvc>(this);
 
   /// Load geometry
   for (auto& filename : m_xmlFileNames) {
@@ -112,7 +112,7 @@ StatusCode GeoSvc::buildDD4HepGeo() {
 }
 
 /// Create a geometry OBJ file
-StatusCode GeoSvc::createGeoObj() {
+StatusCode ActsGeoSvc::createGeoObj() {
   // Convert DD4Hep geometry to acts
 
   Acts::ObjVisualization3D m_obj;

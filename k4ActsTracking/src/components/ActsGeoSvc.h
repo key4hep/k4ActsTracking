@@ -35,9 +35,9 @@
 #include "GaudiKernel/MsgStream.h"
 #include "GaudiKernel/Service.h"
 #include "GaudiKernel/ServiceHandle.h"
-#include "IGeoSvc.h"
+#include "IActsGeoSvc.h"
 
-class GeoSvc : public extends<Service, IGeoSvc> {
+class ActsGeoSvc : public extends<Service, IActsGeoSvc> {
 public:
   using VolumeSurfaceMap = std::unordered_map<uint64_t, const Acts::Surface*>;
 
@@ -74,9 +74,9 @@ private:
   MsgStream m_log;
 
 public:
-  GeoSvc(const std::string& name, ISvcLocator* svc);
+  ActsGeoSvc(const std::string& name, ISvcLocator* svc);
 
-  virtual ~GeoSvc();
+  virtual ~ActsGeoSvc();
 
   virtual StatusCode initialize() final;
 
@@ -91,5 +91,5 @@ public:
   virtual const Acts::TrackingGeometry& trackingGeometry() const;
 };
 
-inline const Acts::TrackingGeometry& GeoSvc::trackingGeometry() const { return *m_trackingGeo; }
+inline const Acts::TrackingGeometry& ActsGeoSvc::trackingGeometry() const { return *m_trackingGeo; }
 #endif
