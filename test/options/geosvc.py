@@ -17,19 +17,26 @@
 # limitations under the License.
 #
 import os
-from pprint import pprint
-from Gaudi.Configuration import *
+from Gaudi.Configuration import INFO
 
-from Configurables import ActsGeoSvc
+from Configurables import ActsGeoSvc, ApplicationMgr, GeoSvc
 
 algList = []
 
-a = ActsGeoSvc("ActsGeoSvc")
-a.detectors = [f"{os.environ['OPENDATADETECTOR']}/xml/OpenDataDetector.xml"]
-a.debugGeometry = True
-a.outputFileName = "MyObjFile"
-from Configurables import ApplicationMgr
+dd4hep_geo = GeoSvc("GeoSvc")
+dd4hep_geo.detectors = [f"{os.environ['OPENDATADETECTOR']}/xml/OpenDataDetector.xml"]
+dd4hep_geo.EnableGeant4Geo = False
 
-ApplicationMgr(TopAlg=algList, EvtSel="NONE", EvtMax=2, ExtSvc=[
-a
-], OutputLevel=INFO)
+acts_geo = ActsGeoSvc("ActsGeoSvc")
+acts_geo.GeoSvcName = dd4hep_geo.name()
+acts_geo.debugGeometry = True
+acts_geo.outputFileName = "MyObjFile"
+
+ApplicationMgr(
+    TopAlg=algList,
+    EvtSel="NONE",
+    EvtMax=2,
+    # order dependent...
+    ExtSvc=[dd4hep_geo, acts_geo],
+    OutputLevel=INFO,
+)

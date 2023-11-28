@@ -17,8 +17,8 @@
  * limitations under the License.
  */
 
-#ifndef IGEOSVC_H
-#define IGEOSVC_H
+#ifndef IACTSGEOSVC_H
+#define IACTSGEOSVC_H
 
 #include <GaudiKernel/IService.h>
 #include <unordered_map>
@@ -46,4 +46,4 @@ public:
   virtual ~IActsGeoSvc() {}
 };
 
-#endif  // IGEOSVC_H
+#endif  // IACTSGEOSVC_H
