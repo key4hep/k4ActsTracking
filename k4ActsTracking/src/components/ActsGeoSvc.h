@@ -17,8 +17,8 @@
  * limitations under the License.
  */
 
-#ifndef GEOSVC_H
-#define GEOSVC_H
+#ifndef ACTSGEOSVC_H
+#define ACTSGEOSVC_H
 
 #include <Acts/Material/IMaterialDecorator.hpp>
 #include "Acts/Definitions/Common.hpp"
@@ -62,8 +62,7 @@ private:
   /// ACTS surface lookup container for hit surfaces that generate smeared hits
   VolumeSurfaceMap m_surfaces;
 
-  /// XML-files with the detector description
-  Gaudi::Property<std::vector<std::string>> m_xmlFileNames{this, "detectors", {}, "Detector descriptions XML-files"};
+  Gaudi::Property<std::string> m_geoSvcName{this, "GeoSvcName", "GeoSvc", "The name of the GeoSvc instance"};
 
   /// Option for the Debug Geometry
   Gaudi::Property<bool> m_debugGeometry{this, "debugGeometry", false, "Option for geometry debugging"};
@@ -83,8 +82,6 @@ public:
   virtual StatusCode execute() final;
 
   virtual StatusCode finalize() final;
-
-  StatusCode buildDD4HepGeo();
 
   StatusCode createGeoObj();
 

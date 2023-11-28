@@ -28,6 +28,7 @@
 #include "DD4hep/Printout.h"
 #include "GaudiKernel/Service.h"
 #include "TGeoManager.h"
+#include "k4Interface/IGeoSvc.h"
 
 using namespace Gaudi;
 
@@ -35,31 +36,12 @@ DECLARE_COMPONENT(ActsGeoSvc)
 
 ActsGeoSvc::ActsGeoSvc(const std::string& name, ISvcLocator* svc) : base_class(name, svc), m_log(msgSvc(), name) {}
 
-ActsGeoSvc::~ActsGeoSvc() {
-  if (m_dd4hepGeo != nullptr) {
-    try {
-      m_dd4hepGeo->destroyInstance();
-      m_dd4hepGeo = nullptr;
-    } catch (...) {
-    }
-  }
-}
+ActsGeoSvc::~ActsGeoSvc(){};
 
 StatusCode ActsGeoSvc::initialize() {
-  if (m_xmlFileNames.size() > 0) {
-    m_log << MSG::INFO << "Loading xml files from:  '" << m_xmlFileNames << "'" << endmsg;
-  } else {
-    m_log << MSG::ERROR << "No xml file!" << endmsg;
-    return StatusCode::FAILURE;
-  }
-
-  /// Check if the DD4Hep Geometry is built successfully
-  if (buildDD4HepGeo().isFailure()) {
-    m_log << MSG::ERROR << "Could not build DD4Hep geometry" << endmsg;
-    return StatusCode::FAILURE;
-  } else {
-    m_log << MSG::INFO << "DD4Hep geometry SUCCESSFULLY built" << endmsg;
-  }
+  m_dd4hepGeo = svcLocator()->service<IGeoSvc>(m_geoSvcName)->getDetector();
+  // necessary?
+  // m_dd4hepGeo->addExtension<IActsGeoSvc>(this);
 
   Acts::BinningType bTypePhi              = Acts::equidistant;
   Acts::BinningType bTypeR                = Acts::equidistant;
@@ -95,21 +77,6 @@ StatusCode ActsGeoSvc::initialize() {
 StatusCode ActsGeoSvc::execute() { return StatusCode::SUCCESS; }
 
 StatusCode ActsGeoSvc::finalize() { return StatusCode::SUCCESS; }
-
-StatusCode ActsGeoSvc::buildDD4HepGeo() {
-  m_dd4hepGeo = &(dd4hep::Detector::getInstance());
-  m_dd4hepGeo->addExtension<IActsGeoSvc>(this);
-
-  /// Load geometry
-  for (auto& filename : m_xmlFileNames) {
-    m_log << MSG::INFO << "Loading geometry from file:  '" << filename << "'" << endmsg;
-    m_dd4hepGeo->fromCompact(filename);
-  }
-  m_dd4hepGeo->volumeManager();
-  m_dd4hepGeo->apply("DD4hepVolumeManager", 0, nullptr);
-
-  return StatusCode::SUCCESS;
-}
 
 /// Create a geometry OBJ file
 StatusCode ActsGeoSvc::createGeoObj() {
