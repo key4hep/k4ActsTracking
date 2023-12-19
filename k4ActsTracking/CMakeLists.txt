@@ -16,6 +16,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ]]
+
+gaudi_add_header_only_library(k4ActsTracking)
+
+install(TARGETS k4ActsTracking
+  EXPORT k4ActsTrackingTargets
+  RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT bin
+  LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT shlib
+  COMPONENT dev
+  )
+
 file(GLOB _plugin_sources src/components/*.cpp)
 gaudi_add_module(k4ActsTrackingPlugins
   SOURCES ${_plugin_sources}
@@ -26,6 +36,15 @@ gaudi_add_module(k4ActsTrackingPlugins
   DD4hep::DDCore DD4hep::DDRec
   ActsCore ActsPluginDD4hep
   )
+target_include_directories(k4ActsTrackingPlugins PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>
+  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+
+install(TARGETS k4ActsTrackingPlugins
+  EXPORT k4ActsTrackingTargets
+  RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT bin
+  LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT shlib
+  COMPONENT dev)
 
 set(GAUDI_GENCONF_DIR "genConfDir")
 
