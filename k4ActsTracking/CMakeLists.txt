@@ -17,14 +17,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ]]
 
-gaudi_add_header_only_library(k4ActsTracking)
-
+gaudi_add_header_only_library(k4ActsTracking
+  LINK
+  k4FWCore::k4FWCore
+)
 install(TARGETS k4ActsTracking
   EXPORT k4ActsTrackingTargets
-  RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT bin
-  LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT shlib
-  COMPONENT dev
-  )
+  INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+)
 
 file(GLOB _plugin_sources src/components/*.cpp)
 gaudi_add_module(k4ActsTrackingPlugins
