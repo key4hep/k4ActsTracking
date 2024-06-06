@@ -35,7 +35,7 @@
 #include "GaudiKernel/MsgStream.h"
 #include "GaudiKernel/Service.h"
 #include "GaudiKernel/ServiceHandle.h"
-#include "IActsGeoSvc.h"
+#include "k4ActsTracking/IActsGeoSvc.h"
 
 class ActsGeoSvc : public extends<Service, IActsGeoSvc> {
 public:
