@@ -46,3 +46,11 @@ include(CTest)
 
 add_subdirectory(k4ActsTracking)
 add_subdirectory(test)
+
+install(EXPORT ${PROJECT_NAME}Targets
+  NAMESPACE ${PROJECT_NAME}::
+  FILE "${PROJECT_NAME}Targets.cmake"
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}/"
+  )
+
+gaudi_install(CMAKE cmake/${PROJECT_NAME}Config.cmake)
