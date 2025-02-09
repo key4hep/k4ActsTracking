@@ -94,7 +94,7 @@ StatusCode ActsGeoSvc::createGeoObj() {
     }
     Acts::GeometryView3D::drawSurface(m_obj, *surface, m_trackingGeoCtx);
   });
-  m_obj.write(m_outputFileName);
+  m_obj.write(m_outputFileName.value());
   m_log << MSG::INFO << m_outputFileName << " SUCCESSFULLY written." << endmsg;
 
   return StatusCode::SUCCESS;
