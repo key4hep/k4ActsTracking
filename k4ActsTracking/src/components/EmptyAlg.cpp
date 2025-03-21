@@ -20,13 +20,13 @@
 
 DECLARE_COMPONENT(EmptyAlg)
 
-EmptyAlg::EmptyAlg(const std::string& aName, ISvcLocator* aSvcLoc) : GaudiAlgorithm(aName, aSvcLoc) {}
+EmptyAlg::EmptyAlg(const std::string& aName, ISvcLocator* aSvcLoc) : Gaudi::Algorithm(aName, aSvcLoc) {}
 
 EmptyAlg::~EmptyAlg() {}
 
 StatusCode EmptyAlg::initialize() { return StatusCode::SUCCESS; }
 
-StatusCode EmptyAlg::execute() {
+StatusCode EmptyAlg::execute(const EventContext&) const {
   std::cout << "HALLO WELT!" << std::endl;
   return StatusCode::SUCCESS;
 }
