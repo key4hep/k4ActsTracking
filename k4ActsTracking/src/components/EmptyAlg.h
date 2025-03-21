@@ -19,10 +19,10 @@
 #pragma once
 
 // GAUDI
+#include "Gaudi/Algorithm.h"
 #include "Gaudi/Property.h"
-#include "GaudiAlg/GaudiAlgorithm.h"
 
-class EmptyAlg : public GaudiAlgorithm {
+class EmptyAlg : public Gaudi::Algorithm {
 public:
   explicit EmptyAlg(const std::string&, ISvcLocator*);
   virtual ~EmptyAlg();
@@ -33,7 +33,7 @@ public:
   /**  Execute.
    *   @return status code
    */
-  virtual StatusCode execute() final;
+  virtual StatusCode execute(const EventContext&) const final;
   /**  Finalize.
    *   @return status code
    */

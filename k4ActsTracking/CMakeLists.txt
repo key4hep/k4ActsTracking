@@ -20,7 +20,7 @@ file(GLOB _plugin_sources src/components/*.cpp)
 gaudi_add_module(k4ActsTrackingPlugins
   SOURCES ${_plugin_sources}
   LINK
-  Gaudi::GaudiKernel Gaudi::GaudiAlgLib
+  Gaudi::GaudiKernel
   k4FWCore::k4FWCore
   EDM4HEP::edm4hep
   DD4hep::DDCore DD4hep::DDRec
