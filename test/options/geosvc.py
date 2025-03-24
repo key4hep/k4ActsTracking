@@ -24,7 +24,9 @@ from Configurables import ActsGeoSvc, ApplicationMgr, GeoSvc
 algList = []
 
 dd4hep_geo = GeoSvc("GeoSvc")
-dd4hep_geo.detectors = [f"{os.environ['OPENDATADETECTOR']}/xml/OpenDataDetector.xml"]
+dd4hep_geo.detectors = [
+    f"{os.environ['OPENDATADETECTOR_DATA']}/xml/OpenDataDetector.xml"
+]
 dd4hep_geo.EnableGeant4Geo = False
 
 acts_geo = ActsGeoSvc("ActsGeoSvc")
