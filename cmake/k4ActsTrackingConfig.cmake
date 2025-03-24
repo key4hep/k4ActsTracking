@@ -1,5 +1,4 @@
 include(CMakeFindDependencyMacro)
-find_dependency(podio REQUIRED)
 find_dependency(k4FWCore REQUIRED)
 find_dependency(Acts REQUIRED COMPONENTS Core PluginDD4hep)
 find_dependency(Gaudi REQUIRED)
