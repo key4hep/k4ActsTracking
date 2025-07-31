@@ -1,56 +1,42 @@
-#[[
-Copyright (c) 2014-2024 Key4hep-Project.
+########################################################
+# cmake file for building Gaudi ACTSTracking Package
+# @author Samuel Ferraro
+########################################################
 
-This file is part of Key4hep.
-See https://key4hep.github.io/key4hep-doc/ for further info.
+### DATA ###########################################################
+ADD_SUBDIRECTORY(data)
+ADD_SUBDIRECTORY(example)
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+### LIBRARY #################################################################
 
-    http://www.apache.org/licenses/LICENSE-2.0
+# sources
+CONFIGURE_FILE(src/config.h.in config.h)
+FILE( GLOB _plugin_sources src/*.cxx )
+gaudi_add_module(ACTSTrackingPlugins
+		SOURCES ${_plugin_sources}
+		LINK	${ROOT_LIBRARIES}
+			k4FWCore::k4FWCore
+			DD4hep::DDCore
+			Gaudi::GaudiKernel
+			EDM4HEP::edm4hep
+			ActsCore ActsPluginTGeo ActsPluginJson)
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-]]
-CMAKE_MINIMUM_REQUIRED(VERSION 3.18)
+INSTALL( TARGETS ACTSTrackingPlugins 
+	EXPORT ${CMAKE_PROJECT_NAME}Targets
+	RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT bin 
+	LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT shlib
+	PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/@{CMAKE_PROJECT_NAME}"
+	COMPONENT dev )
 
-project(k4ActsTracking)
+TARGET_INCLUDE_DIRECTORIES(ACTSTrackingPlugins
+		PRIVATE	./ACTSTracking
+			${CMAKE_CURRENT_BINARY_DIR}
+    			${Gaudi_INCLUDE_DIRS}
+    			${ROOT_INCLUDE_DIRS})
 
-find_package(ROOT COMPONENTS RIO Tree)
-find_package(EDM4HEP)
-find_package(k4FWCore)
-find_package(Acts REQUIRED COMPONENTS Core PluginDD4hep)
-find_package(DD4hep)
-
-#---------------------------------------------------------------
-# Load macros and functions for Gaudi-based projects
-
-find_package(Gaudi)
-#---------------------------------------------------------------
-
-include(GNUInstallDirs)
-
-# Set up C++ Standard
-# ``-DCMAKE_CXX_STANDARD=<standard>`` when invoking CMake
-set(CMAKE_CXX_STANDARD 17 CACHE STRING "")
-
-if(NOT CMAKE_CXX_STANDARD MATCHES "14|17|20")
-  message(FATAL_ERROR "Unsupported C++ standard: ${CMAKE_CXX_STANDARD}")
+SET( GAUDI_GENCONF_DIR "genConfDir" )
+if (${Gaudi_VERSION} VERSION_LESS 35.1)
+	SET( GAUDI_GENCONF_DIR "genConf" )
 endif()
 
-include(CTest)
 
-add_subdirectory(k4ActsTracking)
-add_subdirectory(test)
-
-install(EXPORT ${PROJECT_NAME}Targets
-  NAMESPACE ${PROJECT_NAME}::
-  FILE "${PROJECT_NAME}Targets.cmake"
-  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}/"
-  )
-
-gaudi_install(CMAKE cmake/${PROJECT_NAME}Config.cmake)
