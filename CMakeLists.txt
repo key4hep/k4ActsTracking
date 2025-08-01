@@ -45,8 +45,11 @@ endif()
 include(CTest)
 
 add_subdirectory(k4ActsTracking)
+add_subdirectory(data)
 add_subdirectory(test)
 
+
+configure_file(k4ActsTracking/src/components/config.h.in config.h)
 install(EXPORT ${PROJECT_NAME}Targets
   NAMESPACE ${PROJECT_NAME}::
   FILE "${PROJECT_NAME}Targets.cmake"

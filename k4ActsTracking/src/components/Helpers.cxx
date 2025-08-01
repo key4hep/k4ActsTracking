@@ -13,7 +13,7 @@
 #include <Acts/MagneticField/InterpolatedBFieldMap.hpp>
 
 // ACTSTracking
-#include "config.h"
+#include "config.h.in"
 
 namespace ACTSTracking {
 
