@@ -4,7 +4,7 @@
 
 #include "Acts/Surfaces/Surface.hpp"
 
-#include "GeometryContainers.hxx"
+#include "k4ActsTracking/GeometryContainers.hxx"
 
 namespace ACTSTracking {
 //! \brief Link between an ACTS surface and hit index

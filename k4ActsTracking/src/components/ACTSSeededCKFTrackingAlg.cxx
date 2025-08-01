@@ -1,4 +1,4 @@
-#include "ACTSSeededCKFTrackingAlg.hxx"
+#include "k4ActsTracking/ACTSSeededCKFTrackingAlg.hxx"
 
 // edm4hep
 #include <edm4hep/MCParticle.h>
@@ -28,10 +28,10 @@
 //using namespace Acts::UnitLiterals;
 
 // ACTSTracking
-#include "Helpers.hxx"
-#include "MeasurementCalibrator.hxx"
-#include "SeedSpacePoint.hxx"
-#include "SourceLink.hxx"
+#include "k4ActsTracking/Helpers.hxx"
+#include "k4ActsTracking/MeasurementCalibrator.hxx"
+#include "k4ActsTracking/SeedSpacePoint.hxx"
+#include "k4ActsTracking/SourceLink.hxx"
 
 // Standard
 #include <chrono>

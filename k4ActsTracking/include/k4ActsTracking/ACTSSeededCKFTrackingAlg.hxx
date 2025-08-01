@@ -15,8 +15,8 @@
 #include <TH1.h>
 
 // ACTSTracking
-#include "ACTSAlgBase.hxx"
-#include "GeometryIdSelector.hxx"
+#include "k4ActsTracking/ACTSAlgBase.hxx"
+#include "k4ActsTracking/GeometryIdSelector.hxx"
 
 // Standard
 #include <string>

@@ -1,4 +1,4 @@
-#include "FilterTracksAlg.hxx"
+#include "k4ActsTracking/FilterTracksAlg.hxx"
 
 // DD4hep
 #include <DD4hep/Detector.h>
@@ -8,7 +8,7 @@
 #include <edm4hep/MutableTrack.h>
 
 // ACTSTracking
-#include "Helpers.hxx"
+#include "k4ActsTracking/Helpers.hxx"
 
 // Standard
 #include <math.h>

@@ -1,4 +1,4 @@
-#include "ACTSDuplicateRemoval.hxx"
+#include "k4ActsTracking/ACTSDuplicateRemoval.hxx"
 
 // edm4hep
 #include <edm4hep/TrackerHit.h>
@@ -8,7 +8,7 @@
 #include <algorithm>
 
 // ACTSTracking
-#include "Helpers.hxx"
+#include "k4ActsTracking/Helpers.hxx"
 
 namespace ACTSTracking {
 /**

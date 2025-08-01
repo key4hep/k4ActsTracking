@@ -1,4 +1,4 @@
-#include "ACTSAlgBase.hxx"
+#include "k4ActsTracking/ACTSAlgBase.hxx"
 
 // ROOT
 #include <TGeoManager.h>
@@ -27,7 +27,7 @@
 #include <Acts/Plugins/TGeo/TGeoLayerBuilder.hpp>
 
 // ACTSTracking
-#include "Helpers.hxx"
+#include "k4ActsTracking/Helpers.hxx"
 
 using namespace ACTSTracking;
 

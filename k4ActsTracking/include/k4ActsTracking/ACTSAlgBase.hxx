@@ -27,7 +27,7 @@
 #include <string>
 
 // ACTSTracking
-#include "GeometryIdMappingTool.hxx"
+#include "k4ActsTracking/GeometryIdMappingTool.hxx"
 
 //! Base processor for ACTS tracking
 /**

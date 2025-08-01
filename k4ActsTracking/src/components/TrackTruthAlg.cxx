@@ -1,7 +1,7 @@
-#include "TrackTruthAlg.hxx"
+#include "k4ActsTracking/TrackTruthAlg.hxx"
 
 // ACTSTracking
-#include "Helpers.hxx"
+#include "k4ActsTracking/Helpers.hxx"
 
 // edm4hep
 #include <edm4hep/MCParticle.h>

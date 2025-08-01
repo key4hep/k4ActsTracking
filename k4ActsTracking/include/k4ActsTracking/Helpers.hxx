@@ -26,7 +26,7 @@
 #include <Acts/EventData/VectorMultiTrajectory.hpp>
 
 // ACTSTracking
-#include "SourceLink.hxx"
+#include "k4ActsTracking/SourceLink.hxx"
 
 namespace ACTSTracking {
 

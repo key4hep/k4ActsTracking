@@ -6,7 +6,7 @@
 #include "Acts/Geometry/GeometryContext.hpp"
 #include "Acts/Utilities/CalibrationContext.hpp"
 
-#include "SourceLink.hxx"
+#include "k4ActsTracking/SourceLink.hxx"
 
 namespace ACTSTracking {
 //! Hit stored as an measurement

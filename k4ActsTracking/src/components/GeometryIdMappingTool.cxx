@@ -1,4 +1,4 @@
-#include "GeometryIdMappingTool.hxx"
+#include "k4ActsTracking/GeometryIdMappingTool.hxx"
 
 #include <iomanip>
 #include <sstream>
