@@ -18,7 +18,7 @@ limitations under the License.
 ]]
 CMAKE_MINIMUM_REQUIRED(VERSION 3.18)
 
-project(k4ActsTracking)
+project(k4ActsTracking LANGUAGES CXX)
 
 find_package(ROOT COMPONENTS RIO Tree)
 find_package(EDM4HEP)
