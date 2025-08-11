@@ -36,9 +36,9 @@ install(TARGETS k4ActsTracking
 )
 
 file(GLOB _plugin_sources src/components/*.c*)
-set(ACTS_PLUGIN_TARGETS "Acts::Core;Acts::PluginDD4hep")
+set(ACTS_PLUGIN_TARGETS "Acts::Core;Acts::PluginDD4hep;Acts::PluginJson")
 if (Acts_VERSION VERSION_LESS 43.0.0)
-  set(ACTS_PLUGIN_TARGETS "ActsCore;ActsPluginDD4hep")
+  set(ACTS_PLUGIN_TARGETS "ActsCore;ActsPluginDD4hep;ActsPluginJson")
 endif()
 
 gaudi_add_module(k4ActsTrackingPlugins
