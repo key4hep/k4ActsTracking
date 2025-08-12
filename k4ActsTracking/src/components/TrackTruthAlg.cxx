@@ -8,7 +8,7 @@
 #include <edm4hep/SimTrackerHit.h>
 #include <edm4hep/Track.h>
 #include <edm4hep/TrackerHitPlane.h>
-#include <edm4hep/TrackerHitSimTrackerHitLink.h>
+#include <edm4hep/TrackerHitSimTrackerHitLinkCollection.h>
 
 //------------------------------------------------------------------------------------------------
 
