@@ -21,10 +21,10 @@ struct ExaTrkGNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollect
 
   edm4hep::TrackCollection operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*> const&) const override;
 
-  Gaudi::Property<std::string> m_edgeClassifierModelPath{this, "edge_classifier_model_path",
+  Gaudi::Property<std::string> m_edgeClassifierModelPath{this, "EdgeClassifierModelPath",
                                                          "Path to the ONNX model file for the edge classifier GNN"};
   Gaudi::Property<std::string> m_nodeEmbeddingModelPath{
-      this, "node_embedding_model_path",
+      this, "NodeEmbeddingModelPath",
       "Path to the ONNX model file for the node embedding / graph construction metric model"};
 
 private:
