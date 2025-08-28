@@ -12,12 +12,16 @@ StatusCode ExaTrkGNNTrackFinder::initialize() {
             << m_nodeEmbeddingModelPath.value() << endmsg;
     return StatusCode::FAILURE;
   }
+  m_nodeEmbedding.dumpModel(debug());
+  debug() << endmsg;
 
   // Load the edge classifier model
   if (!m_edgeClassifier.loadModel(m_edgeClassifierModelPath.value())) {
     error() << "Failed to load edge classifier model from: " << m_edgeClassifierModelPath.value() << endmsg;
     return StatusCode::FAILURE;
   }
+  m_edgeClassifier.dumpModel(debug());
+  debug() << endmsg;
 
   info() << "Successfully loaded both ONNX models" << endmsg;
   return StatusCode::SUCCESS;

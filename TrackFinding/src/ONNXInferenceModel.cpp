@@ -7,7 +7,7 @@ namespace mlutils {
 
 ONNXInferenceModel::ONNXInferenceModel(const std::string& name)
     : m_env(std::make_unique<Ort::Env>(ORT_LOGGING_LEVEL_WARNING, name.c_str())),
-      m_sessionOptions(std::make_unique<Ort::SessionOptions>()) {
+      m_sessionOptions(std::make_unique<Ort::SessionOptions>()), m_envName(name) {
   // Run model on a single CPU core
   m_sessionOptions->SetIntraOpNumThreads(1);
   // Let ONNX perform optimizations on the model graph to improve performance
