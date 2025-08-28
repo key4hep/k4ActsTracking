@@ -29,15 +29,22 @@ StatusCode ExaTrkGNNTrackFinder::initialize() {
 
 edm4hep::TrackCollection
 ExaTrkGNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*> const& inputTrackerHits) const {
-  edm4hep::TrackCollection candidates;
+  // Could use a std::array here, but that would make switching between 3D and
+  // 4D a bit more cumbersome
+  std::vector<std::vector<float>> embeddingInputs{};
+  auto sizes = inputTrackerHits | std::views::transform([](const auto* c) { return c->size(); });
+  auto totalHits = std::accumulate(sizes.begin(), sizes.end(), 0);
+  embeddingInputs.reserve(totalHits);
 
-  // TODO: actually meaningful implementation
-  for (const auto& trackerHits : inputTrackerHits) {
-    auto cand = candidates.create();
-    for (const auto& hit : *trackerHits) {
-      cand.addToTrackerHits(hit);
+  for (const auto* coll : inputTrackerHits) {
+    for (const auto hit : *coll) {
+      std::vector<float> hitInfo = {static_cast<float>(hit.getPosition().x), static_cast<float>(hit.getPosition().y),
+                                    static_cast<float>(hit.getPosition().z), hit.getTime()};
+      embeddingInputs.emplace_back(std::move(hitInfo));
     }
   }
+
+  edm4hep::TrackCollection candidates;
 
   return candidates;
 }
