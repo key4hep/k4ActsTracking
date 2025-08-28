@@ -7,6 +7,89 @@
 #include <vector>
 
 namespace mlutils {
+namespace detail {
+  /**
+   * @brief Type trait to extract the scalar type from nested containers.
+   *
+   * For scalar types, returns the type itself. For std::vector<T>, recursively
+   * extracts the scalar type from T. This allows handling arbitrarily nested
+   * vectors like std::vector<std::vector<float>>.
+   */
+  template <typename T>
+  struct scalar_type {
+    using type = T;
+  };
+
+  template <typename T>
+  struct scalar_type<std::vector<T>> {
+    using type = typename scalar_type<T>::type;
+  };
+
+  template <typename T>
+  using scalar_type_t = typename scalar_type<T>::type;
+} // namespace detail
+
+/**
+ * @brief Calculate the total number of scalar elements in a nested container.
+ *
+ * For scalar types, returns 1. For containers, recursively counts all scalar
+ * elements. Useful for pre-allocating memory when flattening nested structures.
+ *
+ * @param value The value or container to count elements in
+ * @return Total number of scalar elements
+ */
+template <typename T>
+size_t totalSize(const T&) {
+  return 1;
+}
+
+template <typename T>
+size_t totalSize(const std::vector<T>& value) {
+  size_t size = 0;
+  for (const auto& v : value) {
+    size += totalSize(v);
+  }
+
+  return size;
+}
+
+/**
+ * @brief Flatten nested containers into a single vector of scalar values.
+ *
+ * Recursively traverses nested std::vector structures and extracts all scalar
+ * values into a flat output vector. Supports arbitrary nesting levels.
+ *
+ * @param value The value or container to flatten
+ * @param output The output vector to append flattened values to
+ */
+template <typename T>
+void flatten(const T& value, std::vector<detail::scalar_type_t<T>>& output) {
+  output.push_back(value);
+}
+
+template <typename T>
+void flatten(const std::vector<T>& vec, std::vector<detail::scalar_type_t<T>>& output) {
+  for (const auto& item : vec) {
+    flatten(item, output);
+  }
+}
+
+/**
+ * @brief Flatten nested containers into a new vector of scalar values.
+ *
+ * Convenience function that creates a new vector and flattens the input into it
+ *
+ * @param value The value or container to flatten
+ * @return A new vector containing all scalar values in flattened form
+ */
+template <typename T>
+std::vector<detail::scalar_type_t<T>> flatten(const T& value) {
+  std::vector<detail::scalar_type_t<T>> output{};
+  output.reserve(totalSize(value));
+  flatten(value, output);
+  return output;
+}
+
 class ONNXInferenceModel {
 public:
   // Constructor
@@ -36,6 +119,7 @@ private:
   std::unique_ptr<Ort::Env> m_env{nullptr};
   std::unique_ptr<Ort::Session> m_session{nullptr};
   std::unique_ptr<Ort::SessionOptions> m_sessionOptions{nullptr};
+  Ort::AllocatorWithDefaultOptions m_allocator{}; // default allocator
 
   // Model metadata
   std::vector<std::string> m_inputNames{};
