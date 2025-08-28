@@ -1,8 +1,15 @@
+#pragma once
+
+#include "ONNXInferenceModel.h"
+
 #include <k4FWCore/Transformer.h>
+
+#include <Gaudi/Property.h>
 
 #include <edm4hep/TrackCollection.h>
 #include <edm4hep/TrackerHitPlaneCollection.h>
 
+#include <string>
 #include <vector>
 
 struct ExaTrkGNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
@@ -10,7 +17,17 @@ struct ExaTrkGNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollect
 
   ExaTrkGNNTrackFinder(const std::string& name, ISvcLocator* svcLoc);
 
+  StatusCode initialize() override;
+
   edm4hep::TrackCollection operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*> const&) const override;
 
+  Gaudi::Property<std::string> m_edgeClassifierModelPath{this, "edge_classifier_model_path",
+                                                         "Path to the ONNX model file for the edge classifier GNN"};
+  Gaudi::Property<std::string> m_nodeEmbeddingModelPath{
+      this, "node_embedding_model_path",
+      "Path to the ONNX model file for the node embedding / graph construction metric model"};
+
 private:
+  mlutils::ONNXInferenceModel m_edgeClassifier;
+  mlutils::ONNXInferenceModel m_nodeEmbedding;
 };
