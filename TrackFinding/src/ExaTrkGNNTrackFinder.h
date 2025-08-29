@@ -1,5 +1,6 @@
 #pragma once
 
+#include "NodeEmbeddingModel.h"
 #include "ONNXInferenceModel.h"
 
 #include <k4FWCore/Transformer.h>
@@ -30,5 +31,5 @@ struct ExaTrkGNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollect
 private:
   // TODO: Properly guard these such that runInference can be made const
   mutable mlutils::ONNXInferenceModel m_edgeClassifier;
-  mutable mlutils::ONNXInferenceModel m_nodeEmbedding;
+  mutable mlutils::NodeEmbeddingModel m_nodeEmbedding;
 };
