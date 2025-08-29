@@ -37,6 +37,9 @@ endif()
 
 add_executable(unittests_mltracking unittests.cpp)
 
-target_link_libraries(unittests_mltracking PRIVATE Catch2::Catch2WithMain MLTrackingONNXInferenceModel)
+target_link_libraries(unittests_mltracking PRIVATE Catch2::Catch2WithMain MLTrackingONNXInferenceModels)
 include(Catch)
 catch_discover_tests(unittests_mltracking)
+
+add_executable(embedding_model_inference embedding_model_inference.cpp)
+target_link_libraries(embedding_model_inference PRIVATE podio::podioIO EDM4HEP::edm4hep MLTrackingONNXInferenceModels)
