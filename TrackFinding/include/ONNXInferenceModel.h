@@ -2,7 +2,11 @@
 
 #include <onnxruntime_cxx_api.h>
 
+#include <cassert>
+#include <cstdint>
 #include <memory>
+#include <numeric>
+#include <ranges>
 #include <string>
 #include <vector>
 
@@ -45,12 +49,9 @@ size_t totalSize(const T&) {
 
 template <typename T>
 size_t totalSize(const std::vector<T>& value) {
-  size_t size = 0;
-  for (const auto& v : value) {
-    size += totalSize(v);
-  }
-
-  return size;
+  // No fold_left yet
+  const auto sizes = value | std::views::transform([](const auto& v) { return totalSize(v); });
+  return std::accumulate(sizes.begin(), sizes.end(), 0);
 }
 
 /**
@@ -90,6 +91,37 @@ std::vector<detail::scalar_type_t<T>> flatten(const T& value) {
   return output;
 }
 
+/**
+ * @brief Extract the dimensions of a nested container structure.
+ *
+ * For scalar types, returns an empty vector (0-dimensional).
+ * For nested std::vector structures, returns the dimensions as a vector of sizes.
+ *
+ * @note Assumes that all vectors at the same nesting level have the same size
+ * (i.e. rectangular structure) and only looks at the first element at each level to determine dimensions. Does not do
+ * any validation of these assumptions!
+ *
+ * @param value The value or container to analyze
+ * @return Vector of dimensions, where each element represents the size at that nesting level
+ */
+template <typename T>
+std::vector<int64_t> getDimensions(const T&) {
+  return std::vector<int64_t>{};
+}
+
+template <typename T>
+std::vector<int64_t> getDimensions(const std::vector<T>& value) {
+  if (value.empty()) {
+    return std::vector<int64_t>{0};
+  } else {
+    // Get the dimensions of the first nested vector
+    auto dims = getDimensions(value[0]);
+    // Prepend the size of the current vector to the dimensions we already collected
+    dims.insert(dims.begin(), value.size());
+    return dims;
+  }
+}
+
 class ONNXInferenceModel {
 public:
   // Constructor
@@ -107,8 +139,11 @@ public:
   // Load model from file
   bool loadModel(const std::string& modelPath);
 
+  template <typename T>
+  std::vector<Ort::Value> runInference(const T& inputData);
+
   // Run inference on input data
-  std::vector<float> runInference(const std::vector<float>& inputData, const std::vector<int64_t>& inputShape);
+  std::vector<Ort::Value> runInference(const std::vector<float>& inputData, const std::vector<int64_t>& inputShape);
 
   // Print model information to stream
   template <typename StreamT>
@@ -134,6 +169,16 @@ private:
   void extractModelInfo();
   void cleanup();
 };
+
+template <typename T>
+std::vector<Ort::Value> ONNXInferenceModel::runInference(const T& inputData) {
+  auto input = flatten(inputData);
+  auto dims = getDimensions(inputData);
+  // Very basic check to at least avoid glaring mistakes in the inputData shape
+  assert(input.size() == std::reduce(dims.begin(), dims.end(), 1u, std::multiplies<>()));
+
+  return runInference(input, dims);
+}
 
 template <typename StreamT>
 void ONNXInferenceModel::dumpModel(StreamT& stream) const {

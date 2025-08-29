@@ -30,8 +30,8 @@ bool ONNXInferenceModel::loadModel(const std::string& modelPath) {
   }
 }
 
-std::vector<float> ONNXInferenceModel::runInference(const std::vector<float>& inputData,
-                                                    const std::vector<int64_t>& inputShape) {
+std::vector<Ort::Value> ONNXInferenceModel::runInference(const std::vector<float>& inputData,
+                                                         const std::vector<int64_t>& inputShape) {
   if (!m_modelLoaded) {
     throw std::runtime_error("Model not loaded");
   }
@@ -55,15 +55,8 @@ std::vector<float> ONNXInferenceModel::runInference(const std::vector<float>& in
     }
 
     // Run inference
-    auto outputTensors = m_session->Run(Ort::RunOptions{nullptr}, inputNames.data(), &inputTensor, 1,
-                                        outputNames.data(), outputNames.size());
-
-    // Extract output data
-    float* outputData = outputTensors[0].GetTensorMutableData<float>();
-    size_t outputSize = outputTensors[0].GetTensorTypeAndShapeInfo().GetElementCount();
-
-    return std::vector<float>(outputData, outputData + outputSize);
-
+    return m_session->Run(Ort::RunOptions{nullptr}, inputNames.data(), &inputTensor, 1, outputNames.data(),
+                          outputNames.size());
   } catch (const std::exception& e) {
     throw std::runtime_error("Inference failed: " + std::string(e.what()));
   }

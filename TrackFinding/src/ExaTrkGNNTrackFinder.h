@@ -28,6 +28,7 @@ struct ExaTrkGNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollect
       "Path to the ONNX model file for the node embedding / graph construction metric model"};
 
 private:
-  mlutils::ONNXInferenceModel m_edgeClassifier;
-  mlutils::ONNXInferenceModel m_nodeEmbedding;
+  // TODO: Properly guard these such that runInference can be made const
+  mutable mlutils::ONNXInferenceModel m_edgeClassifier;
+  mutable mlutils::ONNXInferenceModel m_nodeEmbedding;
 };
