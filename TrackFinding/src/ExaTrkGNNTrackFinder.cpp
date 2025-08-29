@@ -1,5 +1,8 @@
 #include "ExaTrkGNNTrackFinder.h"
 
+#include <numeric>
+#include <ranges>
+
 ExaTrkGNNTrackFinder::ExaTrkGNNTrackFinder(const std::string& name, ISvcLocator* svcLoc)
     : Transformer(name, svcLoc, {KeyValues("InputHitCollections", {"populate-me-properly"})},
                   {KeyValues("OutputTrackCandidates", {"ExaTrkGNNTrackCands"})}),
@@ -43,6 +46,8 @@ ExaTrkGNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneColle
       embeddingInputs.emplace_back(std::move(hitInfo));
     }
   }
+
+  auto embeddedNodes = m_nodeEmbedding.runInference(embeddingInputs);
 
   edm4hep::TrackCollection candidates;
 
