@@ -43,3 +43,10 @@ catch_discover_tests(unittests_mltracking)
 
 add_executable(embedding_model_inference embedding_model_inference.cpp)
 target_link_libraries(embedding_model_inference PRIVATE podio::podioIO EDM4HEP::edm4hep MLTrackingONNXInferenceModels)
+
+add_test(NAME validate_embedding_model COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/validate_embedding_model.sh)
+set_tests_properties(validate_embedding_model
+  PROPERTIES
+    ENVIRONMENT
+    "TEST_BASE_DIR=${CMAKE_CURRENT_SOURCE_DIR};MODEL_DIR=${PROJECT_SOURCE_DIR}/models"
+)
