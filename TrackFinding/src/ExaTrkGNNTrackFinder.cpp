@@ -1,8 +1,5 @@
 #include "ExaTrkGNNTrackFinder.h"
 
-#include <numeric>
-#include <ranges>
-
 ExaTrkGNNTrackFinder::ExaTrkGNNTrackFinder(const std::string& name, ISvcLocator* svcLoc)
     : Transformer(name, svcLoc, {KeyValues("InputHitCollections", {"populate-me-properly"})},
                   {KeyValues("OutputTrackCandidates", {"ExaTrkGNNTrackCands"})}),
@@ -32,21 +29,7 @@ StatusCode ExaTrkGNNTrackFinder::initialize() {
 
 edm4hep::TrackCollection
 ExaTrkGNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*> const& inputTrackerHits) const {
-  // Could use a std::array here, but that would make switching between 3D and
-  // 4D a bit more cumbersome
-  std::vector<std::vector<float>> embeddingInputs{};
-  auto sizes = inputTrackerHits | std::views::transform([](const auto* c) { return c->size(); });
-  auto totalHits = std::accumulate(sizes.begin(), sizes.end(), 0);
-  embeddingInputs.reserve(totalHits);
-
-  for (const auto* coll : inputTrackerHits) {
-    for (const auto hit : *coll) {
-      std::vector<float> hitInfo = {static_cast<float>(hit.getPosition().x), static_cast<float>(hit.getPosition().y),
-                                    static_cast<float>(hit.getPosition().z), hit.getTime()};
-      embeddingInputs.emplace_back(std::move(hitInfo));
-    }
-  }
-
+  const auto embeddingInputs = mlutils::NodeEmbeddingModel::extractInformation(inputTrackerHits);
   auto embeddedNodes = m_nodeEmbedding.runInference(embeddingInputs);
 
   edm4hep::TrackCollection candidates;

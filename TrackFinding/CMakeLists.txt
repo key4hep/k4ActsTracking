@@ -1,18 +1,20 @@
-add_library(MLTrackingONNXInferenceModel SHARED
+add_library(MLTrackingONNXInferenceModels SHARED
   src/ONNXInferenceModel.cpp
+  src/NodeEmbeddingModel.cpp
 )
 
-target_include_directories(MLTrackingONNXInferenceModel
+target_include_directories(MLTrackingONNXInferenceModels
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
-target_link_libraries(MLTrackingONNXInferenceModel
+target_link_libraries(MLTrackingONNXInferenceModels
   PUBLIC
     onnxruntime::onnxruntime
+    EDM4HEP::edm4hep
 )
 
-install(TARGETS MLTrackingONNXInferenceModel
+install(TARGETS MLTrackingONNXInferenceModels
   EXPORT MLTrackingTargets
   DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
@@ -27,7 +29,7 @@ gaudi_add_module(k4RecTrackerTrackFinding
     Gaudi::GaudiKernel
     k4FWCore::k4FWCore
     EDM4HEP::edm4hep
-    MLTrackingONNXInferenceModel
+    MLTrackingONNXInferenceModels
 )
 
 target_include_directories(k4RecTrackerTrackFinding
