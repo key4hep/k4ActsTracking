@@ -32,18 +32,56 @@ def load_cpp_outputs(root_file):
     Returns:
         tuple: (input_features, output_features) as numpy arrays
     """
-    with uproot.open(root_file) as file:
-        tree = file["models"]
+    try:
+        # Try uproot first
+        with uproot.open(root_file) as file:
+            tree = file["models"]
 
-        # Read the embedding inputs and outputs
-        embedding_inputs = tree["embeddingInputs"].array(library="np")[0]
-        embedding_outputs = tree["embeddingOutputs"].array(library="np")[0]
+            # Read the embedding inputs and outputs
+            embedding_inputs = tree["embeddingInputs"].array(library="np")[0]
+            embedding_outputs = tree["embeddingOutputs"].array(library="np")[0]
+
+            # Convert to numpy arrays
+            input_features = np.array(embedding_inputs, dtype=np.float32)
+            output_features = np.array(embedding_outputs, dtype=np.float32)
+
+        return input_features, output_features
+
+    except Exception as uproot_error:
+        print(f"Warning: uproot failed to read file ({uproot_error})")
+        print("Trying alternative approach with PyROOT...")
+
+        # Fallback to PyROOT if available
+        import ROOT
+
+        file = ROOT.TFile.Open(root_file, "READ")
+        tree = file.Get("models")
+        tree.GetEntry(0)  # Read first (and only) entry
+
+        embedding_inputs_data = []
+        embedding_outputs_data = []
+        embedding_inputs_vec = getattr(tree, "embeddingInputs")
+        embedding_outputs_vec = getattr(tree, "embeddingOutputs")
+
+        # Convert ROOT vectors to Python lists, then to numpy arrays
+        for i in range(embedding_inputs_vec.size()):
+            row = []
+            for j in range(embedding_inputs_vec[i].size()):
+                row.append(embedding_inputs_vec[i][j])
+            embedding_inputs_data.append(row)
+
+        for i in range(embedding_outputs_vec.size()):
+            row = []
+            for j in range(embedding_outputs_vec[i].size()):
+                row.append(embedding_outputs_vec[i][j])
+            embedding_outputs_data.append(row)
 
         # Convert to numpy arrays
-        input_features = np.array(embedding_inputs, dtype=np.float32)
-        output_features = np.array(embedding_outputs, dtype=np.float32)
+        input_features = np.array(embedding_inputs_data, dtype=np.float32)
+        output_features = np.array(embedding_outputs_data, dtype=np.float32)
 
-    return input_features, output_features
+        file.Close()
+        return input_features, output_features
 
 
 def compare_arrays(arr1, arr2, name, rtol=1e-5, atol=1e-8):
@@ -124,12 +162,17 @@ def main():
 
     args = parser.parse_args()
 
-    # Load outputs from both implementations
-    print("Loading Python inference outputs...")
-    py_inputs, py_outputs = load_python_outputs(args.python_file)
+    try:
+        # Load outputs from both implementations
+        print("Loading Python inference outputs...")
+        py_inputs, py_outputs = load_python_outputs(args.python_file)
 
-    print("Loading C++ inference outputs...")
-    cpp_inputs, cpp_outputs = load_cpp_outputs(args.cpp_file)
+        print("Loading C++ inference outputs...")
+        cpp_inputs, cpp_outputs = load_cpp_outputs(args.cpp_file)
+
+    except Exception as e:
+        print(f"Error loading files: {str(e)}")
+        sys.exit(1)
 
     # Compare inputs and outputs
     print("=" * 60)
