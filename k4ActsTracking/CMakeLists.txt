@@ -34,7 +34,7 @@ gaudi_add_module(k4ActsTrackingPlugins
   k4FWCore::k4FWCore
   EDM4HEP::edm4hep
   DD4hep::DDCore DD4hep::DDRec
-  ActsCore ActsPluginDD4hep
+  Acts::Core Acts::PluginDD4hep
   )
 target_include_directories(k4ActsTrackingPlugins PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>
