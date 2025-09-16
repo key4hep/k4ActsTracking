@@ -23,10 +23,20 @@ from Configurables import ActsGeoSvc, ApplicationMgr, GeoSvc
 
 algList = []
 
+try:
+    odd_base = os.environ["OPENDATADETECTOR_DATA"]
+except KeyError:
+    # For older releases OPENDATADETCTOR_DATA has not been defined so we try to
+    # retrieve it off the LD_LIBRARY_PATH
+    ld_lib_paths = os.environ["LD_LIBRARY_PATH"].split(":")
+    odd_paths = [p for p in ld_lib_paths if "opendatadetector" in p]
+    if odd_paths:
+        odd_base = f"{odd_paths[0].rsplit('/', 1)[0]}/share/OpenDataDetector"
+    else:
+        raise
+
 dd4hep_geo = GeoSvc("GeoSvc")
-dd4hep_geo.detectors = [
-    f"{os.environ['OPENDATADETECTOR_DATA']}/xml/OpenDataDetector.xml"
-]
+dd4hep_geo.detectors = [f"{odd_base}/xml/OpenDataDetector.xml"]
 dd4hep_geo.EnableGeant4Geo = False
 
 acts_geo = ActsGeoSvc("ActsGeoSvc")
