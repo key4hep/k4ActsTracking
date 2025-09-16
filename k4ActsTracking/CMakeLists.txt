@@ -17,13 +17,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ]]
 
-gaudi_add_header_only_library(k4ActsTracking
+set(ACTS_LIBRARY_TARGETS "Acts::Core")
+if (Acts_VERSION VERSION_LESS 43.0.0)
+  set(ACTS_LIBRARY_TARGETS "ActsCore")
+endif()
+
+gaudi_add_library(k4ActsTracking
+  SOURCES
+    src/ActsGaudiLogger.cpp
   LINK
-  k4FWCore::k4FWCore
+    k4FWCore::k4FWCore
+    ${ACTS_LIBRARY_TARGETS}
 )
 install(TARGETS k4ActsTracking
   EXPORT k4ActsTrackingTargets
   INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+  LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT shlib
 )
 
 file(GLOB _plugin_sources src/components/*.cpp)
