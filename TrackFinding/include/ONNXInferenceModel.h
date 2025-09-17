@@ -125,7 +125,7 @@ std::vector<int64_t> getDimensions(const std::vector<T>& value) {
 class ONNXInferenceModel {
 public:
   // Constructor
-  explicit ONNXInferenceModel(const std::string& name);
+  explicit ONNXInferenceModel(const std::string& name, OrtLoggingLevel logLevel = ORT_LOGGING_LEVEL_WARNING);
 
   ONNXInferenceModel() = delete;
   ONNXInferenceModel(const ONNXInferenceModel&) = delete;
@@ -140,10 +140,11 @@ public:
   bool loadModel(const std::string& modelPath);
 
   template <typename T>
-  std::vector<Ort::Value> runInference(const T& inputData);
+  [[nodiscard]] std::vector<Ort::Value> runInference(const T& inputData);
 
   // Run inference on input data
-  std::vector<Ort::Value> runInference(const std::vector<float>& inputData, const std::vector<int64_t>& inputShape);
+  [[nodiscard]] std::vector<Ort::Value> runInference(const std::vector<float>& inputData,
+                                                     const std::vector<int64_t>& inputShape);
 
   // Print model information to stream
   template <typename StreamT>
