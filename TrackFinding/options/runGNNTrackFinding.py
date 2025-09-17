@@ -5,7 +5,7 @@ from pathlib import Path
 from k4FWCore import IOSvc, ApplicationMgr
 from k4FWCore.parseArgs import parser
 from Configurables import EventDataSvc, ExaTrkGNNTrackFinder
-from Gaudi.Configuration import DEBUG
+from Gaudi.Configuration import DEBUG, VERBOSE
 
 parser.add_argument(
     "--modelBase", help="The base directory for the model", default=".", type=Path
@@ -23,7 +23,7 @@ TrackFinder = ExaTrkGNNTrackFinder(
     NodeEmbeddingModelPath=str(
         args.modelBase / "graph_construction-MetricLearning.onnx"
     ),
-    OutputLevel=DEBUG,
+    OutputLevel=VERBOSE,
     InputHitCollections=[
         "IBTrackerHits",
         "IETrackerHits",
