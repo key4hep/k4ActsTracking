@@ -73,8 +73,9 @@ torch::Tensor toTorchTensor(const Ort::Value& onnxTensor) {
 
 } // namespace
 
-OnnxMetricLearning::OnnxMetricLearning(const Config& cfg, std::unique_ptr<const Acts::Logger> logger)
-    : m_model("MetricLearning", getOnnxLogLevel(logger->level())), m_config(cfg), m_logger(std::move(logger)) {
+OnnxMetricLearning::OnnxMetricLearning(const Config& cfg, std::unique_ptr<const Acts::Logger> lggr)
+    : m_model("MetricLearning", getOnnxLogLevel(lggr->level())), m_config(cfg), m_logger(std::move(lggr)) {
+  ACTS_INFO(fmt::format("Loading model from {}", config().modelPath));
   m_model.loadModel(config().modelPath);
 }
 
@@ -85,15 +86,17 @@ Acts::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& inputVa
   assert(inputValues.size() % numNodes == 0);
   std::vector inputShape = {static_cast<int64_t>(numNodes), static_cast<int64_t>(inputValues.size() / numNodes)};
   ACTS_DEBUG(fmt::format("Embedding input tensor shape: {}", inputShape));
-  ACTS_VERBOSE(fmt::format("First input space point: {}", std::span(inputValues.data(), inputShape[1])));
+  ACTS_DEBUG(fmt::format("First input space point: {}", std::span(inputValues.data(), inputShape[1])));
 
   const auto outputs = m_model.runInference(inputValues, inputShape);
   auto embeddedPoints = toTorchTensor(outputs[0]);
   assert(embeddedPoints.size(0) == inputShape[0]); // Do not change the number of points
   assert(embeddedPoints.size(1) == config().embeddingDim);
-  ACTS_VERBOSE(fmt::format("Embedding space of first SP: {}", fmt::streamed(embeddedPoints.slice(0, 0, 1))));
+  ACTS_VERBOSE(fmt::format("Embedding space of first SP: [{}]", fmt::streamed(embeddedPoints.slice(0, 0, 1))));
 
+  ACTS_DEBUG("Starting to build edges");
   auto edgeList = Acts::detail::buildEdges(embeddedPoints, m_config.rVal, m_config.knnVal, m_config.shuffleDirections);
+  ACTS_DEBUG("Finished building edges");
 
   ACTS_VERBOSE(fmt::format("Shape of built edges: ({}, {})", edgeList.size(0), edgeList.size(1)));
   ACTS_VERBOSE(fmt::format("Slice of edgeList: {}", fmt::streamed(edgeList.slice(1, 0, 5))));

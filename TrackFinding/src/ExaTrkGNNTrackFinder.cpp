@@ -8,6 +8,8 @@
 
 #include <k4ActsTracking/ActsGaudiLogger.h>
 
+#include <fmt/format.h>
+
 #include <algorithm>
 
 namespace {
@@ -33,13 +35,14 @@ ExaTrkGNNTrackFinder::ExaTrkGNNTrackFinder(const std::string& name, ISvcLocator*
 StatusCode ExaTrkGNNTrackFinder::initialize() {
   m_logger = makeActsGaudiLogger(this);
 
-  auto graphConstructor = std::make_shared<OnnxMetricLearning>(
-      OnnxMetricLearning::Config{.modelPath = m_nodeEmbeddingModelPath.value()}, m_logger->clone(".MetricLearning"));
+  auto graphConstructor =
+      std::make_shared<OnnxMetricLearning>(OnnxMetricLearning::Config{.modelPath = m_nodeEmbeddingModelPath.value()},
+                                           m_logger->clone(name() + ".MetricLearning"));
   auto edgeClassifier = std::make_shared<Acts::OnnxEdgeClassifier>(
       Acts::OnnxEdgeClassifier::Config{.modelPath = m_edgeClassifierModelPath.value()},
-      m_logger->clone(".EdgeClassifier"));
-  auto trackBuilder =
-      std::make_shared<Acts::BoostTrackBuilding>(Acts::BoostTrackBuilding::Config{}, m_logger->clone(".TrackBuilder"));
+      m_logger->clone(name() + ".EdgeClassifier"));
+  auto trackBuilder = std::make_shared<Acts::BoostTrackBuilding>(Acts::BoostTrackBuilding::Config{},
+                                                                 m_logger->clone(name() + ".TrackBuilder"));
 
   try {
     m_pipeline = std::make_unique<Acts::GnnPipeline>(
@@ -64,7 +67,9 @@ ExaTrkGNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneColle
     }
     return hits;
   }();
+  debug() << fmt::format("Collected {} hits from {} collections", allHits.size(), inputTrackerHits.size()) << endmsg;
   auto embeddingInputs = extractHitInformation(allHits);
+  debug() << fmt::format("Resulting in {} total inputs", embeddingInputs.size()) << endmsg;
   // Give hits their position in the global hits collection as index
   std::vector<int> hitIdcs(allHits.size());
   std::iota(hitIdcs.begin(), hitIdcs.end(), 0);
