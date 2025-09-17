@@ -1,6 +1,5 @@
 add_library(MLTrackingONNXInferenceModels SHARED
   src/ONNXInferenceModel.cpp
-  src/NodeEmbeddingModel.cpp
 )
 
 target_include_directories(MLTrackingONNXInferenceModels

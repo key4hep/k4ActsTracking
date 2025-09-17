@@ -1,6 +1,5 @@
 #include "ExaTrkGNNTrackFinder.h"
 
-#include "NodeEmbeddingModel.h" // extractHitInformation
 #include "OnnxMetricLearning.h"
 
 #include <Acts/Plugins/Gnn/BoostTrackBuilding.hpp>
@@ -10,6 +9,22 @@
 #include <k4ActsTracking/ActsGaudiLogger.h>
 
 #include <algorithm>
+
+namespace {
+std::vector<float> extractHitInformation(const edm4hep::TrackerHitPlaneCollection& hits) {
+  // Could use a std::array here, but that would make switching between 3D and
+  // 4D a bit more cumbersome
+  std::vector<std::vector<float>> embeddingInputs{};
+  embeddingInputs.reserve(hits.size());
+
+  for (const auto hit : hits) {
+    std::vector<float> hitInfo = {static_cast<float>(hit.getPosition().x), static_cast<float>(hit.getPosition().y),
+                                  static_cast<float>(hit.getPosition().z), hit.getTime()};
+    embeddingInputs.emplace_back(std::move(hitInfo));
+  }
+  return mlutils::flatten(embeddingInputs);
+}
+} // namespace
 
 ExaTrkGNNTrackFinder::ExaTrkGNNTrackFinder(const std::string& name, ISvcLocator* svcLoc)
     : Transformer(name, svcLoc, {KeyValues("InputHitCollections", {"populate-me-properly"})},
@@ -49,7 +64,7 @@ ExaTrkGNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneColle
     }
     return hits;
   }();
-  auto embeddingInputs = mlutils::extractHitInformation(allHits);
+  auto embeddingInputs = extractHitInformation(allHits);
   // Give hits their position in the global hits collection as index
   std::vector<int> hitIdcs(allHits.size());
   std::iota(hitIdcs.begin(), hitIdcs.end(), 0);
