@@ -1,40 +1,69 @@
 #include "ExaTrkGNNTrackFinder.h"
 
+#include "NodeEmbeddingModel.h" // extractHitInformation
+#include "OnnxMetricLearning.h"
+
+#include <Acts/Plugins/Gnn/BoostTrackBuilding.hpp>
+#include <Acts/Plugins/Gnn/OnnxEdgeClassifier.hpp>
+#include <Acts/Plugins/Gnn/Stages.hpp>
+
+#include <k4ActsTracking/ActsGaudiLogger.h>
+
+#include <algorithm>
+
 ExaTrkGNNTrackFinder::ExaTrkGNNTrackFinder(const std::string& name, ISvcLocator* svcLoc)
     : Transformer(name, svcLoc, {KeyValues("InputHitCollections", {"populate-me-properly"})},
-                  {KeyValues("OutputTrackCandidates", {"ExaTrkGNNTrackCands"})}),
-      m_edgeClassifier("EdgeClassifier"), m_nodeEmbedding("NodeEmbedding") {}
+                  {KeyValues("OutputTrackCandidates", {"ExaTrkGNNTrackCands"})}) {}
 
 StatusCode ExaTrkGNNTrackFinder::initialize() {
-  // Load the graph construction metric model
-  if (!m_nodeEmbedding.loadModel(m_nodeEmbeddingModelPath.value())) {
-    error() << "Failed to load node embedding / graph construction metric model from: "
-            << m_nodeEmbeddingModelPath.value() << endmsg;
+  m_logger = makeActsGaudiLogger(this);
+
+  auto graphConstructor = std::make_shared<OnnxMetricLearning>(
+      OnnxMetricLearning::Config{.modelPath = m_nodeEmbeddingModelPath.value()}, m_logger->clone(".MetricLearning"));
+  auto edgeClassifier = std::make_shared<Acts::OnnxEdgeClassifier>(
+      Acts::OnnxEdgeClassifier::Config{.modelPath = m_edgeClassifierModelPath.value()},
+      m_logger->clone(".EdgeClassifier"));
+  auto trackBuilder =
+      std::make_shared<Acts::BoostTrackBuilding>(Acts::BoostTrackBuilding::Config{}, m_logger->clone(".TrackBuilder"));
+
+  try {
+    m_pipeline = std::make_unique<Acts::GnnPipeline>(
+        graphConstructor, std::vector<std::shared_ptr<Acts::EdgeClassificationBase>>{edgeClassifier}, trackBuilder,
+        m_logger->clone(".Pipeline"));
+  } catch (const std::invalid_argument& ex) {
+    error() << "Failed to construct GNN Pipeline: " << ex.what() << endmsg;
     return StatusCode::FAILURE;
   }
-  m_nodeEmbedding.dumpModel(debug());
-  debug() << endmsg;
 
-  // Load the edge classifier model
-  if (!m_edgeClassifier.loadModel(m_edgeClassifierModelPath.value())) {
-    error() << "Failed to load edge classifier model from: " << m_edgeClassifierModelPath.value() << endmsg;
-    return StatusCode::FAILURE;
-  }
-  m_edgeClassifier.dumpModel(debug());
-  debug() << endmsg;
-
-  info() << "Successfully loaded both ONNX models" << endmsg;
   return StatusCode::SUCCESS;
 }
 
 edm4hep::TrackCollection
 ExaTrkGNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*> const& inputTrackerHits) const {
-  const auto embeddingInputs = mlutils::NodeEmbeddingModel::extractInformation(inputTrackerHits);
-  auto embeddedNodes = m_nodeEmbedding.runInference(embeddingInputs);
+  const auto allHits = [&inputTrackerHits]() {
+    edm4hep::TrackerHitPlaneCollection hits{};
+    hits.setSubsetCollection(true);
 
-  edm4hep::TrackCollection candidates;
+    for (const auto* coll : inputTrackerHits) {
+      std::ranges::copy(*coll, std::back_inserter(hits));
+    }
+    return hits;
+  }();
+  auto embeddingInputs = mlutils::extractHitInformation(allHits);
+  // Give hits their position in the global hits collection as index
+  std::vector<int> hitIdcs(allHits.size());
+  std::iota(hitIdcs.begin(), hitIdcs.end(), 0);
 
-  return candidates;
+  const auto trackCandIdcs = m_pipeline->run(embeddingInputs, {}, hitIdcs, Acts::Device{Acts::Device::Type::eCPU, 0});
+
+  edm4hep::TrackCollection trackCands{};
+  for (const auto& candIdcs : trackCandIdcs) {
+    auto track = trackCands.create();
+    for (const auto idx : candIdcs) {
+      track.addToTrackerHits(allHits[idx]);
+    }
+  }
+  return trackCands;
 }
 
 DECLARE_COMPONENT(ExaTrkGNNTrackFinder)

@@ -31,6 +31,7 @@ gaudi_add_module(k4RecTrackerTrackFinding
     k4FWCore::k4FWCore
     EDM4HEP::edm4hep
     MLTrackingONNXInferenceModels
+    k4ActsTracking::k4ActsTracking
     torch
     Acts::PluginGnn
 )

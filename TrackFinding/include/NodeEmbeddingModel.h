@@ -8,6 +8,9 @@
 #include <vector>
 
 namespace mlutils {
+/// Extract the 4D information of each hit and create a flat output array of all values
+std::vector<float> extractHitInformation(const edm4hep::TrackerHitPlaneCollection& collections);
+
 class NodeEmbeddingModel {
 public:
   NodeEmbeddingModel(const std::string& name) : m_nodeEmbedding(name) {}
@@ -19,9 +22,6 @@ public:
   NodeEmbeddingModel& operator=(NodeEmbeddingModel&&) = default;
 
   inline bool loadModel(const std::string& modelPath) { return m_nodeEmbedding.loadModel(modelPath); }
-
-  static std::vector<std::vector<float>>
-  extractInformation(const std::vector<const edm4hep::TrackerHitPlaneCollection*>& collections);
 
   inline std::vector<Ort::Value> runInference(const std::vector<std::vector<float>>& inputData) {
     return m_nodeEmbedding.runInference(inputData);

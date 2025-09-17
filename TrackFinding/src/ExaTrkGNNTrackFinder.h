@@ -1,15 +1,16 @@
 #pragma once
 
-#include "NodeEmbeddingModel.h"
-#include "ONNXInferenceModel.h"
-
 #include <k4FWCore/Transformer.h>
+
+#include <Acts/Plugins/Gnn/GnnPipeline.hpp>
+#include <Acts/Utilities/Logger.hpp>
 
 #include <Gaudi/Property.h>
 
 #include <edm4hep/TrackCollection.h>
 #include <edm4hep/TrackerHitPlaneCollection.h>
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -29,7 +30,6 @@ struct ExaTrkGNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollect
       "Path to the ONNX model file for the node embedding / graph construction metric model"};
 
 private:
-  // TODO: Properly guard these such that runInference can be made const
-  mutable mlutils::ONNXInferenceModel m_edgeClassifier;
-  mutable mlutils::NodeEmbeddingModel m_nodeEmbedding;
+  std::unique_ptr<Acts::GnnPipeline> m_pipeline{nullptr};
+  std::unique_ptr<const Acts::Logger> m_logger{nullptr};
 };
