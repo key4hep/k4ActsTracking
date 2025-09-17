@@ -21,6 +21,7 @@ install(TARGETS MLTrackingONNXInferenceModels
 
 set(sources
     src/ExaTrkGNNTrackFinder.cpp
+    src/OnnxMetricLearning.cpp
 )
 
 gaudi_add_module(k4RecTrackerTrackFinding
@@ -30,6 +31,8 @@ gaudi_add_module(k4RecTrackerTrackFinding
     k4FWCore::k4FWCore
     EDM4HEP::edm4hep
     MLTrackingONNXInferenceModels
+    torch
+    Acts::PluginGnn
 )
 
 target_include_directories(k4RecTrackerTrackFinding
