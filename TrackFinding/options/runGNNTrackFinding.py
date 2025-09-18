@@ -23,6 +23,8 @@ TrackFinder = ExaTrkGNNTrackFinder(
     NodeEmbeddingModelPath=str(
         args.modelBase / "graph_construction-MetricLearning.onnx"
     ),
+    EdgeBuildingRadius=0.1,
+    EdgeBuildingKnn=100.0,
     OutputLevel=VERBOSE,
     InputHitCollections=[
         "IBTrackerHits",
