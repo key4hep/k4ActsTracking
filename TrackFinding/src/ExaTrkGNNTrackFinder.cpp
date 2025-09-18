@@ -40,16 +40,17 @@ StatusCode ExaTrkGNNTrackFinder::initialize() {
                                                                       .rVal = m_edgeBuildingRadius.value(),
                                                                       .knnVal = m_edgeBuildingKnn.value()},
                                            m_logger->clone(name() + ".MetricLearning"));
-  auto edgeClassifier = std::make_shared<Acts::OnnxEdgeClassifier>(
+
+  std::vector<std::shared_ptr<Acts::EdgeClassificationBase>> edgeClassifiers{std::make_shared<Acts::OnnxEdgeClassifier>(
       Acts::OnnxEdgeClassifier::Config{.modelPath = m_edgeClassifierModelPath.value()},
-      m_logger->clone(name() + ".EdgeClassifier"));
+      m_logger->clone(name() + ".EdgeClassifier"))};
+
   auto trackBuilder = std::make_shared<Acts::BoostTrackBuilding>(Acts::BoostTrackBuilding::Config{},
                                                                  m_logger->clone(name() + ".TrackBuilder"));
 
   try {
-    m_pipeline = std::make_unique<Acts::GnnPipeline>(
-        graphConstructor, std::vector<std::shared_ptr<Acts::EdgeClassificationBase>>{edgeClassifier}, trackBuilder,
-        m_logger->clone(name() + ".Pipeline"));
+    m_pipeline = std::make_unique<Acts::GnnPipeline>(graphConstructor, edgeClassifiers, trackBuilder,
+                                                     m_logger->clone(name() + ".Pipeline"));
   } catch (const std::invalid_argument& ex) {
     error() << "Failed to construct GNN Pipeline: " << ex.what() << endmsg;
     return StatusCode::FAILURE;
