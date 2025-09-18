@@ -36,7 +36,9 @@ StatusCode ExaTrkGNNTrackFinder::initialize() {
   m_logger = makeActsGaudiLogger(this);
 
   auto graphConstructor =
-      std::make_shared<OnnxMetricLearning>(OnnxMetricLearning::Config{.modelPath = m_nodeEmbeddingModelPath.value()},
+      std::make_shared<OnnxMetricLearning>(OnnxMetricLearning::Config{.modelPath = m_nodeEmbeddingModelPath.value(),
+                                                                      .rVal = m_edgeBuildingRadius.value(),
+                                                                      .knnVal = m_edgeBuildingKnn.value()},
                                            m_logger->clone(name() + ".MetricLearning"));
   auto edgeClassifier = std::make_shared<Acts::OnnxEdgeClassifier>(
       Acts::OnnxEdgeClassifier::Config{.modelPath = m_edgeClassifierModelPath.value()},

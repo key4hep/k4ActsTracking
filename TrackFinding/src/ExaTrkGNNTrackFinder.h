@@ -29,6 +29,12 @@ struct ExaTrkGNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollect
       this, "NodeEmbeddingModelPath",
       "Path to the ONNX model file for the node embedding / graph construction metric model"};
 
+  Gaudi::Property<float> m_edgeBuildingRadius{this, "EdgeBuildingRadius", 0.1f,
+                                              "The radius parameter for the KD-Tree that is used in edge building"};
+
+  Gaudi::Property<float> m_edgeBuildingKnn{this, "EdgeBuildingKnn", 100.f,
+                                           "The KNN parameter for the KD-Tree that is used in edge building"};
+
 private:
   std::unique_ptr<Acts::GnnPipeline> m_pipeline{nullptr};
   std::unique_ptr<const Acts::Logger> m_logger{nullptr};
