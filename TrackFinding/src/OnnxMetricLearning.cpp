@@ -57,18 +57,22 @@ constexpr torch::ScalarType toTorchType(ONNXTensorElementDataType elementType) {
 /// Convert the Onnx tensor into a torch Tensor.
 /// @note: This doesn't take ownership, it essentially just "re-skins" the data
 /// owned by the Onnx tensor
-torch::Tensor toTorchTensor(const Ort::Value& onnxTensor) {
+template <typename Logger>
+torch::Tensor toTorchTensor(const Ort::Value& onnxTensor, Logger logger) {
   auto tensorInfo = onnxTensor.GetTensorTypeAndShapeInfo();
   auto shape = tensorInfo.GetShape();
   auto elementType = tensorInfo.GetElementType();
 
-  std::vector<int64_t> torchShape(shape.begin(), shape.end());
+  ACTS_DEBUG(fmt::format("Input ONNX shape: {}, type: {}", shape, fmt::streamed(elementType)));
 
   const void* data = onnxTensor.GetTensorData<void>();
   const auto torchType = toTorchType(elementType);
 
   // Create torch tensor from existing data without copying
-  return torch::from_blob(const_cast<void*>(data), torchShape, torchType);
+  auto torchTensor = torch::from_blob(const_cast<void*>(data), shape, torchType);
+  ACTS_DEBUG(fmt::format("Output Torch shape: [{}, {}], type: {}", torchTensor.size(0), torchTensor.size(1),
+                         fmt::streamed(torchType)));
+  return torchTensor;
 }
 
 } // namespace
@@ -89,9 +93,10 @@ Acts::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& inputVa
   ACTS_DEBUG(fmt::format("First input space point: {}", std::span(inputValues.data(), inputShape[1])));
 
   const auto outputs = m_model.runInference(inputValues, inputShape);
-  auto embeddedPoints = toTorchTensor(outputs[0]);
+  auto embeddedPoints = toTorchTensor(outputs[0], [this]() -> const Acts::Logger& { return this->logger(); });
   assert(embeddedPoints.size(0) == inputShape[0]); // Do not change the number of points
   assert(embeddedPoints.size(1) == config().embeddingDim);
+  ACTS_DEBUG(fmt::format("Embedding output tensor shape: [{}, {}]", embeddedPoints.size(0), embeddedPoints.size(1)));
   ACTS_VERBOSE(fmt::format("Embedding space of first SP: [{}]", fmt::streamed(embeddedPoints.slice(0, 0, 1))));
 
   ACTS_DEBUG("Starting to build edges");
