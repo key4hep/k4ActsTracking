@@ -25,6 +25,7 @@ TrackFinder = ExaTrkGNNTrackFinder(
     ),
     EdgeBuildingRadius=0.1,
     EdgeBuildingKnn=100.0,
+    EmbeddingDim=4,
     OutputLevel=VERBOSE,
     InputHitCollections=[
         "IBTrackerHits",
