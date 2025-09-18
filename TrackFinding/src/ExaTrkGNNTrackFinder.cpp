@@ -49,7 +49,7 @@ StatusCode ExaTrkGNNTrackFinder::initialize() {
   try {
     m_pipeline = std::make_unique<Acts::GnnPipeline>(
         graphConstructor, std::vector<std::shared_ptr<Acts::EdgeClassificationBase>>{edgeClassifier}, trackBuilder,
-        m_logger->clone(".Pipeline"));
+        m_logger->clone(name() + ".Pipeline"));
   } catch (const std::invalid_argument& ex) {
     error() << "Failed to construct GNN Pipeline: " << ex.what() << endmsg;
     return StatusCode::FAILURE;
