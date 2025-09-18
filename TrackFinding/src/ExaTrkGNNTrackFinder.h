@@ -31,9 +31,9 @@ struct ExaTrkGNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollect
 
   Gaudi::Property<float> m_edgeBuildingRadius{this, "EdgeBuildingRadius", 0.1f,
                                               "The radius parameter for the KD-Tree that is used in edge building"};
-
   Gaudi::Property<float> m_edgeBuildingKnn{this, "EdgeBuildingKnn", 100.f,
                                            "The KNN parameter for the KD-Tree that is used in edge building"};
+  Gaudi::Property<int> m_embeddingDim{this, "EmbeddingDim", 4, "The embedding dimension for the node embedding model"};
 
 private:
   std::unique_ptr<Acts::GnnPipeline> m_pipeline{nullptr};
