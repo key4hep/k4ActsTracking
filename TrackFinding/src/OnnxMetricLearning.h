@@ -17,7 +17,7 @@ class OnnxMetricLearning final : public Acts::GraphConstructionBase {
 public:
   struct Config {
     std::string modelPath{};
-    int embeddingDim{12};
+    int embeddingDim{4};
     float rVal{1.6};               // Same as TorchMetricLearning
     float knnVal{500.};            // Same as TorchMetricLearning
     bool shuffleDirections{false}; // Same as TorchMetricLearning
