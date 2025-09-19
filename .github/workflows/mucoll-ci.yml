@@ -18,7 +18,8 @@ jobs:
       - uses: actions/checkout@v5
       - name: Build and test
         run: |
-          setup_mucoll
+          mucoll_setup_script=$(grep setup_mucoll /etc/profile.d/aliases.sh | awk -F '=' '{print $2}')
+          source ${mucoll_setup_script:2:-1}
           cmake -B build -S . -GNinja \
             -DCMAKE_CXX_STANDARD=20 \
             -DCMAKE_INSTALL_PREFIX=$(pwd)/install \
