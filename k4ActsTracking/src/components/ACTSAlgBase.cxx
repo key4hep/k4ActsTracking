@@ -19,10 +19,14 @@
 #include <Acts/Geometry/LayerCreator.hpp>
 #include <Acts/Geometry/ProtoLayerHelper.hpp>
 #include <Acts/Geometry/SurfaceArrayCreator.hpp>
+#include <Acts/Geometry/SurfaceBinningMatcher.hpp>
 #include <Acts/Geometry/TrackingGeometryBuilder.hpp>
 #include <Acts/Geometry/TrackingVolumeArrayCreator.hpp>
 #include <Acts/MagneticField/ConstantBField.hpp>
 #include <Acts/Plugins/Json/JsonMaterialDecorator.hpp>
+#ifndef K4ACTSTRACKING_ACTS_V32
+#include <Acts/Utilities/AxisDefinitions.hpp>
+#endif
 
 #ifdef K4ACTSTRACKING_ACTS_HAS_TGEO_PLUGIN
 #include <Acts/Plugins/TGeo/TGeoDetectorElement.hpp>
@@ -215,14 +219,19 @@ void ACTSAlgBase::buildDetector() {
     layerBuilderConfig.unit = 1 * Acts::UnitConstants::cm;
     layerBuilderConfig.autoSurfaceBinning = true;
 
+    layerBuilderConfig.surfaceBinMatcher = Acts::SurfaceBinningMatcher();
     // AutoBinning
-    std::vector<std::pair<double, double>> binTolerances{(int)Acts::binValues,
-                                                         {0., 0.}};
+    auto& binTolerances = layerBuilderConfig.surfaceBinMatcher.tolerances;
+
+#ifdef K4ACTSTRACKING_ACTS_V32
     binTolerances[Acts::binR] = {5, 5};
     binTolerances[Acts::binZ] = {5, 5};
     binTolerances[Acts::binPhi] = {0.025, 0.025};
-    layerBuilderConfig.surfaceBinMatcher =
-        Acts::SurfaceBinningMatcher(binTolerances);
+#else
+    binTolerances[static_cast<int>(Acts::AxisDirection::AxisR)] = {5, 5};
+    binTolerances[static_cast<int>(Acts::AxisDirection::AxisZ)] = {5, 5};
+    binTolerances[static_cast<int>(Acts::AxisDirection::AxisPhi)] = {0.25, 0.25};
+#endif
 
     {  // negative endcap
       // Create the layer config object and fill it
@@ -233,6 +242,7 @@ void ACTSAlgBase::buildDetector() {
       lConfig.envelope = std::pair<double, double>(
           0.1 * Acts::UnitConstants::mm, 0.1 * Acts::UnitConstants::mm);
 
+#ifdef K4ACTSTRACKING_ACTS_V32
       // Fill the parsing restrictions in r
       lConfig.parseRanges.push_back({Acts::binR, {0, 120}});
 
@@ -241,6 +251,16 @@ void ACTSAlgBase::buildDetector() {
 
       // Fill the layer splitting parameters in z
       lConfig.splitConfigs.push_back({Acts::binZ, 1});
+#else
+      // Fill the parsing restrictions in r
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, {0, 120}});
+
+      // Fill the parsing restrictions in z
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, {-285, -70}});
+
+      // Fill the layer splitting parameters in z
+      lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisZ, 1});
+#endif
 
       // Save
       layerBuilderConfig.layerConfigurations[0].push_back(lConfig);
@@ -255,6 +275,7 @@ void ACTSAlgBase::buildDetector() {
       lConfig.envelope = std::pair<double, double>(
           0.1 * Acts::UnitConstants::mm, 0.1 * Acts::UnitConstants::mm);
 
+#ifdef K4ACTSTRACKING_ACTS_V32
       // Fill the parsing restrictions in r
       lConfig.parseRanges.push_back({Acts::binR, {0, 120}});
 
@@ -263,6 +284,16 @@ void ACTSAlgBase::buildDetector() {
 
       // Fill the parsing restrictions in z
       lConfig.parseRanges.push_back({Acts::binZ, {-70, 70}});
+#else
+      // Fill the parsing restrictions in r
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, {0, 120}});
+
+      // Fill the layer splitting parameters in r
+      lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisR, 0.1});
+
+      // Fill the parsing restrictions in z
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, {-70, 70}});
+#endif
 
       // Save
       layerBuilderConfig.layerConfigurations[1].push_back(lConfig);
@@ -278,6 +309,7 @@ void ACTSAlgBase::buildDetector() {
           0.1 * Acts::UnitConstants::mm, 0.1 * Acts::UnitConstants::mm);
 
       // Fill the parsing restrictions in r
+#ifdef K4ACTSTRACKING_ACTS_V32
       lConfig.parseRanges.push_back({Acts::binR, {0, 120}});
 
       // Fill the parsing restrictions in z
@@ -285,7 +317,15 @@ void ACTSAlgBase::buildDetector() {
 
       // Fill the layer splitting parameters in z
       lConfig.splitConfigs.push_back({Acts::binZ, 1});
+#else
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, {0, 120}});
 
+      // Fill the parsing restrictions in z
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, {70, 285}});
+
+      // Fill the layer splitting parameters in z
+      lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisZ, 1});
+#endif
       // Save
       layerBuilderConfig.layerConfigurations[2].push_back(lConfig);
     }
@@ -298,13 +338,18 @@ void ACTSAlgBase::buildDetector() {
     Acts::TGeoLayerBuilder::Config layerBuilderConfig;
     layerBuilderConfig.configurationName = "InnerTrackers";
     layerBuilderConfig.autoSurfaceBinning = true;
-
+    layerBuilderConfig.surfaceBinMatcher = Acts::SurfaceBinningMatcher();
     // AutoBinning
-    std::vector<std::pair<double, double>> binTolerances{(int)Acts::binValues,
-                                                         {0., 0.}};
+    auto& binTolerances = layerBuilderConfig.surfaceBinMatcher.tolerances;
+#ifdef K4ACTSTRACKING_ACTS_V32
     binTolerances[Acts::binR] = {5, 5};
     binTolerances[Acts::binZ] = {5, 5};
     binTolerances[Acts::binPhi] = {0.025, 0.025};
+#else
+    binTolerances[static_cast<int>(Acts::AxisDirection::AxisR)] = {5, 5};
+    binTolerances[static_cast<int>(Acts::AxisDirection::AxisZ)] = {5, 5};
+    binTolerances[static_cast<int>(Acts::AxisDirection::AxisPhi)] = {0.025, 0.025};
+#endif
     layerBuilderConfig.surfaceBinMatcher =
         Acts::SurfaceBinningMatcher(binTolerances);
 
@@ -315,6 +360,7 @@ void ACTSAlgBase::buildDetector() {
       lConfig.sensorNames = {"sensor*"};
       lConfig.localAxes = "XYZ";
 
+#ifdef K4ACTSTRACKING_ACTS_V32
       // Fill the parsing restrictions in r
       lConfig.parseRanges.push_back({Acts::binR, {50, 500}});
 
@@ -323,7 +369,16 @@ void ACTSAlgBase::buildDetector() {
 
       // Fill the layer splitting parameters in z
       lConfig.splitConfigs.push_back({Acts::binZ, 10});
+#else
+      // Fill the parsing restrictions in r
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, {50, 500}});
 
+      // Fill the parsing restrictions in z
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, {-600, -500}});
+
+      // Fill the layer splitting parameters in z
+      lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisZ, 10});
+#endif
       // Save
       layerBuilderConfig.layerConfigurations[0].push_back(lConfig);
     }
@@ -335,6 +390,7 @@ void ACTSAlgBase::buildDetector() {
       lConfig.sensorNames = {"sensor*"};
       lConfig.localAxes = "XYZ";
 
+#ifdef K4ACTSTRACKING_ACTS_V32
       // Fill the parsing restrictions in r
       lConfig.parseRanges.push_back({Acts::binR, {120, 500}});
 
@@ -343,7 +399,16 @@ void ACTSAlgBase::buildDetector() {
 
       // Fill the parsing restrictions in z
       lConfig.parseRanges.push_back({Acts::binZ, {-500, 500}});
+#else
+      // Fill the parsing restrictions in r
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, {120, 500}});
 
+      // Fill the layer splitting parameters in r
+      lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisR, 10});
+
+      // Fill the parsing restrictions in z
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, {-500, 500}});
+#endif
       // Save
       layerBuilderConfig.layerConfigurations[1].push_back(lConfig);
     }
@@ -355,6 +420,7 @@ void ACTSAlgBase::buildDetector() {
       lConfig.sensorNames = {"sensor*"};
       lConfig.localAxes = "XYZ";
 
+#ifdef K4ACTSTRACKING_ACTS_V32
       // Fill the parsing restrictions in r
       lConfig.parseRanges.push_back({Acts::binR, {50, 500}});
 
@@ -363,6 +429,16 @@ void ACTSAlgBase::buildDetector() {
 
       // Fill the layer splitting parameters in z
       lConfig.splitConfigs.push_back({Acts::binZ, 10});
+#else
+      // Fill the parsing restrictions in r
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, {50, 500}});
+
+      // Fill the parsing restrictions in z
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, {500, 600}});
+
+      // Fill the layer splitting parameters in z
+      lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisZ, 10});
+#endif
 
       // Save
       layerBuilderConfig.layerConfigurations[2].push_back(lConfig);
@@ -376,15 +452,15 @@ void ACTSAlgBase::buildDetector() {
     Acts::TGeoLayerBuilder::Config layerBuilderConfig;
     layerBuilderConfig.configurationName = "OuterInnerTrackers";
     layerBuilderConfig.autoSurfaceBinning = true;
+    layerBuilderConfig.surfaceBinMatcher = Acts::SurfaceBinningMatcher();
 
     // AutoBinning
-    std::vector<std::pair<double, double>> binTolerances{(int)Acts::binValues,
-                                                         {0., 0.}};
+    auto& binTolerances = layerBuilderConfig.surfaceBinMatcher.tolerances;
+#ifdef K4ACTSTRACKING_ACTS_V32
     binTolerances[Acts::binR] = {5, 5};
     binTolerances[Acts::binZ] = {5, 5};
     binTolerances[Acts::binPhi] = {0.025, 0.025};
-    layerBuilderConfig.surfaceBinMatcher =
-        Acts::SurfaceBinningMatcher(binTolerances);
+#endif
 
     {  // negative endcap
       // Create the layer config object and fill it
@@ -393,6 +469,7 @@ void ACTSAlgBase::buildDetector() {
       lConfig.sensorNames = {"sensor*"};
       lConfig.localAxes = "XYZ";
 
+#ifdef K4ACTSTRACKING_ACTS_V32
       // Fill the parsing restrictions in r
       lConfig.parseRanges.push_back({Acts::binR, {120, 600}});
 
@@ -401,7 +478,16 @@ void ACTSAlgBase::buildDetector() {
 
       // Fill the layer splitting parameters in z
       lConfig.splitConfigs.push_back({Acts::binZ, 10});
+#else
+      // Fill the parsing restrictions in r
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, {120, 600}});
 
+      // Fill the parsing restrictions in z
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, {-2210, -750}});
+
+      // Fill the layer splitting parameters in z
+      lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisZ, 10});
+#endif
       // Save
       layerBuilderConfig.layerConfigurations[0].push_back(lConfig);
     }
@@ -413,6 +499,7 @@ void ACTSAlgBase::buildDetector() {
       lConfig.sensorNames = {"sensor*"};
       lConfig.localAxes = "XYZ";
 
+#ifdef K4ACTSTRACKING_ACTS_V32
       // Fill the parsing restrictions in r
       lConfig.parseRanges.push_back({Acts::binR, {500, 600}});
 
@@ -421,6 +508,16 @@ void ACTSAlgBase::buildDetector() {
 
       // Fill the parsing restrictions in z
       lConfig.parseRanges.push_back({Acts::binZ, {-750, 750}});
+#else
+      // Fill the parsing restrictions in r
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, {500, 600}});
+
+      // Fill the layer splitting parameters in r
+      lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisR, 10});
+
+      // Fill the parsing restrictions in z
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, {-750, 750}});
+#endif
 
       // Save
       layerBuilderConfig.layerConfigurations[1].push_back(lConfig);
@@ -433,6 +530,7 @@ void ACTSAlgBase::buildDetector() {
       lConfig.sensorNames = {"sensor*"};
       lConfig.localAxes = "XYZ";
 
+#ifdef K4ACTSTRACKING_ACTS_V32
       // Fill the parsing restrictions in r
       lConfig.parseRanges.push_back({Acts::binR, {120, 600}});
 
@@ -441,7 +539,16 @@ void ACTSAlgBase::buildDetector() {
 
       // Fill the layer splitting parameters in z
       lConfig.splitConfigs.push_back({Acts::binZ, 10});
+#else
+      // Fill the parsing restrictions in r
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, {120, 600}});
 
+      // Fill the parsing restrictions in z
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, {750, 2210}});
+
+      // Fill the layer splitting parameters in z
+      lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisZ, 10});
+#endif
       // Save
       layerBuilderConfig.layerConfigurations[2].push_back(lConfig);
     }
@@ -454,15 +561,19 @@ void ACTSAlgBase::buildDetector() {
     Acts::TGeoLayerBuilder::Config layerBuilderConfig;
     layerBuilderConfig.configurationName = "OuterTrackers";
     layerBuilderConfig.autoSurfaceBinning = true;
-
+    layerBuilderConfig.surfaceBinMatcher = Acts::SurfaceBinningMatcher();
     // AutoBinning
-    std::vector<std::pair<double, double>> binTolerances{(int)Acts::binValues,
-                                                         {0., 0.}};
+    auto& binTolerances = layerBuilderConfig.surfaceBinMatcher.tolerances;
+
+#ifdef K4ACTSTRACKING_ACTS_V32
     binTolerances[Acts::binR] = {5, 5};
     binTolerances[Acts::binZ] = {5, 5};
     binTolerances[Acts::binPhi] = {0.025, 0.025};
-    layerBuilderConfig.surfaceBinMatcher =
-        Acts::SurfaceBinningMatcher(binTolerances);
+#else
+    binTolerances[static_cast<int>(Acts::AxisDirection::AxisR)] = {5, 5};
+    binTolerances[static_cast<int>(Acts::AxisDirection::AxisZ)] = {5, 5};
+    binTolerances[static_cast<int>(Acts::AxisDirection::AxisPhi)] = {0.025, 0.025};
+#endif
 
     {  // negative endcap
       // Create the layer config object and fill it
@@ -471,6 +582,7 @@ void ACTSAlgBase::buildDetector() {
       lConfig.sensorNames = {"sensor*"};
       lConfig.localAxes = "XYZ";
 
+#ifdef K4ACTSTRACKING_ACTS_V32
       // Fill the parsing restrictions in r
       lConfig.parseRanges.push_back({Acts::binR, {570, 1550}});
 
@@ -479,6 +591,16 @@ void ACTSAlgBase::buildDetector() {
 
       // Fill the layer splitting parameters in z
       lConfig.splitConfigs.push_back({Acts::binZ, 10});
+#else
+      // Fill the parsing restrictions in r
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, {570, 1550}});
+
+      // Fill the parsing restrictions in z
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, {-2210, -1300}});
+
+      // Fill the layer splitting parameters in z
+      lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisZ, 10});
+#endif
 
       // Save
       layerBuilderConfig.layerConfigurations[0].push_back(lConfig);
@@ -491,6 +613,7 @@ void ACTSAlgBase::buildDetector() {
       lConfig.sensorNames = {"sensor*"};
       lConfig.localAxes = "XYZ";
 
+#ifdef K4ACTSTRACKING_ACTS_V32
       // Fill the parsing restrictions in r
       lConfig.parseRanges.push_back({Acts::binR, {600, 1550}});
 
@@ -499,6 +622,17 @@ void ACTSAlgBase::buildDetector() {
 
       // Fill the parsing restrictions in z
       lConfig.parseRanges.push_back({Acts::binZ, {-1300, 1300}});
+#else
+      // Fill the parsing restrictions in r
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, {600, 1550}});
+
+      // Fill the layer splitting parameters in r
+      lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisR, 10});
+
+      // Fill the parsing restrictions in z
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, {-1300, 1300}});
+
+#endif
 
       // Save
       layerBuilderConfig.layerConfigurations[1].push_back(lConfig);
@@ -511,6 +645,7 @@ void ACTSAlgBase::buildDetector() {
       lConfig.sensorNames = {"sensor*"};
       lConfig.localAxes = "XYZ";
 
+#ifdef K4ACTSTRACKING_ACTS_V32
       // Fill the parsing restrictions in r
       lConfig.parseRanges.push_back({Acts::binR, {570, 1550}});
 
@@ -519,7 +654,16 @@ void ACTSAlgBase::buildDetector() {
 
       // Fill the layer splitting parameters in z
       lConfig.splitConfigs.push_back({Acts::binZ, 10});
+#else
+      // Fill the parsing restrictions in r
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, {570, 1550}});
 
+      // Fill the parsing restrictions in z
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, {1300, 2210}});
+
+      // Fill the layer splitting parameters in z
+      lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisZ, 10});
+#endif
       // Save
       layerBuilderConfig.layerConfigurations[2].push_back(lConfig);
     }
@@ -585,7 +729,11 @@ void ACTSAlgBase::buildDetector() {
         -> void {
       for (const auto& lcfg : lConfigs) {
         for (const auto& scfg : lcfg.splitConfigs) {
+#ifdef K4ACTSTRACKING_ACTS_V32
           if (scfg.first == Acts::binR and scfg.second > 0.) {
+#else
+          if (scfg.first == Acts::AxisDirection::AxisR and scfg.second > 0.) {
+#endif
             volumeConfig.ringTolerance =
                 std::max(volumeConfig.ringTolerance, scfg.second);
             volumeConfig.checkRingLayout = true;

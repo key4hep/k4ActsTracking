@@ -63,6 +63,10 @@ if (Acts_VERSION VERSION_LESS 42.0.0)
   target_compile_definitions(k4ActsTrackingPlugins PUBLIC K4ACTSTRACKING_ACTS_HAS_TGEO_PLUGIN)
 endif()
 
+if (Acts_VERSION VERSION_LESS 33.0.0)
+  target_compile_definitions(k4ActsTrackingPlugins PRIVATE K4ACTSTRACKING_ACTS_V32)
+endif()
+
 install(TARGETS k4ActsTrackingPlugins
   EXPORT k4ActsTrackingTargets
   RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT bin
