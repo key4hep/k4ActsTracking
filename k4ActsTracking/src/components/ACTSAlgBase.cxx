@@ -23,8 +23,14 @@
 #include <Acts/Geometry/TrackingVolumeArrayCreator.hpp>
 #include <Acts/MagneticField/ConstantBField.hpp>
 #include <Acts/Plugins/Json/JsonMaterialDecorator.hpp>
+
+#ifdef K4ACTSTRACKING_ACTS_HAS_TGEO_PLUGIN
 #include <Acts/Plugins/TGeo/TGeoDetectorElement.hpp>
 #include <Acts/Plugins/TGeo/TGeoLayerBuilder.hpp>
+#else
+#include <Acts/Plugins/Root/TGeoDetectorElement.hpp>
+#include <Acts/Plugins/Root/TGeoLayerBuilder.hpp>
+#endif
 
 // ACTSTracking
 #include "k4ActsTracking/Helpers.hxx"

@@ -36,9 +36,15 @@ install(TARGETS k4ActsTracking
 )
 
 file(GLOB _plugin_sources src/components/*.c*)
-set(ACTS_PLUGIN_TARGETS "Acts::Core;Acts::PluginDD4hep;Acts::PluginJson")
+set(ACTS_PLUGIN_TARGETS "Acts::Core;Acts::PluginDD4hep;Acts::PluginJson;Acts::PluginRoot")
+# Before namespaced targets we have to do a bit more work
 if (Acts_VERSION VERSION_LESS 43.0.0)
   set(ACTS_PLUGIN_TARGETS "ActsCore;ActsPluginDD4hep;ActsPluginJson")
+  if (Acts_VERSION VERSION_LESS 42.0.0)
+    list(APPEND ACTS_PLUGIN_TARGETS "ActsPluginTGeo")
+  else()
+    list(APPEND ACTS_PLUGIN_TARGETS "ActsPluginRoot")
+  endif()
 endif()
 
 gaudi_add_module(k4ActsTrackingPlugins
@@ -53,6 +59,9 @@ gaudi_add_module(k4ActsTrackingPlugins
 target_include_directories(k4ActsTrackingPlugins PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+if (Acts_VERSION VERSION_LESS 42.0.0)
+  target_compile_definitions(k4ActsTrackingPlugins PUBLIC K4ACTSTRACKING_ACTS_HAS_TGEO_PLUGIN)
+endif()
 
 install(TARGETS k4ActsTrackingPlugins
   EXPORT k4ActsTrackingTargets

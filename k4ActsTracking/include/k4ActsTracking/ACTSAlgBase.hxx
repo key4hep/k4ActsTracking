@@ -6,8 +6,13 @@
 #include <Acts/Geometry/TrackingGeometry.hpp>
 #include <Acts/MagneticField/MagneticFieldContext.hpp>
 #include <Acts/MagneticField/MagneticFieldProvider.hpp>
-#include <Acts/Plugins/TGeo/TGeoDetectorElement.hpp>
 #include <Acts/Utilities/CalibrationContext.hpp>
+
+#ifdef K4ACTSTRACKING_ACTS_HAS_TGEO_PLUGIN
+#include <Acts/Plugins/TGeo/TGeoDetectorElement.hpp>
+#else
+#include <Acts/Plugins/Root/TGeoDetectorElement.hpp>
+#endif
 
 // edm4hep
 #include <edm4hep/TrackCollection.h>
