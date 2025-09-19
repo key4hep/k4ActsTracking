@@ -74,7 +74,7 @@ std::shared_ptr<const Acts::TrackingGeometry> ACTSAlgBase::trackingGeometry() co
 }
 
 const Acts::Surface* ACTSAlgBase::findSurface(const edm4hep::TrackerHit hit) const {
-	uint64_t moduleGeoId = m_geoIDMappingTool->getGeometryID(hit);
+	auto moduleGeoId = Acts::GeometryIdentifier(m_geoIDMappingTool->getGeometryID(hit));
 	return m_trackingGeometry->findSurface(moduleGeoId);
 }
 
