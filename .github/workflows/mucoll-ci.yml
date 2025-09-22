@@ -1,0 +1,32 @@
+name: MuColl Image Build
+
+on:
+  push:
+    branches:
+    - main
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-mucoll-image:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/muoncollidersoft/mucoll-sim-ubuntu24:full_gaudi_test
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build and test
+        run: |
+          # setup_mucoll alias is not available, so we go for the setup script path directly
+          . /opt/spack/opt/spack/*/*/*/*/*/mucoll-stack-20*/setup.sh
+          cmake -B build -S . -GNinja \
+            -DCMAKE_CXX_STANDARD=20 \
+            -DCMAKE_INSTALL_PREFIX=$(pwd)/install \
+            -DCMAKE_CXX_FLAGS=" -fdiagnostics-color=always -Werror "
+          cmake --build build
+          # Tests need OpenDataDetector, which is not present in the mucoll image atm
+          # ctest --test-dir build -j$(nproc) --output-on-failure
+          cmake --build build --target install
