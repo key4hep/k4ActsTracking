@@ -34,6 +34,9 @@ ExaTrkGNNTrackFinder::ExaTrkGNNTrackFinder(const std::string& name, ISvcLocator*
 
 StatusCode ExaTrkGNNTrackFinder::initialize() {
   m_logger = makeActsGaudiLogger(this);
+  if (m_monitoringHistograms.value()) {
+    m_monitoringHist.createHistogram(*this);
+  }
 
   auto graphConstructor =
       std::make_shared<OnnxMetricLearning>(OnnxMetricLearning::Config{.modelPath = m_nodeEmbeddingModelPath.value(),
@@ -83,7 +86,11 @@ ExaTrkGNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneColle
   debug() << fmt::format("Received {} track candidates", trackCandIdcs.size()) << endmsg;
 
   edm4hep::TrackCollection trackCands{};
+  auto histBuffer = m_monitoringHist.buffer();
   for (const auto& candIdcs : trackCandIdcs) {
+    if (m_monitoringHistograms) {
+      ++histBuffer[{allHits.size(), trackCands.size(), candIdcs.size()}];
+    }
     if (candIdcs.size() < m_minHitsPerTrk.value()) {
       continue;
     }

@@ -5,11 +5,13 @@
 #include <Acts/Plugins/Gnn/GnnPipeline.hpp>
 #include <Acts/Utilities/Logger.hpp>
 
+#include <Gaudi/Accumulators/RootHistogram.h>
 #include <Gaudi/Property.h>
 
 #include <edm4hep/TrackCollection.h>
 #include <edm4hep/TrackerHitPlaneCollection.h>
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -40,7 +42,21 @@ struct ExaTrkGNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollect
   Gaudi::Property<uint32_t> m_minHitsPerTrk{this, "MinHitsPerTrack", 3,
                                             "Minimum number of hits per track for it to be considered for the output"};
 
+  Gaudi::Property<bool> m_monitoringHistograms{this, "MonitoringHistograms", false,
+                                               "Produce some monitoring histograms when running this algorithm"};
+
 private:
   std::unique_ptr<Acts::GnnPipeline> m_pipeline{nullptr};
   std::unique_ptr<const Acts::Logger> m_logger{nullptr};
+
+public:
+  void registerCallBack(Gaudi::StateMachine::Transition, std::function<void()>) {}
+
+private:
+  mutable Gaudi::Accumulators::RootHistogram<3> m_monitoringHist{this,
+                                                                 "MonitoringHistogram",
+                                                                 "Monitoring histogram for GNN track finding",
+                                                                 {100, 0., 100.},
+                                                                 {100, 0., 100.},
+                                                                 {100, 0., 100}};
 };
