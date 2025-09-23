@@ -43,7 +43,8 @@ StatusCode ExaTrkGNNTrackFinder::initialize() {
                                            m_logger->clone(name() + ".MetricLearning"));
 
   std::vector<std::shared_ptr<Acts::EdgeClassificationBase>> edgeClassifiers{std::make_shared<Acts::OnnxEdgeClassifier>(
-      Acts::OnnxEdgeClassifier::Config{.modelPath = m_edgeClassifierModelPath.value()},
+      Acts::OnnxEdgeClassifier::Config{.modelPath = m_edgeClassifierModelPath.value(),
+                                       .cut = m_edgeClassifierCut.value()},
       m_logger->clone(name() + ".EdgeClassifier"))};
 
   auto trackBuilder = std::make_shared<Acts::BoostTrackBuilding>(Acts::BoostTrackBuilding::Config{},
