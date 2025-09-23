@@ -77,7 +77,7 @@ ExaTrkGNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneColle
   }();
   debug() << fmt::format("Collected {} hits from {} collections", allHits.size(), inputTrackerHits.size()) << endmsg;
   auto embeddingInputs = extractHitInformation(allHits);
-  debug() << fmt::format("Resulting in {} total inputs", embeddingInputs.size()) << endmsg;
+  assert(embeddingInputs.size() == allHits.size() * 4);
   // Give hits their position in the global hits collection as index
   std::vector<int> hitIdcs(allHits.size());
   std::iota(hitIdcs.begin(), hitIdcs.end(), 0);
