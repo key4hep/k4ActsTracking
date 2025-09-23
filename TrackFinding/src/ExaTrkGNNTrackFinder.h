@@ -37,6 +37,9 @@ struct ExaTrkGNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollect
   Gaudi::Property<float> m_edgeClassifierCut{this, "EdgeClassifierCut", 0.5f,
                                              "Cut value to use for the edge classifier GNN"};
 
+  Gaudi::Property<uint32_t> m_minHitsPerTrk{this, "MinHitsPerTrack", 3,
+                                            "Minimum number of hits per track for it to be considered for the output"};
+
 private:
   std::unique_ptr<Acts::GnnPipeline> m_pipeline{nullptr};
   std::unique_ptr<const Acts::Logger> m_logger{nullptr};

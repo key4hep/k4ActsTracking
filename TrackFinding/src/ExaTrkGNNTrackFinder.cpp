@@ -80,14 +80,19 @@ ExaTrkGNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneColle
   std::iota(hitIdcs.begin(), hitIdcs.end(), 0);
 
   const auto trackCandIdcs = m_pipeline->run(embeddingInputs, {}, hitIdcs, Acts::Device{Acts::Device::Type::eCPU, 0});
+  debug() << fmt::format("Received {} track candidates", trackCandIdcs.size()) << endmsg;
 
   edm4hep::TrackCollection trackCands{};
   for (const auto& candIdcs : trackCandIdcs) {
+    if (candIdcs.size() < m_minHitsPerTrk.value()) {
+      continue;
+    }
     auto track = trackCands.create();
     for (const auto idx : candIdcs) {
       track.addToTrackerHits(allHits[idx]);
     }
   }
+  debug() << fmt::format("Produced {} output track candidates", trackCands.size()) << endmsg;
   return trackCands;
 }
 
