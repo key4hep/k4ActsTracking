@@ -33,6 +33,7 @@ gaudi_add_module(k4RecTrackerTrackFinding
     k4ActsTracking::k4ActsTracking
     torch
     Acts::PluginGnn
+    ROOT::Physics
 )
 
 target_include_directories(k4RecTrackerTrackFinding
