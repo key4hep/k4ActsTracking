@@ -13,12 +13,6 @@ parser.add_argument(
     "--modelBase", help="The base directory for the model", default=".", type=Path
 )
 parser.add_argument(
-    "--monitoring",
-    help="Enable the monitoring histograms",
-    action="store_true",
-    default=False,
-)
-parser.add_argument(
     "--monitoringOutputFile",
     help="File into which the monitoring histograms should go (if enabled)",
     default="gnn_tracking_monitoring_hists.root",
@@ -51,7 +45,6 @@ TrackFinder = ExaTrkGNNTrackFinder(
         "VBTrackerHits",
         "VETrackerHits",
     ],
-    MonitoringHistograms=args.monitoring,
 )
 
 histSvc = RootHistoSink()

@@ -42,9 +42,6 @@ struct ExaTrkGNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollect
   Gaudi::Property<uint32_t> m_minHitsPerTrk{this, "MinHitsPerTrack", 3,
                                             "Minimum number of hits per track for it to be considered for the output"};
 
-  Gaudi::Property<bool> m_monitoringHistograms{this, "MonitoringHistograms", false,
-                                               "Produce some monitoring histograms when running this algorithm"};
-
 private:
   std::unique_ptr<Acts::GnnPipeline> m_pipeline{nullptr};
   std::unique_ptr<const Acts::Logger> m_logger{nullptr};
