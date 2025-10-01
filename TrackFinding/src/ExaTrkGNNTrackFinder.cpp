@@ -8,6 +8,8 @@
 
 #include <k4ActsTracking/ActsGaudiLogger.h>
 
+#include <Math/PositionVector3D.h>
+
 #include <fmt/format.h>
 
 #include <algorithm>
@@ -20,8 +22,9 @@ std::vector<float> extractHitInformation(const edm4hep::TrackerHitPlaneCollectio
   embeddingInputs.reserve(hits.size());
 
   for (const auto hit : hits) {
-    std::vector<float> hitInfo = {static_cast<float>(hit.getPosition().x), static_cast<float>(hit.getPosition().y),
-                                  static_cast<float>(hit.getPosition().z), hit.getTime()};
+    const auto position = ROOT::Math::XYZPointF(hit.getPosition().x, hit.getPosition().y, hit.getPosition().z);
+
+    std::vector<float> hitInfo = {position.r(), position.phi(), position.z(), hit.getTime()};
     embeddingInputs.emplace_back(std::move(hitInfo));
   }
   return mlutils::flatten(embeddingInputs);
