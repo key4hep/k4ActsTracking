@@ -97,6 +97,14 @@ ExaTrkGNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneColle
     for (const auto idx : candIdcs) {
       track.addToTrackerHits(allHits[idx]);
     }
+    // In order to be able to run the (Marlin based) refitting downstream we
+    // need a single trackstate. For now we just fudge that by adding it here
+    // with the minimal information that is necessary. Once we have a proper
+    // pipeline that can start fitting from the hits alone, this can be removed
+    // again.
+    auto trackState = edm4hep::TrackState{};
+    trackState.location = edm4hep::TrackState::AtFirstHit;
+    track.addToTrackStates(trackState);
   }
   debug() << fmt::format("Produced {} output track candidates", trackCands.size()) << endmsg;
   return trackCands;
