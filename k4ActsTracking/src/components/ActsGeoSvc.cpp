@@ -18,6 +18,8 @@
  */
 #include "ActsGeoSvc.h"
 
+#include "k4ActsTracking/ActsGaudiLogger.h"
+
 #include "k4Interface/IGeoSvc.h"
 
 #include "Acts/Geometry/TrackingGeometry.hpp"
@@ -55,7 +57,7 @@ StatusCode ActsGeoSvc::initialize() {
   using ActsPlugins::convertDD4hepDetector;
   using ActsPlugins::sortDetElementsByID;
 #endif
-  auto logger = Acts::getDefaultLogger("k4ActsTracking", m_actsLoggingLevel);
+  auto logger = makeActsGaudiLogger(this);
   m_trackingGeo =
       convertDD4hepDetector(m_dd4hepGeo->world(), *logger, bTypePhi, bTypeR, bTypeZ, layerEnvelopeR, layerEnvelopeZ,
                             defaultLayerThickness, sortDetElementsByID, m_trackingGeoCtx, m_materialDeco);
