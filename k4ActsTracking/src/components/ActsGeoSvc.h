@@ -77,7 +77,7 @@ private:
 public:
   ActsGeoSvc(const std::string& name, ISvcLocator* svc);
 
-  virtual ~ActsGeoSvc();
+  virtual ~ActsGeoSvc() = default;
 
   virtual StatusCode initialize() final;
 
