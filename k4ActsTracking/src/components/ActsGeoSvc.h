@@ -20,6 +20,8 @@
 #ifndef ACTSGEOSVC_H
 #define ACTSGEOSVC_H
 
+#include "k4ActsTracking/IActsGeoSvc.h"
+
 #include <Acts/Material/IMaterialDecorator.hpp>
 #include "Acts/Definitions/Common.hpp"
 #include "Acts/Definitions/Units.hpp"
@@ -32,14 +34,15 @@
 #else
 #include "Acts/Plugins/DD4hep/DD4hepDetectorElement.hpp"
 #endif
+
 #include "DD4hep/DD4hepUnits.h"
 #include "DD4hep/Detector.h"
 #include "DDRec/Surface.h"
 #include "DDRec/SurfaceManager.h"
+
 #include "GaudiKernel/MsgStream.h"
 #include "GaudiKernel/Service.h"
 #include "GaudiKernel/ServiceHandle.h"
-#include "k4ActsTracking/IActsGeoSvc.h"
 
 class ActsGeoSvc : public extends<Service, IActsGeoSvc> {
 public:
