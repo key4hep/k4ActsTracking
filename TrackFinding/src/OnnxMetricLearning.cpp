@@ -1,8 +1,13 @@
 #include "OnnxMetricLearning.h"
 #include "ONNXInferenceModel.h"
 
-#include "Acts/Plugins/Gnn/detail/TensorVectorConversion.hpp"
-#include "Acts/Plugins/Gnn/detail/buildEdges.hpp"
+#if __has_include("ActsPlugins/Gnn/detail/TensorVectorConversion.hpp")
+#include <ActsPlugins/Gnn/detail/TensorVectorConversion.hpp>
+#include <ActsPlugins/Gnn/detail/buildEdges.hpp>
+#else
+#include <Acts/Plugins/Gnn/detail/TensorVectorConversion.hpp>
+#include <Acts/Plugins/Gnn/detail/buildEdges.hpp>
+#endif
 
 #include <onnxruntime_cxx_api.h>
 
@@ -78,9 +83,9 @@ OnnxMetricLearning::OnnxMetricLearning(const Config& cfg, std::unique_ptr<const 
   m_model.loadModel(config().modelPath);
 }
 
-Acts::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& inputValues, std::size_t numNodes,
-                                                     const std::vector<uint64_t>&,
-                                                     const Acts::ExecutionContext& execContext) {
+ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& inputValues, std::size_t numNodes,
+                                                            const std::vector<uint64_t>&,
+                                                            const ActsPlugins::ExecutionContext& execContext) {
 
   assert(inputValues.size() % numNodes == 0);
   std::vector inputShape = {static_cast<int64_t>(numNodes), static_cast<int64_t>(inputValues.size() / numNodes)};
@@ -95,13 +100,14 @@ Acts::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& inputVa
   ACTS_VERBOSE(fmt::format("Embedding space of first SP: [{}]", fmt::streamed(embeddedPoints.slice(0, 0, 1))));
 
   ACTS_DEBUG("Starting to build edges");
-  auto edgeList = Acts::detail::buildEdges(embeddedPoints, m_config.rVal, m_config.knnVal, m_config.shuffleDirections);
+  auto edgeList =
+      ActsPlugins::detail::buildEdges(embeddedPoints, m_config.rVal, m_config.knnVal, m_config.shuffleDirections);
   ACTS_DEBUG("Finished building edges");
 
   ACTS_VERBOSE(fmt::format("Shape of built edges: ({}, {})", edgeList.size(0), edgeList.size(1)));
   ACTS_VERBOSE(fmt::format("Slice of edgeList: {}", fmt::streamed(edgeList.slice(1, 0, 5))));
 
-  return {
-      Acts::detail::torchToActsTensor<float>(Acts::detail::vectorToTensor2D(inputValues, inputShape[1]), execContext),
-      Acts::detail::torchToActsTensor<int64_t>(edgeList, execContext), std::nullopt, std::nullopt};
+  return {ActsPlugins::detail::torchToActsTensor<float>(
+              ActsPlugins::detail::vectorToTensor2D(inputValues, inputShape[1]), execContext),
+          ActsPlugins::detail::torchToActsTensor<int64_t>(edgeList, execContext), std::nullopt, std::nullopt};
 }

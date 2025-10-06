@@ -2,8 +2,15 @@
 
 #include <k4FWCore/Transformer.h>
 
-#include <Acts/Plugins/Gnn/GnnPipeline.hpp>
 #include <Acts/Utilities/Logger.hpp>
+#if __has_include("ActsPlugins/Gnn/GnnPipeline.hpp")
+#include <ActsPlugins/Gnn/GnnPipeline.hpp>
+#else
+#include <Acts/Plugins/Gnn/GnnPipeline.hpp>
+namespace ActsPlugins {
+using GnnPipeline = Acts::Pipeline;
+}
+#endif
 
 #include <Gaudi/Accumulators/RootHistogram.h>
 #include <Gaudi/Property.h>
@@ -43,7 +50,7 @@ struct ExaTrkGNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollect
                                             "Minimum number of hits per track for it to be considered for the output"};
 
 private:
-  std::unique_ptr<Acts::GnnPipeline> m_pipeline{nullptr};
+  std::unique_ptr<ActsPlugins::GnnPipeline> m_pipeline{nullptr};
   std::unique_ptr<const Acts::Logger> m_logger{nullptr};
 
 public:

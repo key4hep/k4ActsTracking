@@ -2,9 +2,24 @@
 
 #include "OnnxMetricLearning.h"
 
+#if __has_include("ActsPlugins/Gnn/Stages.hpp")
+#include <ActsPlugins/Gnn/BoostTrackBuilding.hpp>
+#include <ActsPlugins/Gnn/GnnPipeline.hpp>
+#include <ActsPlugins/Gnn/OnnxEdgeClassifier.hpp>
+#include <ActsPlugins/Gnn/Stages.hpp>
+#else
 #include <Acts/Plugins/Gnn/BoostTrackBuilding.hpp>
+#include <Acts/Plugins/Gnn/GnnPipeline.hpp>
 #include <Acts/Plugins/Gnn/OnnxEdgeClassifier.hpp>
 #include <Acts/Plugins/Gnn/Stages.hpp>
+namespace ActsPlugins {
+using BoostTrackBuilding = Acts::BoostTrackBuilding;
+using Device = Acts::Device;
+using EdgeClassificationBase = Acts::EdgeClassificationBase;
+using GnnPipeline = Acts::GnnPipeline;
+using OnnxEdgeClassifier = Acts::OnnxEdgeClassifier;
+} // namespace ActsPlugins
+#endif
 
 #include <k4ActsTracking/ActsGaudiLogger.h>
 
@@ -46,17 +61,18 @@ StatusCode ExaTrkGNNTrackFinder::initialize() {
                                                                       .knnVal = m_edgeBuildingKnn.value()},
                                            m_logger->clone(name() + ".MetricLearning"));
 
-  std::vector<std::shared_ptr<Acts::EdgeClassificationBase>> edgeClassifiers{std::make_shared<Acts::OnnxEdgeClassifier>(
-      Acts::OnnxEdgeClassifier::Config{.modelPath = m_edgeClassifierModelPath.value(),
-                                       .cut = m_edgeClassifierCut.value()},
-      m_logger->clone(name() + ".EdgeClassifier"))};
+  std::vector<std::shared_ptr<ActsPlugins::EdgeClassificationBase>> edgeClassifiers{
+      std::make_shared<ActsPlugins::OnnxEdgeClassifier>(
+          ActsPlugins::OnnxEdgeClassifier::Config{.modelPath = m_edgeClassifierModelPath.value(),
+                                                  .cut = m_edgeClassifierCut.value()},
+          m_logger->clone(name() + ".EdgeClassifier"))};
 
-  auto trackBuilder = std::make_shared<Acts::BoostTrackBuilding>(Acts::BoostTrackBuilding::Config{},
-                                                                 m_logger->clone(name() + ".TrackBuilder"));
+  auto trackBuilder = std::make_shared<ActsPlugins::BoostTrackBuilding>(ActsPlugins::BoostTrackBuilding::Config{},
+                                                                        m_logger->clone(name() + ".TrackBuilder"));
 
   try {
-    m_pipeline = std::make_unique<Acts::GnnPipeline>(graphConstructor, edgeClassifiers, trackBuilder,
-                                                     m_logger->clone(name() + ".Pipeline"));
+    m_pipeline = std::make_unique<ActsPlugins::GnnPipeline>(graphConstructor, edgeClassifiers, trackBuilder,
+                                                            m_logger->clone(name() + ".Pipeline"));
   } catch (const std::invalid_argument& ex) {
     error() << "Failed to construct GNN Pipeline: " << ex.what() << endmsg;
     return StatusCode::FAILURE;
@@ -83,7 +99,8 @@ ExaTrkGNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneColle
   std::vector<int> hitIdcs(allHits.size());
   std::iota(hitIdcs.begin(), hitIdcs.end(), 0);
 
-  const auto trackCandIdcs = m_pipeline->run(embeddingInputs, {}, hitIdcs, Acts::Device{Acts::Device::Type::eCPU, 0});
+  const auto trackCandIdcs =
+      m_pipeline->run(embeddingInputs, {}, hitIdcs, ActsPlugins::Device{ActsPlugins::Device::Type::eCPU, 0});
   debug() << fmt::format("Received {} track candidates", trackCandIdcs.size()) << endmsg;
 
   edm4hep::TrackCollection trackCands{};
