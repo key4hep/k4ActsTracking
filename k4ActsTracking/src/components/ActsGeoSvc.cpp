@@ -29,6 +29,7 @@
 #if __has_include("ActsPlugins/DD4hep/ConvertDD4hepDetector.hpp")
 #include "ActsPlugins/DD4hep/ConvertDD4hepDetector.hpp"
 #else
+#define ACTS_OLD_PLUGINS 1
 #include "Acts/Plugins/DD4hep/ConvertDD4hepDetector.hpp"
 #endif
 
@@ -57,11 +58,18 @@ StatusCode ActsGeoSvc::initialize() {
   double            layerEnvelopeR        = Acts::UnitConstants::mm;
   double            layerEnvelopeZ        = Acts::UnitConstants::mm;
   double            defaultLayerThickness = Acts::UnitConstants::fm;
+
+#ifdef ACTS_OLD_PLUGINS
+  using Acts::convertDD4hepDetector;
+  using Acts::sortDetElementsByID;
+#else
+  using ActsPlugins::convertDD4hepDetector;
   using ActsPlugins::sortDetElementsByID;
-  auto logger   = Acts::getDefaultLogger("k4ActsTracking", m_actsLoggingLevel);
-  m_trackingGeo = ActsPlugins::convertDD4hepDetector(m_dd4hepGeo->world(), *logger, bTypePhi, bTypeR, bTypeZ,
-                                                     layerEnvelopeR, layerEnvelopeZ, defaultLayerThickness,
-                                                     sortDetElementsByID, m_trackingGeoCtx, m_materialDeco);
+#endif
+  auto logger = Acts::getDefaultLogger("k4ActsTracking", m_actsLoggingLevel);
+  m_trackingGeo =
+      convertDD4hepDetector(m_dd4hepGeo->world(), *logger, bTypePhi, bTypeR, bTypeZ, layerEnvelopeR, layerEnvelopeZ,
+                            defaultLayerThickness, sortDetElementsByID, m_trackingGeoCtx, m_materialDeco);
 
   /// Setting geometry debug option
   if (m_debugGeometry == true) {
