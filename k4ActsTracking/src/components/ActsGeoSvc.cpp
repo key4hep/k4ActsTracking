@@ -45,7 +45,7 @@ DECLARE_COMPONENT(ActsGeoSvc)
 
 ActsGeoSvc::ActsGeoSvc(const std::string& name, ISvcLocator* svc) : base_class(name, svc), m_log(msgSvc(), name) {}
 
-ActsGeoSvc::~ActsGeoSvc() {};
+ActsGeoSvc::~ActsGeoSvc(){};
 
 StatusCode ActsGeoSvc::initialize() {
   m_dd4hepGeo = svcLocator()->service<IGeoSvc>(m_geoSvcName)->getDetector();
