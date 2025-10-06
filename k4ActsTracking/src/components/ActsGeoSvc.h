@@ -71,13 +71,10 @@ private:
   /// Output file name
   Gaudi::Property<std::string> m_outputFileName{this, "outputFileName", "", "Output file name"};
 
-  /// Gaudi logging output
-  MsgStream m_log;
-
 public:
   ActsGeoSvc(const std::string& name, ISvcLocator* svc);
 
-  virtual ~ActsGeoSvc();
+  virtual ~ActsGeoSvc() = default;
 
   virtual StatusCode initialize() final;
 
