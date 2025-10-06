@@ -2,9 +2,18 @@
 
 #include "ONNXInferenceModel.h"
 
+#include <Acts/Utilities/Logger.hpp>
+#if __has_include("ActsPlugins/Gnn/Stages.hpp")
+#include <ActsPlugins/Gnn/Stages.hpp>
+#include <ActsPlugins/Gnn/Tensor.hpp>
+#else
 #include <Acts/Plugins/Gnn/Stages.hpp>
 #include <Acts/Plugins/Gnn/Tensor.hpp>
-#include <Acts/Utilities/Logger.hpp>
+namespace ActsPlugins {
+using ExecutionContext = Acts::ExecutionContext;
+using PipelineTensors = Acts::PipelineTensors;
+} // namespace ActsPlugins
+#endif
 
 #include <cstdint>
 #include <memory>
@@ -13,7 +22,7 @@
 // Implementing this class close to what Acts does for Torch in a way that would
 // make it somewhat straight forward to move it to Acts once it has matured
 
-class OnnxMetricLearning final : public Acts::GraphConstructionBase {
+class OnnxMetricLearning final : public ActsPlugins::GraphConstructionBase {
 public:
   struct Config {
     std::string modelPath{};
@@ -29,9 +38,9 @@ public:
   OnnxMetricLearning(const Config& cfg, std::unique_ptr<const Acts::Logger> logger);
   ~OnnxMetricLearning() = default;
 
-  Acts::PipelineTensors operator()(std::vector<float>& inputValues, std::size_t numNodes,
-                                   const std::vector<uint64_t>& moduleIds,
-                                   const Acts::ExecutionContext& execContext = {}) override;
+  ActsPlugins::PipelineTensors operator()(std::vector<float>& inputValues, std::size_t numNodes,
+                                          const std::vector<uint64_t>& moduleIds,
+                                          const ActsPlugins::ExecutionContext& execContext = {}) override;
 
   const Config& config() const { return m_config; }
 
