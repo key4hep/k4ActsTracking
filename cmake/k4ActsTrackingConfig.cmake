@@ -1,7 +1,7 @@
 include(CMakeFindDependencyMacro)
 find_dependency(k4FWCore REQUIRED)
 find_dependency(Acts REQUIRED COMPONENTS Core PluginDD4hep)
-find_dependency(Gaudi REQUIRED)
+find_dependency(DD4hep REQUIRED COMPONENTS DDCore DDRec)
 
 # - Include the targets file to create the imported targets that a client can
 # link to (libraries) or execute (programs)

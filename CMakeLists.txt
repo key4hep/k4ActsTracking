@@ -20,16 +20,11 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.18)
 
 project(k4ActsTracking LANGUAGES CXX)
 
-find_package(ROOT COMPONENTS RIO Tree)
-find_package(EDM4HEP)
-find_package(k4FWCore)
+find_package(k4FWCore REQUIRED)
 find_package(Acts REQUIRED COMPONENTS Core PluginDD4hep)
-find_package(DD4hep)
+find_package(DD4hep REQUIRED COMPONENTS DDCore DDRec)
 
-#---------------------------------------------------------------
-# Load macros and functions for Gaudi-based projects
 
-find_package(Gaudi)
 #---------------------------------------------------------------
 
 include(GNUInstallDirs)
