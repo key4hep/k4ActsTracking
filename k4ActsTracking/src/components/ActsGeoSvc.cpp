@@ -21,9 +21,6 @@
 #include "k4Interface/IGeoSvc.h"
 
 #include "Acts/Geometry/TrackingGeometry.hpp"
-#include "Acts/MagneticField/MagneticFieldContext.hpp"
-#include "Acts/Surfaces/PlaneSurface.hpp"
-#include "Acts/Utilities/Logger.hpp"
 #include "Acts/Visualization/GeometryView3D.hpp"
 #include "Acts/Visualization/ObjVisualization3D.hpp"
 #if __has_include("ActsPlugins/DD4hep/ConvertDD4hepDetector.hpp")
@@ -32,12 +29,6 @@
 #define ACTS_OLD_PLUGINS 1
 #include "Acts/Plugins/DD4hep/ConvertDD4hepDetector.hpp"
 #endif
-
-#include "DD4hep/Printout.h"
-
-#include "GaudiKernel/Service.h"
-
-#include "TGeoManager.h"
 
 using namespace Gaudi;
 
