@@ -29,11 +29,6 @@
 #include "Acts/Geometry/TrackingGeometry.hpp"
 #include "Acts/Surfaces/Surface.hpp"
 #include "Acts/Utilities/Logger.hpp"
-#if __has_include("ActsPlugins/DD4hep/DD4hepDetectorElement.hpp")
-#include "ActsPlugins/DD4hep/DD4hepDetectorElement.hpp"
-#else
-#include "Acts/Plugins/DD4hep/DD4hepDetectorElement.hpp"
-#endif
 
 #include "DD4hep/DD4hepUnits.h"
 #include "DD4hep/Detector.h"

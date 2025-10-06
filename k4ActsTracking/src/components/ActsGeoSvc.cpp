@@ -16,19 +16,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #include "ActsGeoSvc.h"
+
+#include "k4Interface/IGeoSvc.h"
+
 #include "Acts/Geometry/TrackingGeometry.hpp"
 #include "Acts/MagneticField/MagneticFieldContext.hpp"
-#include "Acts/Plugins/DD4hep/ConvertDD4hepDetector.hpp"
 #include "Acts/Surfaces/PlaneSurface.hpp"
 #include "Acts/Utilities/Logger.hpp"
 #include "Acts/Visualization/GeometryView3D.hpp"
 #include "Acts/Visualization/ObjVisualization3D.hpp"
+#if __has_include("ActsPlugins/DD4hep/ConvertDD4hepDetector.hpp")
+#include "ActsPlugins/DD4hep/ConvertDD4hepDetector.hpp"
+#else
+#include "Acts/Plugins/DD4hep/ConvertDD4hepDetector.hpp"
+#endif
+
 #include "DD4hep/Printout.h"
+
 #include "GaudiKernel/Service.h"
+
 #include "TGeoManager.h"
-#include "k4Interface/IGeoSvc.h"
 
 using namespace Gaudi;
 
@@ -36,7 +44,7 @@ DECLARE_COMPONENT(ActsGeoSvc)
 
 ActsGeoSvc::ActsGeoSvc(const std::string& name, ISvcLocator* svc) : base_class(name, svc), m_log(msgSvc(), name) {}
 
-ActsGeoSvc::~ActsGeoSvc(){};
+ActsGeoSvc::~ActsGeoSvc() {};
 
 StatusCode ActsGeoSvc::initialize() {
   m_dd4hepGeo = svcLocator()->service<IGeoSvc>(m_geoSvcName)->getDetector();
@@ -49,11 +57,11 @@ StatusCode ActsGeoSvc::initialize() {
   double            layerEnvelopeR        = Acts::UnitConstants::mm;
   double            layerEnvelopeZ        = Acts::UnitConstants::mm;
   double            defaultLayerThickness = Acts::UnitConstants::fm;
-  using Acts::sortDetElementsByID;
+  using ActsPlugins::sortDetElementsByID;
   auto logger   = Acts::getDefaultLogger("k4ActsTracking", m_actsLoggingLevel);
-  m_trackingGeo = Acts::convertDD4hepDetector(m_dd4hepGeo->world(), *logger, bTypePhi, bTypeR, bTypeZ, layerEnvelopeR,
-                                              layerEnvelopeZ, defaultLayerThickness, sortDetElementsByID,
-                                              m_trackingGeoCtx, m_materialDeco);
+  m_trackingGeo = ActsPlugins::convertDD4hepDetector(m_dd4hepGeo->world(), *logger, bTypePhi, bTypeR, bTypeZ,
+                                                     layerEnvelopeR, layerEnvelopeZ, defaultLayerThickness,
+                                                     sortDetElementsByID, m_trackingGeoCtx, m_materialDeco);
 
   /// Setting geometry debug option
   if (m_debugGeometry == true) {
