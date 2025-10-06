@@ -36,7 +36,7 @@ using namespace Gaudi;
 
 DECLARE_COMPONENT(ActsGeoSvc)
 
-ActsGeoSvc::ActsGeoSvc(const std::string& name, ISvcLocator* svc) : base_class(name, svc), m_log(msgSvc(), name) {}
+ActsGeoSvc::ActsGeoSvc(const std::string& name, ISvcLocator* svc) : base_class(name, svc) {}
 
 StatusCode ActsGeoSvc::initialize() {
   m_dd4hepGeo = svcLocator()->service<IGeoSvc>(m_geoSvcName)->getDetector();
@@ -64,19 +64,17 @@ StatusCode ActsGeoSvc::initialize() {
 
   /// Setting geometry debug option
   if (m_debugGeometry == true) {
-    m_log << MSG::INFO << "Geometry debugging is ON." << endmsg;
+    info() << "Geometry debugging is ON." << endmsg;
 
     if (createGeoObj().isFailure()) {
-      m_log << MSG::ERROR << "Could not create geometry OBJ" << endmsg;
+      error() << "Could not create geometry OBJ" << endmsg;
       return StatusCode::FAILURE;
     } else {
-      m_log << MSG::INFO << "Geometry OBJ SUCCESSFULLY created" << endmsg;
+      info() << "Geometry OBJ SUCCESSFULLY created" << endmsg;
     }
   } else {
-    m_log << MSG::VERBOSE << "Geometry debugging is OFF." << endmsg;
-    return StatusCode::SUCCESS;
+    info() << "Geometry converted without checking if GeoObj can be created" << endmsg;
   }
-  std::cout << "works!" << std::endl;
 
   return StatusCode::SUCCESS;
 }
@@ -102,7 +100,7 @@ StatusCode ActsGeoSvc::createGeoObj() {
     Acts::GeometryView3D::drawSurface(m_obj, *surface, m_trackingGeoCtx);
   });
   m_obj.write(m_outputFileName.value());
-  m_log << MSG::INFO << m_outputFileName << " SUCCESSFULLY written." << endmsg;
+  info() << m_outputFileName << " SUCCESSFULLY written." << endmsg;
 
   return StatusCode::SUCCESS;
 }
