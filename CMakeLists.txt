@@ -40,7 +40,9 @@ endif()
 include(CTest)
 
 add_subdirectory(k4ActsTracking)
-add_subdirectory(test)
+if (BUILD_TESTING)
+  add_subdirectory(test)
+endif()
 
 install(EXPORT ${PROJECT_NAME}Targets
   NAMESPACE ${PROJECT_NAME}::
