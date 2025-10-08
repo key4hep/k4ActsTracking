@@ -1,5 +1,7 @@
 #include "k4ActsTracking/GeometryIdSelector.hxx"
 
+#include <algorithm>
+
 using namespace ACTSTracking;
 
 GeometryIdSelector::GeometryIdSelector(
