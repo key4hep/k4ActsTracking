@@ -72,7 +72,7 @@ const std::unordered_map<int32_t, uint32_t> GeometryIdMappingTool::VolumeMap = {
 GeometryIdMappingTool::GeometryIdMappingTool(const std::string& encoderString) 
 	: m_decoder(encoderString) {}
 
-uint64_t GeometryIdMappingTool::getGeometryID(const edm4hep::SimTrackerHit& hit) {
+Acts::GeometryIdentifier GeometryIdMappingTool::getGeometryID(const edm4hep::SimTrackerHit& hit) {
 	// Decode Cell ID
 	uint64_t cellID = hit.getCellID();
 
@@ -85,15 +85,15 @@ uint64_t GeometryIdMappingTool::getGeometryID(const edm4hep::SimTrackerHit& hit)
 			     m_decoder.get(cellID, "sensor"));
 }
 
-uint64_t GeometryIdMappingTool::getGeometryID(const edm4hep::TrackerHitPlane& hit) {
+Acts::GeometryIdentifier GeometryIdMappingTool::getGeometryID(const edm4hep::TrackerHitPlane& hit) {
 	return GeometryIdMappingTool::getGeometryIDTrack(hit.getCellID());
 }
 
-uint64_t GeometryIdMappingTool::getGeometryID(const edm4hep::TrackerHit& hit) {
+Acts::GeometryIdentifier GeometryIdMappingTool::getGeometryID(const edm4hep::TrackerHit& hit) {
         return GeometryIdMappingTool::getGeometryIDTrack(hit.getCellID());
 }
 
-uint64_t GeometryIdMappingTool::getGeometryIDTrack(uint64_t cellID) {
+Acts::GeometryIdentifier GeometryIdMappingTool::getGeometryIDTrack(uint64_t cellID) {
 
 	// Encode ACTS ID
   return getGeometryID(
@@ -105,9 +105,9 @@ uint64_t GeometryIdMappingTool::getGeometryIDTrack(uint64_t cellID) {
 
 }
 
-uint64_t GeometryIdMappingTool::getGeometryID(uint32_t systemID,
+Acts::GeometryIdentifier GeometryIdMappingTool::getGeometryID(uint32_t systemID,
                                               uint32_t layerID, 
-					      int32_t sideID,
+                                              int32_t sideID,
                                               uint32_t ladderID,
                                               uint32_t moduleID) {
   uint64_t geometry_id = 0;
@@ -233,5 +233,5 @@ uint64_t GeometryIdMappingTool::getGeometryID(uint32_t systemID,
 
   geometry_id |= sensitive_id << (2 * 4); /// I've seen a 0 instead of a 2 here before. I think the 2 is right but am unsure
 
-  return geometry_id;
+  return Acts::GeometryIdentifier { geometry_id };
 }

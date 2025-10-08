@@ -22,7 +22,7 @@
 #include <Acts/Surfaces/PerigeeSurface.hpp>
 #include <Acts/TrackFinding/CombinatorialKalmanFilter.hpp>
 #include <Acts/TrackFinding/MeasurementSelector.hpp>
-#include <Acts/TrackFitting/GainMatrixSmoother.hpp>
+#include <Acts/TrackFinding/TrackStateCreator.hpp>
 #include <Acts/TrackFitting/GainMatrixUpdater.hpp>
 
 //using namespace Acts::UnitLiterals;
@@ -31,16 +31,22 @@
 #include "k4ActsTracking/Helpers.hxx"
 #include "k4ActsTracking/MeasurementCalibrator.hxx"
 #include "k4ActsTracking/SeedSpacePoint.hxx"
+#include "k4ActsTracking/SpacePointContainer.hxx"
 #include "k4ActsTracking/SourceLink.hxx"
 
 // Standard
 #include <chrono>
 
 // Track fitting definitions
-using TrackFinderOptions = Acts::CombinatorialKalmanFilterOptions<
-	ACTSTracking::SourceLinkAccessor::Iterator, 
-	Acts::VectorMultiTrajectory>;
-using SSPoint = ACTSTracking::SeedSpacePoint;
+using TrackContainer = Acts::TrackContainer<Acts::VectorTrackContainer,
+	Acts::VectorMultiTrajectory, std::shared_ptr>;
+using TrackFinderOptions = Acts::CombinatorialKalmanFilterOptions<TrackContainer>;
+
+using SSPoint = typename Acts::SpacePointContainer<
+	ACTSTracking::SpacePointContainer<std::vector<const ACTSTracking::SeedSpacePoint*>>,
+	Acts::detail::RefHolder>::SpacePointProxyType;
+
+using SSPointGrid = Acts::CylindricalSpacePointGrid<SSPoint>;
 
 DECLARE_COMPONENT(ACTSSeededCKFTrackingAlg)
 
@@ -80,9 +86,9 @@ StatusCode ACTSSeededCKFTrackingAlg::initialize() {
 	for (uint32_t i = 0; i < seedingLayers.size(); i += 2) {
 		Acts::GeometryIdentifier geoid;
 		if (m_seedingLayers[i + 0] != "*")  // volume
-			geoid = geoid.setVolume(std::stoi(m_seedingLayers[i + 0]));
+			geoid = geoid.withVolume(std::stoi(m_seedingLayers[i + 0]));
 		if (m_seedingLayers[i + 1] != "*")  // layer
-			geoid = geoid.setLayer(std::stoi(m_seedingLayers[i + 1]));
+			geoid = geoid.withLayer(std::stoi(m_seedingLayers[i + 1]));
 
 		geoSelection.push_back(geoid);
 	}
@@ -154,7 +160,8 @@ std::tuple<edm4hep::TrackCollection,
 		
 		ACTSTracking::SourceLink sourceLink(surface->geometryId(), measurements.size(), &hitPair.second);
 		Acts::SourceLink src_wrap { sourceLink };
-		Acts::Measurement meas = Acts::makeMeasurement(src_wrap, loc, localCov, Acts::eBoundLoc0, Acts::eBoundLoc1);
+		ACTSTracking::Measurement meas = ACTSTracking::makeMeasurement(
+			src_wrap, loc, localCov, Acts::eBoundLoc0, Acts::eBoundLoc1);
 
 		measurements.push_back(meas);
 		sourceLinks.emplace_hint(sourceLinks.end(), sourceLink);
@@ -209,7 +216,7 @@ std::tuple<edm4hep::TrackCollection,
 	using Stepper = Acts::EigenStepper<>;
 	using Navigator = Acts::Navigator;
 	using Propagator = Acts::Propagator<Stepper, Navigator>;
-	using CKF = Acts::CombinatorialKalmanFilter<Propagator, Acts::VectorMultiTrajectory>;
+	using CKF = Acts::CombinatorialKalmanFilter<Propagator, TrackContainer>;
 
 	// Configurations
 	Navigator::Config navigatorCfg{ trackingGeometry() };
@@ -228,31 +235,36 @@ std::tuple<edm4hep::TrackCollection,
 		{ Acts::GeometryIdentifier(), { {}, { m_CKF_chi2CutOff }, { (std::size_t)(m_CKF_numMeasurementsCutOff) } } }
 	};
 
-	Acts::PropagatorPlainOptions pOptions;
+	Acts::PropagatorPlainOptions pOptions { geometryContext(), magneticFieldContext() };
 	pOptions.maxSteps = 10000;
 	if (m_propagateBackward) {
-		pOptions.direction = Acts::Direction::Backward;
+		pOptions.direction = Acts::Direction::Backward();
 	}
 
 	// Construct a perigee surface as the target surface
 	std::shared_ptr<Acts::PerigeeSurface> perigeeSurface = Acts::Surface::makeShared<Acts::PerigeeSurface>(Acts::Vector3{0., 0., 0.});
 
 	Acts::GainMatrixUpdater kfUpdater;
-	Acts::GainMatrixSmoother kfSmoother;
 
 	Acts::MeasurementSelector measSel { measurementSelectorCfg };
 	ACTSTracking::MeasurementCalibrator measCal { measurements };
-	Acts::CombinatorialKalmanFilterExtensions<Acts::VectorMultiTrajectory> extensions;
-	extensions.calibrator.connect<&ACTSTracking::MeasurementCalibrator::calibrate>(&measCal);
-	extensions.updater.connect<&Acts::GainMatrixUpdater::operator()<Acts::VectorMultiTrajectory>>(&kfUpdater);
-	extensions.smoother.connect<&Acts::GainMatrixSmoother::operator()<Acts::VectorMultiTrajectory>>(&kfSmoother);
-	extensions.measurementSelector.connect<&Acts::MeasurementSelector::select<Acts::VectorMultiTrajectory>>(&measSel);
 
-	using ACTSTracking::SourceLinkAccessor;
-	SourceLinkAccessor slAccessor;
+	ACTSTracking::SourceLinkAccessor slAccessor;
 	slAccessor.container = &sourceLinks;
-	Acts::SourceLinkAccessorDelegate<SourceLinkAccessor::Iterator> slAccessorDelegate;
-	slAccessorDelegate.connect<&SourceLinkAccessor::range>(&slAccessor);
+
+	using TrackStateCreatorType = Acts::TrackStateCreator<ACTSTracking::SourceLinkAccessor::Iterator, TrackContainer>;
+	TrackStateCreatorType trackStateCreator;
+	trackStateCreator.sourceLinkAccessor
+		.template connect<&ACTSTracking::SourceLinkAccessor::range>(&slAccessor);
+	trackStateCreator.calibrator
+		.template connect<&ACTSTracking::MeasurementCalibrator::calibrate>(&measCal);
+	trackStateCreator.measurementSelector
+		.template connect<&Acts::MeasurementSelector::select<Acts::VectorMultiTrajectory>>(&measSel);
+
+	Acts::CombinatorialKalmanFilterExtensions<TrackContainer> extensions;
+	extensions.updater.connect<&Acts::GainMatrixUpdater::operator()<Acts::VectorMultiTrajectory>>(&kfUpdater);
+	extensions.createTrackStates
+		.template connect<&TrackStateCreatorType::createTrackStates>( &trackStateCreator);
 
 	// std::unique_ptr<const Acts::Logger>
 	// logger=Acts::getDefaultLogger("TrackFitting",
@@ -262,15 +274,13 @@ std::tuple<edm4hep::TrackCollection,
 		geometryContext(),
 		magneticFieldContext(), 
 		calibrationContext(),
-		slAccessorDelegate, 
 		extensions, 
-		pOptions, 
-		perigeeSurface.get() );
+		pOptions);
 
 	// Finder configuration
 	static const Acts::Vector3 zeropos(0, 0, 0);
 
-	Acts::SeedFinderConfig<ACTSTracking::SeedSpacePoint> finderCfg;
+	Acts::SeedFinderConfig<SSPoint> finderCfg;
 	finderCfg.rMax = m_seedFinding_rMax;
 	finderCfg.deltaRMin = m_seedFinding_deltaRMin;
 	finderCfg.deltaRMax = m_seedFinding_deltaRMax;
@@ -293,12 +303,11 @@ std::tuple<edm4hep::TrackCollection,
 	Acts::SeedFilterConfig filterCfg;
 	filterCfg.maxSeedsPerSpM = finderCfg.maxSeedsPerSpM;
 
-	finderCfg.seedFilter = std::make_unique<Acts::SeedFilter<ACTSTracking::SeedSpacePoint>>(
-		Acts::SeedFilter<ACTSTracking::SeedSpacePoint>(filterCfg.toInternalUnits()));
+	finderCfg.seedFilter = std::make_unique<Acts::SeedFilter<SSPoint>>(filterCfg.toInternalUnits());
 	finderCfg = finderCfg.toInternalUnits().calculateDerivedQuantities();
 
 	Acts::SeedFinderOptions finderOpts;
-	finderOpts.bFieldInZ = (*magneticField()->getField(zeropos, magCache))[2];   // TODO investigate
+	finderOpts.bFieldInZ = (*magneticField()->getField(zeropos, magCache))[2];
 	finderOpts.beamPos = {0, 0};
 	finderOpts = finderOpts.toInternalUnits();
 	finderOpts = finderOpts.calculateDerivedQuantities(finderCfg);
@@ -329,41 +338,51 @@ std::tuple<edm4hep::TrackCollection,
 	Acts::CylindricalSpacePointGridOptions gridOpts;
 	gridOpts.bFieldInZ = (*magneticField()->getField(zeropos, magCache))[2];
 
-	// Create tools
-	auto extractGlobalQuantities = [](const SSPoint& sp, float, float, float) {
-		Acts::Vector3 position { sp.x(), sp.y(), sp.z() };
-		Acts::Vector2 covariance { sp.varianceR(), sp.varianceZ() };
-		return std::make_tuple(position, covariance, sp.t());
-	};
-
 	std::vector<const ACTSTracking::SeedSpacePoint*> spacePointPtrs(spacePoints.size(), nullptr);
 	std::transform(spacePoints.begin(), spacePoints.end(), spacePointPtrs.begin(),
 		[](const ACTSTracking::SeedSpacePoint &sp) { return &sp; });
 
-	Acts::Extent rRangeSPExtent;
+	Acts::SpacePointContainerConfig spConfig;
+	spConfig.useDetailedDoubleMeasurementInfo = finderCfg.useDetailedDoubleMeasurementInfo;
 
-	Acts::CylindricalSpacePointGrid<SSPoint> grid = 
-		Acts::CylindricalSpacePointGridCreator::createGrid<SSPoint>(
-				gridCfg.toInternalUnits(), gridOpts.toInternalUnits());
-	Acts::CylindricalSpacePointGridCreator::fillGrid(finderCfg, finderOpts, grid, 
-			spacePointPtrs.begin(), spacePointPtrs.end(), extractGlobalQuantities, rRangeSPExtent);
+	Acts::SpacePointContainerOptions spOptions;
+	spOptions.beamPos = { 0., 0. };
 
-	const Acts::GridBinFinder<2ul> bottomBinFinder(m_phiBottomBinLen.value(), m_zBottomBinLen.value());
-	const Acts::GridBinFinder<2ul> topBinFinder(m_phiTopBinLen.value(), m_zTopBinLen.value());
+	ACTSTracking::SpacePointContainer container(spacePointPtrs);
+	Acts::SpacePointContainer<decltype(container), Acts::detail::RefHolder>
+		spContainer(spConfig, spOptions, container);
+
+	SSPointGrid grid = Acts::CylindricalSpacePointGridCreator::createGrid<SSPoint>(
+		gridCfg.toInternalUnits(), gridOpts.toInternalUnits());
+	Acts::CylindricalSpacePointGridCreator::fillGrid(finderCfg, finderOpts, grid, spContainer);
+
+	const Acts::GridBinFinder<3ul> bottomBinFinder(m_phiBottomBinLen.value(), m_zBottomBinLen.value(), 0);
+	const Acts::GridBinFinder<3ul> topBinFinder(m_phiTopBinLen.value(), m_zTopBinLen.value(), 0);
+
+	Acts::SeedFinder<SSPoint, SSPointGrid> finder(finderCfg);
+	decltype(finder)::SeedingState state;
+	std::vector<Acts::Seed<SSPoint>> seeds;
+
+	state.spacePointMutableData.resize(spContainer.size());
+
+	float minRange = std::numeric_limits<float>::max();
+	float maxRange = std::numeric_limits<float>::lowest();
+	for (const auto& coll : grid)
+	{
+		if (coll.empty()) continue;
+
+		const auto* firstEl = coll.front();
+		const auto* lastEl = coll.back();
+		minRange = std::min(firstEl->radius(), minRange);
+		maxRange = std::max(lastEl->radius(), maxRange);
+	}
 
 	auto spacePointsGrouping = Acts::CylindricalBinnedGroup<SSPoint>(
 		std::move(grid), bottomBinFinder, topBinFinder);
 
-	Acts::SeedFinder<SSPoint> finder(finderCfg);
-	decltype(finder)::SeedingState state;
-	std::vector<Acts::Seed<SSPoint>> seeds;
-
-	state.spacePointData.resize(spacePointPtrs.size(), finderCfg.useDetailedDoubleMeasurementInfo);
-
-	float up = Acts::clampValue<float>(std::floor(rRangeSPExtent.max(Acts::binR) / 2) * 2);
 	const Acts::Range1D<float> rMiddleSPRange(
-		std::floor(rRangeSPExtent.min(Acts::binR) / 2) * 2 + finderCfg.deltaRMiddleMinSPRange,
-		up - finderCfg.deltaRMiddleMaxSPRange);                  // TODO investigate
+		std::floor(minRange / 2) * 2 + finderCfg.deltaRMiddleMinSPRange,
+		std::floor(maxRange / 2) * 2 - finderCfg.deltaRMiddleMaxSPRange);
 
 	auto entireStart = std::chrono::high_resolution_clock::now();
 	
@@ -373,15 +392,24 @@ std::tuple<edm4hep::TrackCollection,
 		seeds.clear();
 
 		finder.createSeedsForGroup(finderOpts, state, spacePointsGrouping.grid(),
-			std::back_inserter(seeds), bottom, middle, top, rMiddleSPRange);
+			seeds, bottom, middle, top, rMiddleSPRange);
 	
 		auto seedStart = std::chrono::high_resolution_clock::now();
 		
 		// Loop over seeds and get track parameters
 		paramseeds.clear();
 
-		for (const Acts::Seed<SSPoint> &seed : seeds) {
-			const SSPoint* bottomSP = seed.sp().front();
+		std::vector<Acts::Seed<ACTSTracking::SeedSpacePoint>> f_seeds;
+		for (const Acts::Seed<SSPoint> &seed : seeds)
+		{
+			const auto& sps = seed.sp();
+			f_seeds.emplace_back(*sps[0]->externalSpacePoint(),
+				*sps[1]->externalSpacePoint(),
+				*sps[2]->externalSpacePoint());
+		}
+
+		for (const auto &seed : f_seeds) {
+			const ACTSTracking::SeedSpacePoint* bottomSP = seed.sp().front();
 
 			const auto& sourceLink = bottomSP->sourceLink();
 			const Acts::GeometryIdentifier& geoId = sourceLink.geometryId();
@@ -398,14 +426,14 @@ std::tuple<edm4hep::TrackCollection,
 				throw std::runtime_error("Field lookup error: " + seedField.error().value());
 			}
 
-			std::optional<Acts::BoundVector> optParams = Acts::estimateTrackParamsFromSeed(geometryContext(),
-				seed.sp().begin(), seed.sp().end(), *surface, *seedField, 0.1_T);
-			if (!optParams.has_value()) {
+			Acts::Result<Acts::BoundVector> optParams = Acts::estimateTrackParamsFromSeed(geometryContext(),
+				seed.sp(), *surface, *seedField);
+			if (!optParams.ok()) {
 				info() << "Failed estimation of track parameters for seed." << endmsg;
 				continue;
 			}
 
-			const Acts::BoundVector &params = optParams.value();
+			const Acts::BoundVector &params = *optParams;
 
 			float charge = std::copysign(1, params[Acts::eBoundQOverP]);
 			float p = std::abs(1 / params[Acts::eBoundQOverP]);
@@ -472,7 +500,18 @@ std::tuple<edm4hep::TrackCollection,
 			auto result = trackFinder.findTracks(paramseeds.at(iseed), ckfOptions, tracks);
 			if (result.ok()) {
 				const auto& fitOutput = result.value();
-				for (const TrackContainer::TrackProxy& trackTip : fitOutput) {
+				for (const TrackContainer::TrackProxy& trackItem : fitOutput) {
+
+					// Track smoothing
+					auto trackTip = tracks.makeTrack();
+				    trackTip.copyFrom(trackItem, true);
+				    auto smoothResult = Acts::smoothTrack(geometryContext(), trackTip);
+				    if (!smoothResult.ok())
+				    {
+				        warning() << "Track smoothing error: " << smoothResult.error() << endmsg;
+				        continue;
+				    }
+
 					// Helpful debug output
 					debug() << "Trajectory Summary" << endmsg;
 					debug() << "\tchi2Sum       " << trackTip.chi2() << endmsg;
