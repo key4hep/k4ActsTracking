@@ -14,14 +14,46 @@ concurrency:
 jobs:
   build-mucoll-image:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/muoncollidersoft/mucoll-sim-ubuntu24:full_gaudi_test
     steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: endersonmenezes/free-disk-space@v2
+        with:
+          remove_android: true
+          remove_dotnet: true
+          remove_haskell: true
+          remove_tool_cache: true
+          remove_swap: true
+          remove_packages: "azure-cli google-cloud-cli microsoft-edge-stable google-chrome-stable firefox postgresql* temurin-* *llvm* mysql* dotnet-sdk-*"
+          remove_packages_one_command: true
+          remove_folders: "/usr/share/swift /usr/share/miniconda /usr/share/az* /usr/share/glade* /usr/local/lib/node_modules /usr/local/share/chromium /usr/local/share/powershell"
+          testing: false
       - uses: actions/checkout@v5
+      - shell: bash
+        run: echo "NOW=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-mucoll-image-${{ env.NOW }}
+          restore-keys: |
+            ccache-mucoll-image-
+      - name: Launch Container
+        run: |
+          mkdir -p ~/.cache/ccache
+          chmod 777 ~/.cache/ccache
+          docker run -it --name ci_container --privileged -v ${GITHUB_WORKSPACE}:/packages -v ~/.cache/ccache:/home/mucoll/.cache/ccache -d ghcr.io/muoncollidersoft/mucoll-ml-ubuntu24:full_gaudi_test
+      - name: Get Setup Script
+        run: |
+          SETUP_SCRIPT=$(docker exec ci_container /bin/bash -c "grep setup_mucoll_ml /etc/profile.d/aliases.sh | awk -F '=' '{print \$2}' | sed 's/\"//g'")
+          echo "SETUP_SCRIPT=$SETUP_SCRIPT" >> $GITHUB_ENV
       - name: Build and test
         run: |
-          # setup_mucoll alias is not available, so we go for the setup script path directly
-          . /opt/spack/opt/spack/*/*/*/*/*/mucoll-stack-20*/setup.sh
+          echo $SETUP_SCRIPT > ${GITHUB_WORKSPACE}/build.sh
+          cat << 'EOF' >> ${GITHUB_WORKSPACE}/build.sh
+          set -e
+          export CCACHE_SLOPPINESS=include_file_ctime,include_file_mtime
+          ccache --set-config=max_size=500M
+          ccache -z
+          cd /packages
           cmake -B build -S . -GNinja \
             -DCMAKE_CXX_STANDARD=20 \
             -DCMAKE_INSTALL_PREFIX=$(pwd)/install \
@@ -30,3 +62,15 @@ jobs:
           # Tests need OpenDataDetector, which is not present in the mucoll image atm
           # ctest --test-dir build -j$(nproc) --output-on-failure
           cmake --build build --target install
+
+          ccache -s
+          EOF
+
+          chmod +x ${GITHUB_WORKSPACE}/build.sh
+
+          docker exec ci_container /bin/bash -c "/packages/build.sh"
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: ~/.cache/ccache
+          key: ccache-mucoll-image-${{ env.NOW }}
