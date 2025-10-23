@@ -6,6 +6,7 @@ repos:
       - id: trailing-whitespace
         exclude: (doc/ReleaseNotes.md)
       - id: end-of-file-fixer
+        exclude: (doc/ReleaseNotes.md)
   - repo: local
     hooks:
       - id: clang-format
