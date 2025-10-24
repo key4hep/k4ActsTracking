@@ -87,6 +87,9 @@ protected:
 	//! Encoding String for Tracker CellIDs
 	Gaudi::Property<std::string> m_encodingStringVariable{this, "EncodingStringParameterName", "GlobalTrackerReadoutID", "The name of the DD4hep constant that contains the Encoding string for the detector"};
 
+	//! Detector Schema
+	Gaudi::Property<std::string> m_detectorSchema{this, "DetectorSchema", "MuColl_v1", "The detector schema to use for geometry ID mapping. Options: MuColl_v1, MAIA_v0, MuSIC_v1, MuSIC_v2"};
+
 
 	/**
  	 * @brief Gets the geometry Mapping Tool (To decode Cell IDs)
