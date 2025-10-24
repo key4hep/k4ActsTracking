@@ -45,7 +45,7 @@ using SSPoint = ACTSTracking::SeedSpacePoint;
 DECLARE_COMPONENT(ACTSSeededCKFTrackingAlg)
 
 // Constructor
-ACTSSeededCKFTrackingAlg2::ACTSSeededCKFTrackingAlg(const std::string& name, ISvcLocator* svcLoc) 
+ACTSSeededCKFTrackingAlg::ACTSSeededCKFTrackingAlg(const std::string& name, ISvcLocator* svcLoc) 
 	: ACTSAlgBase(name, svcLoc) {}
 
 StatusCode ACTSSeededCKFTrackingAlg::initialize() {
