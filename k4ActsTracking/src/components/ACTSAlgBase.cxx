@@ -101,7 +101,20 @@ StatusCode ACTSAlgBase::initialize() {
   std::string initString;
   initString = m_geoSvc->constantAsString(m_encodingStringVariable.value());
 
-	m_geoIDMappingTool = std::make_shared<GeometryIdMappingTool>(initString);
+  GeometryIdMappingTool::DetSchema dSchema;
+  if (m_detectorSchema == "MuSIC_v1") {
+    dSchema = GeometryIdMappingTool::DetSchema::MuSIC_v1;
+  } else if (m_detectorSchema == "MuSIC_v2") {
+    dSchema = GeometryIdMappingTool::DetSchema::MuSIC_v2;
+  } else if (m_detectorSchema == "MAIA_v0") {
+    dSchema = GeometryIdMappingTool::DetSchema::MAIA_v0;
+  } else if (m_detectorSchema == "MuColl_v1") {
+    dSchema = GeometryIdMappingTool::DetSchema::MuColl_v1;
+  } else {
+    dSchema = GeometryIdMappingTool::DetSchema::MuColl_v1;
+  }
+
+	m_geoIDMappingTool = std::make_shared<GeometryIdMappingTool>(initString, dSchema);
 	return StatusCode::SUCCESS;
 }
 
