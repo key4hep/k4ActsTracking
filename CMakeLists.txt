@@ -20,40 +20,27 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.18)
 
 project(k4ActsTracking LANGUAGES CXX)
 
-find_package(ROOT COMPONENTS RIO Tree)
-find_package(EDM4HEP)
+SET( ${PROJECT_NAME}_VERSION_MAJOR 0 )
+SET( ${PROJECT_NAME}_VERSION_MINOR 1 )
+SET( ${PROJECT_NAME}_VERSION_PATCH 0 )
+
+SET( ${PROJECT_NAME}_VERSION  "${${PROJECT_NAME}_VERSION_MAJOR}.${${PROJECT_NAME}_VERSION_MINOR}.${${PROJECT_NAME}_VERSION_PATCH}" )
+
 find_package(k4FWCore REQUIRED)
 find_package(Acts REQUIRED COMPONENTS Core PluginDD4hep)
-find_package(DD4hep)
+find_package(DD4hep REQUIRED COMPONENTS DDCore DDRec)
 
-#---------------------------------------------------------------
-# Load macros and functions for Gaudi-based projects
+include(cmake/Key4hepConfig.cmake)
 
-find_package(Gaudi)
 #---------------------------------------------------------------
 
 include(GNUInstallDirs)
 
-# Set up C++ Standard
-# ``-DCMAKE_CXX_STANDARD=<standard>`` when invoking CMake
-set(CMAKE_CXX_STANDARD 17 CACHE STRING "")
-
-if(NOT CMAKE_CXX_STANDARD MATCHES "14|17|20")
-  message(FATAL_ERROR "Unsupported C++ standard: ${CMAKE_CXX_STANDARD}")
-endif()
-
 include(CTest)
 
 add_subdirectory(k4ActsTracking)
-add_subdirectory(data)
-add_subdirectory(test)
+if (BUILD_TESTING)
+  add_subdirectory(test)
+endif()
 
-
-configure_file(k4ActsTracking/src/components/config.h.in config.h)
-install(EXPORT ${PROJECT_NAME}Targets
-  NAMESPACE ${PROJECT_NAME}::
-  FILE "${PROJECT_NAME}Targets.cmake"
-  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}/"
-  )
-
-gaudi_install(CMAKE cmake/${PROJECT_NAME}Config.cmake)
+include(cmake/createk4ActsTrackingConfig.cmake)

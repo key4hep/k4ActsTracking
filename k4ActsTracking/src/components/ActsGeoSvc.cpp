@@ -16,27 +16,31 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #include "ActsGeoSvc.h"
+
+#include "k4ActsTracking/ActsGaudiLogger.h"
+
+#include "k4Interface/IGeoSvc.h"
+
 #include "Acts/Geometry/TrackingGeometry.hpp"
-#include "Acts/MagneticField/MagneticFieldContext.hpp"
-#include "Acts/Plugins/DD4hep/ConvertDD4hepDetector.hpp"
-#include "Acts/Surfaces/PlaneSurface.hpp"
-#include "Acts/Utilities/Logger.hpp"
 #include "Acts/Visualization/GeometryView3D.hpp"
 #include "Acts/Visualization/ObjVisualization3D.hpp"
-#include "DD4hep/Printout.h"
-#include "GaudiKernel/Service.h"
-#include "TGeoManager.h"
-#include "k4Interface/IGeoSvc.h"
+#if __has_include("ActsPlugins/DD4hep/ConvertDD4hepDetector.hpp")
+#include "ActsPlugins/DD4hep/ConvertDD4hepDetector.hpp"
+#else
+#include "Acts/Plugins/DD4hep/ConvertDD4hepDetector.hpp"
+namespace ActsPlugins {
+  using Acts::convertDD4hepDetector;
+  using Acts::sortDetElementsByID;
+
+}  // namespace ActsPlugins
+#endif
 
 using namespace Gaudi;
 
 DECLARE_COMPONENT(ActsGeoSvc)
 
-ActsGeoSvc::ActsGeoSvc(const std::string& name, ISvcLocator* svc) : base_class(name, svc), m_log(msgSvc(), name) {}
-
-ActsGeoSvc::~ActsGeoSvc(){};
+ActsGeoSvc::ActsGeoSvc(const std::string& name, ISvcLocator* svc) : base_class(name, svc) {}
 
 StatusCode ActsGeoSvc::initialize() {
   m_dd4hepGeo = svcLocator()->service<IGeoSvc>(m_geoSvcName)->getDetector();
@@ -49,27 +53,25 @@ StatusCode ActsGeoSvc::initialize() {
   double            layerEnvelopeR        = Acts::UnitConstants::mm;
   double            layerEnvelopeZ        = Acts::UnitConstants::mm;
   double            defaultLayerThickness = Acts::UnitConstants::fm;
-  using Acts::sortDetElementsByID;
-  auto logger   = Acts::getDefaultLogger("k4ActsTracking", m_actsLoggingLevel);
-  m_trackingGeo = Acts::convertDD4hepDetector(m_dd4hepGeo->world(), *logger, bTypePhi, bTypeR, bTypeZ, layerEnvelopeR,
-                                              layerEnvelopeZ, defaultLayerThickness, sortDetElementsByID,
-                                              m_trackingGeoCtx, m_materialDeco);
+
+  auto logger   = makeActsGaudiLogger(this);
+  m_trackingGeo = ActsPlugins::convertDD4hepDetector(
+      m_dd4hepGeo->world(), *logger, bTypePhi, bTypeR, bTypeZ, layerEnvelopeR, layerEnvelopeZ, defaultLayerThickness,
+      ActsPlugins::sortDetElementsByID, m_trackingGeoCtx, m_materialDeco);
 
   /// Setting geometry debug option
   if (m_debugGeometry == true) {
-    m_log << MSG::INFO << "Geometry debugging is ON." << endmsg;
+    info() << "Geometry debugging is ON." << endmsg;
 
     if (createGeoObj().isFailure()) {
-      m_log << MSG::ERROR << "Could not create geometry OBJ" << endmsg;
+      error() << "Could not create geometry OBJ" << endmsg;
       return StatusCode::FAILURE;
     } else {
-      m_log << MSG::INFO << "Geometry OBJ SUCCESSFULLY created" << endmsg;
+      info() << "Geometry OBJ SUCCESSFULLY created" << endmsg;
     }
   } else {
-    m_log << MSG::VERBOSE << "Geometry debugging is OFF." << endmsg;
-    return StatusCode::SUCCESS;
+    info() << "Geometry converted without checking if GeoObj can be created" << endmsg;
   }
-  std::cout << "works!" << std::endl;
 
   return StatusCode::SUCCESS;
 }
@@ -95,7 +97,7 @@ StatusCode ActsGeoSvc::createGeoObj() {
     Acts::GeometryView3D::drawSurface(m_obj, *surface, m_trackingGeoCtx);
   });
   m_obj.write(m_outputFileName.value());
-  m_log << MSG::INFO << m_outputFileName << " SUCCESSFULLY written." << endmsg;
+  info() << m_outputFileName << " SUCCESSFULLY written." << endmsg;
 
   return StatusCode::SUCCESS;
 }
