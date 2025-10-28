@@ -39,6 +39,7 @@ include(GNUInstallDirs)
 include(CTest)
 
 add_subdirectory(k4ActsTracking)
+add_subdirectory(data)
 if (BUILD_TESTING)
   add_subdirectory(test)
 endif()
