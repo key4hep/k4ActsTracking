@@ -33,7 +33,7 @@
 
 namespace ACTSTracking {
 
-  /** 
+  /**
  * @brief Maps DD4hep cell ID's to ACTS geometry ID's
  *
  * Lots of hardcoded values that match up to mod5 geometry
