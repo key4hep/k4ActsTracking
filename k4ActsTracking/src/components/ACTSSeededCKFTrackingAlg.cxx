@@ -316,7 +316,8 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
       if (pos >= finderCfg.zMin && pos < finderCfg.zMax) {
         gridCfg.zBinEdges[k] = pos;
       } else {
-        warning() << "Wrong parameter SeedFinding_zBinEdges; " << "default used" << endmsg;
+        warning() << "Wrong parameter SeedFinding_zBinEdges; " 
+                  << "default used" << endmsg;
         gridCfg.zBinEdges.clear();
         break;
       }
