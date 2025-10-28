@@ -242,7 +242,7 @@ void ACTSAlgBase::buildDetector() {
   };
 
   // Loop over volumes to define sub-detectors
-  for (const auto& volume : tgeodesc["volumes"]) {
+  for (const auto& volume : tgeodesc["Volumes"]) {
     // Volume information
     Acts::TGeoLayerBuilder::Config layerBuilderConfig;
     layerBuilderConfig.configurationName  = volume["geo-tgeo-volume-name"];
