@@ -41,63 +41,46 @@
 
 using namespace ACTSTracking;
 
-ACTSAlgBase::ACTSAlgBase(const std::string& name, ISvcLocator* svcLoc) : MultiTransformer(
-    name, svcLoc,
-    		{ KeyValues("InputTrackerHitCollectionName", {"TrackerHits"}) }, {
-		  KeyValues("OutputSeedCollectionName", {"SeedTracks"}),
-		  KeyValues("OutputTrackCollectionName", {"Tracks"}) }) 
-{
+ACTSAlgBase::ACTSAlgBase(const std::string& name, ISvcLocator* svcLoc)
+    : MultiTransformer(
+          name, svcLoc, {KeyValues("InputTrackerHitCollectionName", {"TrackerHits"})},
+          {KeyValues("OutputSeedCollectionName", {"SeedTracks"}), KeyValues("OutputTrackCollectionName", {"Tracks"})}) {
   m_geoSvc = serviceLocator()->service("GeoSvc");  // important to initialize m_geoSvc
 }
 
+std::shared_ptr<GeometryIdMappingTool> ACTSAlgBase::geoIDMappingTool() const { return m_geoIDMappingTool; }
 
+const Acts::MagneticFieldContext& ACTSAlgBase::magneticFieldContext() const { return m_magneticFieldContext; }
 
+const Acts::GeometryContext& ACTSAlgBase::geometryContext() const { return m_geometryContext; }
 
-std::shared_ptr<GeometryIdMappingTool> ACTSAlgBase::geoIDMappingTool() const {
-	return m_geoIDMappingTool;
-}
+const Acts::CalibrationContext& ACTSAlgBase::calibrationContext() const { return m_calibrationContext; }
 
-const Acts::MagneticFieldContext& ACTSAlgBase::magneticFieldContext() const {
-	return m_magneticFieldContext;
-}
+std::shared_ptr<Acts::MagneticFieldProvider> ACTSAlgBase::magneticField() const { return m_magneticField; }
 
-const Acts::GeometryContext& ACTSAlgBase::geometryContext() const {
-	return m_geometryContext;
-}
-
-const Acts::CalibrationContext& ACTSAlgBase::calibrationContext() const {
-	return m_calibrationContext;
-}
-
-std::shared_ptr<Acts::MagneticFieldProvider> ACTSAlgBase::magneticField() const {
-	return m_magneticField;
-}
-
-std::shared_ptr<const Acts::TrackingGeometry> ACTSAlgBase::trackingGeometry() const {
-	return m_trackingGeometry;
-}
+std::shared_ptr<const Acts::TrackingGeometry> ACTSAlgBase::trackingGeometry() const { return m_trackingGeometry; }
 
 const Acts::Surface* ACTSAlgBase::findSurface(const edm4hep::TrackerHit hit) const {
-	auto moduleGeoId = Acts::GeometryIdentifier(m_geoIDMappingTool->getGeometryID(hit));
-	return m_trackingGeometry->findSurface(moduleGeoId);
+  auto moduleGeoId = Acts::GeometryIdentifier(m_geoIDMappingTool->getGeometryID(hit));
+  return m_trackingGeometry->findSurface(moduleGeoId);
 }
 
 StatusCode ACTSAlgBase::initialize() {
-	// Parse parameters
-	m_matFile = findFile(m_matFile);
-	m_tgeoFile = findFile(m_tgeoFile);
+  // Parse parameters
+  m_matFile  = findFile(m_matFile);
+  m_tgeoFile = findFile(m_tgeoFile);
 
   // Load geometry
-	info() << " -------------------------------------" << endmsg;
+  info() << " -------------------------------------" << endmsg;
 
-	info() << " -- Building magnetic field" << endmsg;
-	buildBfield();
-	info() << " -- Building tracking detector" << endmsg;
-	buildDetector();
+  info() << " -- Building magnetic field" << endmsg;
+  buildBfield();
+  info() << " -- Building tracking detector" << endmsg;
+  buildDetector();
 
-	info() << " -------------------------------------" << endmsg;
+  info() << " -------------------------------------" << endmsg;
 
-	// Initialize mapping tool
+  // Initialize mapping tool
   std::string initString;
   initString = m_geoSvc->constantAsString(m_encodingStringVariable.value());
 
@@ -114,15 +97,15 @@ StatusCode ACTSAlgBase::initialize() {
     dSchema = GeometryIdMappingTool::DetSchema::MuColl_v1;
   }
 
-	m_geoIDMappingTool = std::make_shared<GeometryIdMappingTool>(initString, dSchema);
-	return StatusCode::SUCCESS;
+  m_geoIDMappingTool = std::make_shared<GeometryIdMappingTool>(initString, dSchema);
+  return StatusCode::SUCCESS;
 }
 
 void ACTSAlgBase::buildDetector() {
   // Logging
   Acts::Logging::Level surfaceLogLevel = Acts::Logging::INFO;
-  Acts::Logging::Level layerLogLevel = Acts::Logging::INFO;
-  Acts::Logging::Level volumeLogLevel = Acts::Logging::INFO;
+  Acts::Logging::Level layerLogLevel   = Acts::Logging::INFO;
+  Acts::Logging::Level volumeLogLevel  = Acts::Logging::INFO;
 
   // Material description
   std::shared_ptr<const Acts::IMaterialDecorator> matDeco = nullptr;
@@ -130,8 +113,7 @@ void ACTSAlgBase::buildDetector() {
     // Set up the converter first
     Acts::MaterialMapJsonConverter::Config jsonGeoConvConfig;
     // Set up the json-based decorator
-    matDeco = std::make_shared<const Acts::JsonMaterialDecorator>(
-        jsonGeoConvConfig, m_matFile, Acts::Logging::INFO);
+    matDeco = std::make_shared<const Acts::JsonMaterialDecorator>(jsonGeoConvConfig, m_matFile, Acts::Logging::INFO);
   }
 
   // Geometry
@@ -139,7 +121,7 @@ void ACTSAlgBase::buildDetector() {
   if (!m_tgeoFile.empty()) {
     // Save current geometry. This is needed by all the other Processors
     gGeoManagerOld = gGeoManager;
-    gGeoManager = nullptr;  // prevents it from being deleted
+    gGeoManager    = nullptr;  // prevents it from being deleted
 
     // Load new geometry
     TGeoManager::Import(m_tgeoFile.value().c_str());
@@ -147,41 +129,36 @@ void ACTSAlgBase::buildDetector() {
 
   // configure surface array creator
   Acts::SurfaceArrayCreator::Config sacConfig;
-  auto surfaceArrayCreator = std::make_shared<const Acts::SurfaceArrayCreator>(
-      sacConfig,
-      Acts::getDefaultLogger("SurfaceArrayCreator", surfaceLogLevel));
+  auto                              surfaceArrayCreator = std::make_shared<const Acts::SurfaceArrayCreator>(
+      sacConfig, Acts::getDefaultLogger("SurfaceArrayCreator", surfaceLogLevel));
 
   // configure the proto layer helper
   Acts::ProtoLayerHelper::Config plhConfig;
-  auto protoLayerHelper = std::make_shared<const Acts::ProtoLayerHelper>(
+  auto                           protoLayerHelper = std::make_shared<const Acts::ProtoLayerHelper>(
       plhConfig, Acts::getDefaultLogger("ProtoLayerHelper", layerLogLevel));
 
   // configure the layer creator that uses the surface array creator
   Acts::LayerCreator::Config lcConfig;
   lcConfig.surfaceArrayCreator = surfaceArrayCreator;
-  auto layerCreator = std::make_shared<const Acts::LayerCreator>(
-      lcConfig, Acts::getDefaultLogger("LayerCreator", layerLogLevel));
+  auto layerCreator =
+      std::make_shared<const Acts::LayerCreator>(lcConfig, Acts::getDefaultLogger("LayerCreator", layerLogLevel));
 
   // configure the layer array creator
   Acts::LayerArrayCreator::Config lacConfig;
-  auto layerArrayCreator = std::make_shared<const Acts::LayerArrayCreator>(
+  auto                            layerArrayCreator = std::make_shared<const Acts::LayerArrayCreator>(
       lacConfig, Acts::getDefaultLogger("LayerArrayCreator", layerLogLevel));
 
   // tracking volume array creator
   Acts::TrackingVolumeArrayCreator::Config tvacConfig;
-  auto tVolumeArrayCreator =
-      std::make_shared<const Acts::TrackingVolumeArrayCreator>(
-          tvacConfig,
-          Acts::getDefaultLogger("TrackingVolumeArrayCreator", volumeLogLevel));
+  auto tVolumeArrayCreator = std::make_shared<const Acts::TrackingVolumeArrayCreator>(
+      tvacConfig, Acts::getDefaultLogger("TrackingVolumeArrayCreator", volumeLogLevel));
 
   // configure the cylinder volume helper
   Acts::CylinderVolumeHelper::Config cvhConfig;
-  cvhConfig.layerArrayCreator = layerArrayCreator;
+  cvhConfig.layerArrayCreator          = layerArrayCreator;
   cvhConfig.trackingVolumeArrayCreator = tVolumeArrayCreator;
-  auto cylinderVolumeHelper =
-      std::make_shared<const Acts::CylinderVolumeHelper>(
-          cvhConfig,
-          Acts::getDefaultLogger("CylinderVolumeHelper", volumeLogLevel));
+  auto cylinderVolumeHelper            = std::make_shared<const Acts::CylinderVolumeHelper>(
+      cvhConfig, Acts::getDefaultLogger("CylinderVolumeHelper", volumeLogLevel));
 
   //-------------------------------------------------------------------------------------
   // list the volume builders
@@ -228,8 +205,8 @@ void ACTSAlgBase::buildDetector() {
   // TODO: Make this configurable from a file
   {  // Vertex
     Acts::TGeoLayerBuilder::Config layerBuilderConfig;
-    layerBuilderConfig.configurationName = "Vertex";
-    layerBuilderConfig.unit = 1 * Acts::UnitConstants::cm;
+    layerBuilderConfig.configurationName  = "Vertex";
+    layerBuilderConfig.unit               = 1 * Acts::UnitConstants::cm;
     layerBuilderConfig.autoSurfaceBinning = true;
 
     layerBuilderConfig.surfaceBinMatcher = Acts::SurfaceBinningMatcher();
@@ -237,23 +214,22 @@ void ACTSAlgBase::buildDetector() {
     auto& binTolerances = layerBuilderConfig.surfaceBinMatcher.tolerances;
 
 #ifdef K4ACTSTRACKING_ACTS_V32
-    binTolerances[Acts::binR] = {5, 5};
-    binTolerances[Acts::binZ] = {5, 5};
+    binTolerances[Acts::binR]   = {5, 5};
+    binTolerances[Acts::binZ]   = {5, 5};
     binTolerances[Acts::binPhi] = {0.025, 0.025};
 #else
-    binTolerances[static_cast<int>(Acts::AxisDirection::AxisR)] = {5, 5};
-    binTolerances[static_cast<int>(Acts::AxisDirection::AxisZ)] = {5, 5};
+    binTolerances[static_cast<int>(Acts::AxisDirection::AxisR)]   = {5, 5};
+    binTolerances[static_cast<int>(Acts::AxisDirection::AxisZ)]   = {5, 5};
     binTolerances[static_cast<int>(Acts::AxisDirection::AxisPhi)] = {0.25, 0.25};
 #endif
 
     {  // negative endcap
       // Create the layer config object and fill it
       Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName = "VertexEndcap*";
+      lConfig.volumeName  = "VertexEndcap*";
       lConfig.sensorNames = {"sensor*"};
-      lConfig.localAxes = "xZy";
-      lConfig.envelope = std::pair<double, double>(
-          0.1 * Acts::UnitConstants::mm, 0.1 * Acts::UnitConstants::mm);
+      lConfig.localAxes   = "xZy";
+      lConfig.envelope    = std::pair<double, double>(0.1 * Acts::UnitConstants::mm, 0.1 * Acts::UnitConstants::mm);
 
 #ifdef K4ACTSTRACKING_ACTS_V32
       // Fill the parsing restrictions in r
@@ -282,11 +258,10 @@ void ACTSAlgBase::buildDetector() {
     {  // barrel
       // Create the layer config object and fill it
       Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName = "VertexBarrel*";
+      lConfig.volumeName  = "VertexBarrel*";
       lConfig.sensorNames = {"VertexBarrel_layer*_sens"};
-      lConfig.localAxes = "YZX";
-      lConfig.envelope = std::pair<double, double>(
-          0.1 * Acts::UnitConstants::mm, 0.1 * Acts::UnitConstants::mm);
+      lConfig.localAxes   = "YZX";
+      lConfig.envelope    = std::pair<double, double>(0.1 * Acts::UnitConstants::mm, 0.1 * Acts::UnitConstants::mm);
 
 #ifdef K4ACTSTRACKING_ACTS_V32
       // Fill the parsing restrictions in r
@@ -315,11 +290,10 @@ void ACTSAlgBase::buildDetector() {
     {  // positive endcap
       // Create the layer config object and fill it
       Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName = "VertexEndcap*";
+      lConfig.volumeName  = "VertexEndcap*";
       lConfig.sensorNames = {"sensor*"};
-      lConfig.localAxes = "xZy";
-      lConfig.envelope = std::pair<double, double>(
-          0.1 * Acts::UnitConstants::mm, 0.1 * Acts::UnitConstants::mm);
+      lConfig.localAxes   = "xZy";
+      lConfig.envelope    = std::pair<double, double>(0.1 * Acts::UnitConstants::mm, 0.1 * Acts::UnitConstants::mm);
 
       // Fill the parsing restrictions in r
 #ifdef K4ACTSTRACKING_ACTS_V32
@@ -349,29 +323,28 @@ void ACTSAlgBase::buildDetector() {
 
   {  // InnerTracker
     Acts::TGeoLayerBuilder::Config layerBuilderConfig;
-    layerBuilderConfig.configurationName = "InnerTrackers";
+    layerBuilderConfig.configurationName  = "InnerTrackers";
     layerBuilderConfig.autoSurfaceBinning = true;
-    layerBuilderConfig.surfaceBinMatcher = Acts::SurfaceBinningMatcher();
+    layerBuilderConfig.surfaceBinMatcher  = Acts::SurfaceBinningMatcher();
     // AutoBinning
     auto& binTolerances = layerBuilderConfig.surfaceBinMatcher.tolerances;
 #ifdef K4ACTSTRACKING_ACTS_V32
-    binTolerances[Acts::binR] = {5, 5};
-    binTolerances[Acts::binZ] = {5, 5};
+    binTolerances[Acts::binR]   = {5, 5};
+    binTolerances[Acts::binZ]   = {5, 5};
     binTolerances[Acts::binPhi] = {0.025, 0.025};
 #else
-    binTolerances[static_cast<int>(Acts::AxisDirection::AxisR)] = {5, 5};
-    binTolerances[static_cast<int>(Acts::AxisDirection::AxisZ)] = {5, 5};
+    binTolerances[static_cast<int>(Acts::AxisDirection::AxisR)]   = {5, 5};
+    binTolerances[static_cast<int>(Acts::AxisDirection::AxisZ)]   = {5, 5};
     binTolerances[static_cast<int>(Acts::AxisDirection::AxisPhi)] = {0.025, 0.025};
 #endif
-    layerBuilderConfig.surfaceBinMatcher =
-        Acts::SurfaceBinningMatcher(binTolerances);
+    layerBuilderConfig.surfaceBinMatcher = Acts::SurfaceBinningMatcher(binTolerances);
 
     {  // negative endcap
       // Create the layer config object and fill it
       Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName = "InnerTrackerEndcap*";
+      lConfig.volumeName  = "InnerTrackerEndcap*";
       lConfig.sensorNames = {"sensor*"};
-      lConfig.localAxes = "XYZ";
+      lConfig.localAxes   = "XYZ";
 
 #ifdef K4ACTSTRACKING_ACTS_V32
       // Fill the parsing restrictions in r
@@ -399,9 +372,9 @@ void ACTSAlgBase::buildDetector() {
     {  // barrel
       // Create the layer config object and fill it
       Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName = "InnerTrackerBarrel*";
+      lConfig.volumeName  = "InnerTrackerBarrel*";
       lConfig.sensorNames = {"sensor*"};
-      lConfig.localAxes = "XYZ";
+      lConfig.localAxes   = "XYZ";
 
 #ifdef K4ACTSTRACKING_ACTS_V32
       // Fill the parsing restrictions in r
@@ -429,9 +402,9 @@ void ACTSAlgBase::buildDetector() {
     {  // positive endcap
       // Create the layer config object and fill it
       Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName = "InnerTrackerEndcap*";
+      lConfig.volumeName  = "InnerTrackerEndcap*";
       lConfig.sensorNames = {"sensor*"};
-      lConfig.localAxes = "XYZ";
+      lConfig.localAxes   = "XYZ";
 
 #ifdef K4ACTSTRACKING_ACTS_V32
       // Fill the parsing restrictions in r
@@ -463,24 +436,24 @@ void ACTSAlgBase::buildDetector() {
 
   {  // OuterInnerTracker
     Acts::TGeoLayerBuilder::Config layerBuilderConfig;
-    layerBuilderConfig.configurationName = "OuterInnerTrackers";
+    layerBuilderConfig.configurationName  = "OuterInnerTrackers";
     layerBuilderConfig.autoSurfaceBinning = true;
-    layerBuilderConfig.surfaceBinMatcher = Acts::SurfaceBinningMatcher();
+    layerBuilderConfig.surfaceBinMatcher  = Acts::SurfaceBinningMatcher();
 
     // AutoBinning
     auto& binTolerances = layerBuilderConfig.surfaceBinMatcher.tolerances;
 #ifdef K4ACTSTRACKING_ACTS_V32
-    binTolerances[Acts::binR] = {5, 5};
-    binTolerances[Acts::binZ] = {5, 5};
+    binTolerances[Acts::binR]   = {5, 5};
+    binTolerances[Acts::binZ]   = {5, 5};
     binTolerances[Acts::binPhi] = {0.025, 0.025};
 #endif
 
     {  // negative endcap
       // Create the layer config object and fill it
       Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName = "InnerTrackerEndcap*";
+      lConfig.volumeName  = "InnerTrackerEndcap*";
       lConfig.sensorNames = {"sensor*"};
-      lConfig.localAxes = "XYZ";
+      lConfig.localAxes   = "XYZ";
 
 #ifdef K4ACTSTRACKING_ACTS_V32
       // Fill the parsing restrictions in r
@@ -508,9 +481,9 @@ void ACTSAlgBase::buildDetector() {
     {  // barrel
       // Create the layer config object and fill it
       Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName = "InnerTrackerBarrel*";
+      lConfig.volumeName  = "InnerTrackerBarrel*";
       lConfig.sensorNames = {"sensor*"};
-      lConfig.localAxes = "XYZ";
+      lConfig.localAxes   = "XYZ";
 
 #ifdef K4ACTSTRACKING_ACTS_V32
       // Fill the parsing restrictions in r
@@ -539,9 +512,9 @@ void ACTSAlgBase::buildDetector() {
     {  // positive endcap
       // Create the layer config object and fill it
       Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName = "InnerTrackerEndcap*";
+      lConfig.volumeName  = "InnerTrackerEndcap*";
       lConfig.sensorNames = {"sensor*"};
-      lConfig.localAxes = "XYZ";
+      lConfig.localAxes   = "XYZ";
 
 #ifdef K4ACTSTRACKING_ACTS_V32
       // Fill the parsing restrictions in r
@@ -572,28 +545,28 @@ void ACTSAlgBase::buildDetector() {
 
   {  // OuterTracker
     Acts::TGeoLayerBuilder::Config layerBuilderConfig;
-    layerBuilderConfig.configurationName = "OuterTrackers";
+    layerBuilderConfig.configurationName  = "OuterTrackers";
     layerBuilderConfig.autoSurfaceBinning = true;
-    layerBuilderConfig.surfaceBinMatcher = Acts::SurfaceBinningMatcher();
+    layerBuilderConfig.surfaceBinMatcher  = Acts::SurfaceBinningMatcher();
     // AutoBinning
     auto& binTolerances = layerBuilderConfig.surfaceBinMatcher.tolerances;
 
 #ifdef K4ACTSTRACKING_ACTS_V32
-    binTolerances[Acts::binR] = {5, 5};
-    binTolerances[Acts::binZ] = {5, 5};
+    binTolerances[Acts::binR]   = {5, 5};
+    binTolerances[Acts::binZ]   = {5, 5};
     binTolerances[Acts::binPhi] = {0.025, 0.025};
 #else
-    binTolerances[static_cast<int>(Acts::AxisDirection::AxisR)] = {5, 5};
-    binTolerances[static_cast<int>(Acts::AxisDirection::AxisZ)] = {5, 5};
+    binTolerances[static_cast<int>(Acts::AxisDirection::AxisR)]   = {5, 5};
+    binTolerances[static_cast<int>(Acts::AxisDirection::AxisZ)]   = {5, 5};
     binTolerances[static_cast<int>(Acts::AxisDirection::AxisPhi)] = {0.025, 0.025};
 #endif
 
     {  // negative endcap
       // Create the layer config object and fill it
       Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName = "OuterTrackerEndcap*";
+      lConfig.volumeName  = "OuterTrackerEndcap*";
       lConfig.sensorNames = {"sensor*"};
-      lConfig.localAxes = "XYZ";
+      lConfig.localAxes   = "XYZ";
 
 #ifdef K4ACTSTRACKING_ACTS_V32
       // Fill the parsing restrictions in r
@@ -622,9 +595,9 @@ void ACTSAlgBase::buildDetector() {
     {  // barrel
       // Create the layer config object and fill it
       Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName = "OuterTrackerBarrel*";
+      lConfig.volumeName  = "OuterTrackerBarrel*";
       lConfig.sensorNames = {"sensor*"};
-      lConfig.localAxes = "XYZ";
+      lConfig.localAxes   = "XYZ";
 
 #ifdef K4ACTSTRACKING_ACTS_V32
       // Fill the parsing restrictions in r
@@ -654,9 +627,9 @@ void ACTSAlgBase::buildDetector() {
     {  // positive endcap
       // Create the layer config object and fill it
       Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName = "OuterTrackerEndcap*";
+      lConfig.volumeName  = "OuterTrackerEndcap*";
       lConfig.sensorNames = {"sensor*"};
-      lConfig.localAxes = "XYZ";
+      lConfig.localAxes   = "XYZ";
 
 #ifdef K4ACTSTRACKING_ACTS_V32
       // Fill the parsing restrictions in r
@@ -696,50 +669,37 @@ void ACTSAlgBase::buildDetector() {
       // (in order to configure them to work appropriately)
       Acts::SurfaceArrayCreator::Config sacConfigLB;
       sacConfigLB.surfaceMatcher = lbc.surfaceBinMatcher;
-      auto surfaceArrayCreatorLB =
-          std::make_shared<const Acts::SurfaceArrayCreator>(
-              sacConfigLB, Acts::getDefaultLogger(
-                               lbc.configurationName + "SurfaceArrayCreator",
-                               surfaceLogLevel));
+      auto surfaceArrayCreatorLB = std::make_shared<const Acts::SurfaceArrayCreator>(
+          sacConfigLB, Acts::getDefaultLogger(lbc.configurationName + "SurfaceArrayCreator", surfaceLogLevel));
 
       // configure the layer creator that uses the surface array creator
       Acts::LayerCreator::Config lcConfigLB;
       lcConfigLB.surfaceArrayCreator = surfaceArrayCreatorLB;
-      layerCreatorLB = std::make_shared<const Acts::LayerCreator>(
-          lcConfigLB,
-          Acts::getDefaultLogger(lbc.configurationName + "LayerCreator",
-                                 layerLogLevel));
+      layerCreatorLB                 = std::make_shared<const Acts::LayerCreator>(
+          lcConfigLB, Acts::getDefaultLogger(lbc.configurationName + "LayerCreator", layerLogLevel));
     }
 
     // Configure the proto layer helper
     Acts::ProtoLayerHelper::Config plhConfigLB;
-    auto protoLayerHelperLB = std::make_shared<const Acts::ProtoLayerHelper>(
-        plhConfigLB,
-        Acts::getDefaultLogger(lbc.configurationName + "ProtoLayerHelper",
-                               layerLogLevel));
+    auto                           protoLayerHelperLB = std::make_shared<const Acts::ProtoLayerHelper>(
+        plhConfigLB, Acts::getDefaultLogger(lbc.configurationName + "ProtoLayerHelper", layerLogLevel));
 
     //-------------------------------------------------------------------------------------
-    lbc.layerCreator =
-        (layerCreatorLB != nullptr) ? layerCreatorLB : layerCreator;
-    lbc.protoLayerHelper =
-        (protoLayerHelperLB != nullptr) ? protoLayerHelperLB : protoLayerHelper;
+    lbc.layerCreator     = (layerCreatorLB != nullptr) ? layerCreatorLB : layerCreator;
+    lbc.protoLayerHelper = (protoLayerHelperLB != nullptr) ? protoLayerHelperLB : protoLayerHelper;
 
     auto layerBuilder = std::make_shared<const Acts::TGeoLayerBuilder>(
-        lbc, Acts::getDefaultLogger(lbc.configurationName + "LayerBuilder",
-                                    layerLogLevel));
+        lbc, Acts::getDefaultLogger(lbc.configurationName + "LayerBuilder", layerLogLevel));
     // remember the layer builder
     tgLayerBuilders.push_back(layerBuilder);
 
     // build the pixel volume
     Acts::CylinderVolumeBuilder::Config volumeConfig;
     volumeConfig.trackingVolumeHelper = cylinderVolumeHelper;
-    volumeConfig.volumeName = lbc.configurationName;
-    volumeConfig.buildToRadiusZero = (volumeBuilders.size() == 0);
-    volumeConfig.layerEnvelopeR = {1. * Acts::UnitConstants::mm,
-                                   5. * Acts::UnitConstants::mm};
-    auto ringLayoutConfiguration =
-        [&](const std::vector<Acts::TGeoLayerBuilder::LayerConfig>& lConfigs)
-        -> void {
+    volumeConfig.volumeName           = lbc.configurationName;
+    volumeConfig.buildToRadiusZero    = (volumeBuilders.size() == 0);
+    volumeConfig.layerEnvelopeR       = {1. * Acts::UnitConstants::mm, 5. * Acts::UnitConstants::mm};
+    auto ringLayoutConfiguration      = [&](const std::vector<Acts::TGeoLayerBuilder::LayerConfig>& lConfigs) -> void {
       for (const auto& lcfg : lConfigs) {
         for (const auto& scfg : lcfg.splitConfigs) {
 #ifdef K4ACTSTRACKING_ACTS_V32
@@ -747,8 +707,7 @@ void ACTSAlgBase::buildDetector() {
 #else
           if (scfg.first == Acts::AxisDirection::AxisR and scfg.second > 0.) {
 #endif
-            volumeConfig.ringTolerance =
-                std::max(volumeConfig.ringTolerance, scfg.second);
+            volumeConfig.ringTolerance   = std::max(volumeConfig.ringTolerance, scfg.second);
             volumeConfig.checkRingLayout = true;
           }
         }
@@ -757,10 +716,8 @@ void ACTSAlgBase::buildDetector() {
     ringLayoutConfiguration(lbc.layerConfigurations[0]);
     ringLayoutConfiguration(lbc.layerConfigurations[2]);
     volumeConfig.layerBuilder = layerBuilder;
-    auto volumeBuilder = std::make_shared<const Acts::CylinderVolumeBuilder>(
-        volumeConfig,
-        Acts::getDefaultLogger(lbc.configurationName + "VolumeBuilder",
-                               volumeLogLevel));
+    auto volumeBuilder        = std::make_shared<const Acts::CylinderVolumeBuilder>(
+        volumeConfig, Acts::getDefaultLogger(lbc.configurationName + "VolumeBuilder", volumeLogLevel));
     // add to the list of builders
     volumeBuilders.push_back(volumeBuilder);
   }
@@ -773,24 +730,18 @@ void ACTSAlgBase::buildDetector() {
 
   for (auto& vb : volumeBuilders) {
     tgConfig.trackingVolumeBuilders.push_back(
-        [=](const auto& gcontext, const auto& inner, const auto&) {
-          return vb->trackingVolume(gcontext, inner);
-        });
+        [=](const auto& gcontext, const auto& inner, const auto&) { return vb->trackingVolume(gcontext, inner); });
   }
   // Add the helper
   tgConfig.trackingVolumeHelper = cylinderVolumeHelper;
-  auto cylinderGeometryBuilder =
-      std::make_shared<const Acts::TrackingGeometryBuilder>(
-          tgConfig,
-          Acts::getDefaultLogger("TrackerGeometryBuilder", volumeLogLevel));
+  auto cylinderGeometryBuilder  = std::make_shared<const Acts::TrackingGeometryBuilder>(
+      tgConfig, Acts::getDefaultLogger("TrackerGeometryBuilder", volumeLogLevel));
   // get the geometry
-  m_trackingGeometry =
-      cylinderGeometryBuilder->trackingGeometry(m_geometryContext);
+  m_trackingGeometry = cylinderGeometryBuilder->trackingGeometry(m_geometryContext);
   // collect the detector element store
   for (auto& lBuilder : tgLayerBuilders) {
     auto detElements = lBuilder->detectorElements();
-    m_detectorStore.insert(m_detectorStore.begin(), detElements.begin(),
-                          detElements.end());
+    m_detectorStore.insert(m_detectorStore.begin(), detElements.begin(), detElements.end());
   }
 
   //
@@ -802,23 +753,19 @@ void ACTSAlgBase::buildDetector() {
 
 void ACTSAlgBase::buildBfield() {
   // Get the magnetic field
-  dd4hep::Detector& lcdd = dd4hep::Detector::getInstance();
-  const double position[3] = {
-      0, 0,
-      0};  // position to calculate magnetic field at (the origin in this case)
-  double magneticFieldVector[3] = {
-      0, 0, 0};  // initialise object to hold magnetic field
-  lcdd.field().magneticField(
-      position,
-      magneticFieldVector);  // get the magnetic field vector from DD4hep
+  dd4hep::Detector& lcdd        = dd4hep::Detector::getInstance();
+  const double      position[3] = {0, 0, 0};  // position to calculate magnetic field at (the origin in this case)
+  double            magneticFieldVector[3] = {0, 0, 0};  // initialise object to hold magnetic field
+  lcdd.field().magneticField(position,
+                             magneticFieldVector);  // get the magnetic field vector from DD4hep
 
   // Build ACTS representation of field
   // Note:
   //  magneticFieldVector[2] = 3.57e-13
   //  dd4hep::tesla = 1e-13
   //  Acts::UnitConstants::T = 0.000299792
-  m_magneticField = std::make_shared<Acts::ConstantBField>(Acts::Vector3(
-      magneticFieldVector[0] / dd4hep::tesla * Acts::UnitConstants::T,
-      magneticFieldVector[1] / dd4hep::tesla * Acts::UnitConstants::T,
-      magneticFieldVector[2] / dd4hep::tesla * Acts::UnitConstants::T));
+  m_magneticField = std::make_shared<Acts::ConstantBField>(
+      Acts::Vector3(magneticFieldVector[0] / dd4hep::tesla * Acts::UnitConstants::T,
+                    magneticFieldVector[1] / dd4hep::tesla * Acts::UnitConstants::T,
+                    magneticFieldVector[2] / dd4hep::tesla * Acts::UnitConstants::T));
 }
