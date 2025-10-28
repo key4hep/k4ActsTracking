@@ -59,7 +59,7 @@ namespace ACTSTracking {
    * @brief indicate that comparisons between keys and full objects are allowed.
    */
       using is_transparent = void;
-      /** 
+      /**
    * @brief compare two elements using the automatic key extraction.
    */
       template <typename Left, typename Right> constexpr bool operator()(Left&& lhs, Right&& rhs) const {

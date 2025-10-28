@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2014-2024 Key4hep-Project.
+ *
+ * This file is part of Key4hep.
+ * See https://key4hep.github.io/key4hep-doc/ for further info.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 #pragma once
 
 // edm4hep
@@ -38,20 +56,20 @@ namespace ACTSTracking {
 	 */
     GeometryIdMappingTool(const std::string& encoderString, DetSchema dType = DetSchema::MuColl_v1);
 
-    /** 
+    /**
  	* @brief Decode Sim Tracker Hit Cell ID
  	* @param hit A Sim Tracker Hit
  	* @return decoded Cell ID ready to be passed to ACTS
 	*/
     uint64_t getGeometryID(const edm4hep::SimTrackerHit& hit);
-    /** 
+    /**
         * @brief Decode Tracker Hit Cell ID
 	* @TODO: This method and the one for TrackerHitPlanes only exist separately due to the current inheritance issues in edm4hep
         * @param hit A Tracker Hit
         * @return decoded Cell ID ready to be passed to ACTS
         */
     uint64_t getGeometryID(const edm4hep::TrackerHit& hit);
-    /** 
+    /**
         * @brief Decode Tracker Hit Plane Cell ID
         * @TODO: This method and the one for TrackerHitPlanes only exist separately due to the current inheritance issues in ed
 m4hep
