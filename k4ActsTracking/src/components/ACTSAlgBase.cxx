@@ -87,6 +87,7 @@ StatusCode ACTSAlgBase::initialize() {
   // Parse parameters
   m_matFile  = findFile(m_matFile);
   m_tgeoFile = findFile(m_tgeoFile);
+  m_tgeodescFile = findFile(m_tgeodescFile);
 
   // Load geometry
   info() << " -------------------------------------" << endmsg;
@@ -219,457 +220,104 @@ void ACTSAlgBase::buildDetector() {
   //
   // Detector definition
   std::vector<Acts::TGeoLayerBuilder::Config> layerBuilderConfigs;
-
-  // TODO: Make this configurable from a file
-  {  // Vertex
-    Acts::TGeoLayerBuilder::Config layerBuilderConfig;
-    layerBuilderConfig.configurationName  = "Vertex";
-    layerBuilderConfig.unit               = 1 * Acts::UnitConstants::cm;
-    layerBuilderConfig.autoSurfaceBinning = true;
-
-    layerBuilderConfig.surfaceBinMatcher = Acts::SurfaceBinningMatcher();
-    // AutoBinning
-    auto& binTolerances = layerBuilderConfig.surfaceBinMatcher.tolerances;
-
-#ifdef K4ACTSTRACKING_ACTS_V32
-    binTolerances[Acts::binR]   = {5, 5};
-    binTolerances[Acts::binZ]   = {5, 5};
-    binTolerances[Acts::binPhi] = {0.025, 0.025};
-#else
-    binTolerances[static_cast<int>(Acts::AxisDirection::AxisR)]   = {5, 5};
-    binTolerances[static_cast<int>(Acts::AxisDirection::AxisZ)]   = {5, 5};
-    binTolerances[static_cast<int>(Acts::AxisDirection::AxisPhi)] = {0.25, 0.25};
-#endif
-
-    {  // negative endcap
-      // Create the layer config object and fill it
-      Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName  = "VertexEndcap*";
-      lConfig.sensorNames = {"sensor*"};
-      lConfig.localAxes   = "xZy";
-      lConfig.envelope    = std::pair<double, double>(0.1 * Acts::UnitConstants::mm, 0.1 * Acts::UnitConstants::mm);
-
-#ifdef K4ACTSTRACKING_ACTS_V32
-      // Fill the parsing restrictions in r
-      lConfig.parseRanges.push_back({Acts::binR, {0, 120}});
-
-      // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::binZ, {-285, -70}});
-
-      // Fill the layer splitting parameters in z
-      lConfig.splitConfigs.push_back({Acts::binZ, 1});
-#else
-      // Fill the parsing restrictions in r
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, {0, 120}});
-
-      // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, {-285, -70}});
-
-      // Fill the layer splitting parameters in z
-      lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisZ, 1});
-#endif
-
-      // Save
-      layerBuilderConfig.layerConfigurations[0].push_back(lConfig);
-    }
-
-    {  // barrel
-      // Create the layer config object and fill it
-      Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName  = "VertexBarrel*";
-      lConfig.sensorNames = {"VertexBarrel_layer*_sens"};
-      lConfig.localAxes   = "YZX";
-      lConfig.envelope    = std::pair<double, double>(0.1 * Acts::UnitConstants::mm, 0.1 * Acts::UnitConstants::mm);
-
-#ifdef K4ACTSTRACKING_ACTS_V32
-      // Fill the parsing restrictions in r
-      lConfig.parseRanges.push_back({Acts::binR, {0, 120}});
-
-      // Fill the layer splitting parameters in r
-      lConfig.splitConfigs.push_back({Acts::binR, 0.1});
-
-      // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::binZ, {-70, 70}});
-#else
-      // Fill the parsing restrictions in r
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, {0, 120}});
-
-      // Fill the layer splitting parameters in r
-      lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisR, 0.1});
-
-      // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, {-70, 70}});
-#endif
-
-      // Save
-      layerBuilderConfig.layerConfigurations[1].push_back(lConfig);
-    }
-
-    {  // positive endcap
-      // Create the layer config object and fill it
-      Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName  = "VertexEndcap*";
-      lConfig.sensorNames = {"sensor*"};
-      lConfig.localAxes   = "xZy";
-      lConfig.envelope    = std::pair<double, double>(0.1 * Acts::UnitConstants::mm, 0.1 * Acts::UnitConstants::mm);
-
-      // Fill the parsing restrictions in r
-#ifdef K4ACTSTRACKING_ACTS_V32
-      lConfig.parseRanges.push_back({Acts::binR, {0, 120}});
-
-      // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::binZ, {70, 285}});
-
-      // Fill the layer splitting parameters in z
-      lConfig.splitConfigs.push_back({Acts::binZ, 1});
-#else
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, {0, 120}});
-
-      // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, {70, 285}});
-
-      // Fill the layer splitting parameters in z
-      lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisZ, 1});
-#endif
-      // Save
-      layerBuilderConfig.layerConfigurations[2].push_back(lConfig);
-    }
-
-    // Save
-    layerBuilderConfigs.push_back(layerBuilderConfig);
+  
+  // Check if the geometry has been defined
+  if (m_tgeodescFile.empty()) {
+    error() << "No TGeo description file provided for subdetectors! Cannot build tracking geometry." << endmsg;
+    throw std::runtime_error("No TGeo description file provided for subdetectors! Cannot build tracking geometry.");
   }
 
-  {  // InnerTracker
+  // Open the description file
+  nlohmann::json tgeodesc;
+  std::ifstream tgeoDescFile(m_tgeodescFile.value(), std::ifstream::in | std::ifstream::binary);
+  if (!tgeoDescFile.is_open()) {
+    error() << "Could not open TGeo description file " << m_tgeodescFile.value() << endmsg;
+    throw std::runtime_error("Could not open TGeo description file " + m_tgeodescFile.value());
+  }
+  tgeoDescFile >> tgeodesc;
+
+  // Helper parsing functions
+  auto range_from_json = [](const nlohmann::json& jsonpair) -> std::pair<double, double> {
+    return {jsonpair["lower"], jsonpair["upper"]};
+  };
+
+  // Loop over volumes to define sub-detectors
+  for (const auto& volume : tgeodesc["Volumes"]) {
+    // Volume information
     Acts::TGeoLayerBuilder::Config layerBuilderConfig;
-    layerBuilderConfig.configurationName  = "InnerTrackers";
+    layerBuilderConfig.configurationName  = volume["geo-tgeo-volume-name"];
+    layerBuilderConfig.unit = 1 * Acts::UnitConstants::cm;
     layerBuilderConfig.autoSurfaceBinning = true;
-    layerBuilderConfig.surfaceBinMatcher  = Acts::SurfaceBinningMatcher();
+
     // AutoBinning
-    auto& binTolerances = layerBuilderConfig.surfaceBinMatcher.tolerances;
-#ifdef K4ACTSTRACKING_ACTS_V32
-    binTolerances[Acts::binR]   = {5, 5};
-    binTolerances[Acts::binZ]   = {5, 5};
-    binTolerances[Acts::binPhi] = {0.025, 0.025};
-#else
-    binTolerances[static_cast<int>(Acts::AxisDirection::AxisR)]   = {5, 5};
-    binTolerances[static_cast<int>(Acts::AxisDirection::AxisZ)]   = {5, 5};
-    binTolerances[static_cast<int>(Acts::AxisDirection::AxisPhi)] = {0.025, 0.025};
-#endif
+    std::vector<std::pair<double, double>> binTolerances{ (int)Acts::binValues, {0., 0.} };
+  #ifdef K4ACTSTRACKING_ACTS_V32
+    binTolerances[Acts::binR] = range_from_json(volume["geo-tgeo-sfbin-r-tolerance"]);
+    binTolerances[Acts::binZ] = range_from_json(volume["geo-tgeo-sfbin-z-tolerance"]);
+    binTolerances[Acts::binPhi] = range_from_json(volume["geo-tgeo-sfbin-phi-tolerance"]);
+  #else
+    binTolerances[static_cast<int>(Acts::AxisDirection::AxisR)] = range_from_json(volume["geo-tgeo-sfbin-r-tolerance"]);
+    binTolerances[static_cast<int>(Acts::AxisDirection::AxisZ)] = range_from_json(volume["geo-tgeo-sfbin-z-tolerance"]);
+    binTolerances[static_cast<int>(Acts::AxisDirection::AxisPhi)] = range_from_json(volume["geo-tgeo-sfbin-phi-tolerance"]);
+  #endif
     layerBuilderConfig.surfaceBinMatcher = Acts::SurfaceBinningMatcher(binTolerances);
+    
+    // Loop over subvolumes (two endcaps and one barrel)
+    std::array<std::string, 3> subvolumeNames = {"negative","central","positive"}; // List of possible subvolume names. Order corresponds to layerConfigurations.
+    for(std::size_t idx = 0; idx < 3; idx++) {
+      const std::string& subvolumeName = subvolumeNames[idx];
+      if(!volume["geo-tgeo-volume-layers"][subvolumeName]) {
+        // Skip disabled volume
+        continue;
+      }
 
-    {  // negative endcap
       // Create the layer config object and fill it
       Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName  = "InnerTrackerEndcap*";
-      lConfig.sensorNames = {"sensor*"};
-      lConfig.localAxes   = "XYZ";
+      lConfig.volumeName = volume["geo-tgeo-subvolume-names"][subvolumeName];
+      lConfig.sensorNames = volume["geo-tgeo-sensitive-names"][subvolumeName];
+      lConfig.localAxes = volume["geo-tgeo-sensitive-axes"][subvolumeName];
+      lConfig.envelope = std::pair<double, double>(0.1 * Acts::UnitConstants::mm, 0.1 * Acts::UnitConstants::mm);
 
-#ifdef K4ACTSTRACKING_ACTS_V32
+    #ifdef K4ACTSTRACKING_ACTS_V32
       // Fill the parsing restrictions in r
-      lConfig.parseRanges.push_back({Acts::binR, {50, 500}});
+      lConfig.parseRanges.push_back({Acts::binR, range_from_json(volume["geo-tgeo-layer-r-ranges"][subvolumeName])});
 
       // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::binZ, {-600, -500}});
-
-      // Fill the layer splitting parameters in z
-      lConfig.splitConfigs.push_back({Acts::binZ, 10});
-#else
-      // Fill the parsing restrictions in r
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, {50, 500}});
-
-      // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, {-600, -500}});
-
-      // Fill the layer splitting parameters in z
-      lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisZ, 10});
-#endif
-      // Save
-      layerBuilderConfig.layerConfigurations[0].push_back(lConfig);
-    }
-
-    {  // barrel
-      // Create the layer config object and fill it
-      Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName  = "InnerTrackerBarrel*";
-      lConfig.sensorNames = {"sensor*"};
-      lConfig.localAxes   = "XYZ";
-
-#ifdef K4ACTSTRACKING_ACTS_V32
-      // Fill the parsing restrictions in r
-      lConfig.parseRanges.push_back({Acts::binR, {120, 500}});
+      lConfig.parseRanges.push_back({Acts::binZ, range_from_json(volume["geo-tgeo-layer-z-ranges"][subvolumeName])});
 
       // Fill the layer splitting parameters in r
-      lConfig.splitConfigs.push_back({Acts::binR, 10});
+      float rsplit = volume["geo-tgeo-layer-r-split"][subvolumeName];
+      if(rsplit > 0) {
+        lConfig.splitConfigs.push_back({Acts::binR, rsplit});
+      }
+
+      // Fill the layer splitting parameters in z
+      float zsplit = volume["geo-tgeo-layer-z-split"][subvolumeName];
+      if(zsplit > 0) {
+        lConfig.splitConfigs.push_back({Acts::binZ, zsplit});
+      }
+    #else
+      // Fill the parsing restrictions in r
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, range_from_json(volume["geo-tgeo-layer-r-ranges"][subvolumeName])});
 
       // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::binZ, {-500, 500}});
-#else
-      // Fill the parsing restrictions in r
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, {120, 500}});
+      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, range_from_json(volume["geo-tgeo-layer-z-ranges"][subvolumeName])});
 
       // Fill the layer splitting parameters in r
-      lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisR, 10});
-
-      // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, {-500, 500}});
-#endif
-      // Save
-      layerBuilderConfig.layerConfigurations[1].push_back(lConfig);
-    }
-
-    {  // positive endcap
-      // Create the layer config object and fill it
-      Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName  = "InnerTrackerEndcap*";
-      lConfig.sensorNames = {"sensor*"};
-      lConfig.localAxes   = "XYZ";
-
-#ifdef K4ACTSTRACKING_ACTS_V32
-      // Fill the parsing restrictions in r
-      lConfig.parseRanges.push_back({Acts::binR, {50, 500}});
-
-      // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::binZ, {500, 600}});
+      float rsplit = volume["geo-tgeo-layer-r-split"][subvolumeName];
+      if(rsplit > 0) {
+        lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisR, rsplit});
+      }
 
       // Fill the layer splitting parameters in z
-      lConfig.splitConfigs.push_back({Acts::binZ, 10});
-#else
-      // Fill the parsing restrictions in r
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, {50, 500}});
-
-      // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, {500, 600}});
-
-      // Fill the layer splitting parameters in z
-      lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisZ, 10});
-#endif
+      float zsplit = volume["geo-tgeo-layer-z-split"][subvolumeName];
+      if(zsplit > 0) {
+        lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisZ, zsplit});
+      }
+    #endif
 
       // Save
-      layerBuilderConfig.layerConfigurations[2].push_back(lConfig);
-    }
-
-    // Save
-    layerBuilderConfigs.push_back(layerBuilderConfig);
-  }
-
-  {  // OuterInnerTracker
-    Acts::TGeoLayerBuilder::Config layerBuilderConfig;
-    layerBuilderConfig.configurationName  = "OuterInnerTrackers";
-    layerBuilderConfig.autoSurfaceBinning = true;
-    layerBuilderConfig.surfaceBinMatcher  = Acts::SurfaceBinningMatcher();
-
-    // AutoBinning
-    auto& binTolerances = layerBuilderConfig.surfaceBinMatcher.tolerances;
-#ifdef K4ACTSTRACKING_ACTS_V32
-    binTolerances[Acts::binR]   = {5, 5};
-    binTolerances[Acts::binZ]   = {5, 5};
-    binTolerances[Acts::binPhi] = {0.025, 0.025};
-#endif
-
-    {  // negative endcap
-      // Create the layer config object and fill it
-      Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName  = "InnerTrackerEndcap*";
-      lConfig.sensorNames = {"sensor*"};
-      lConfig.localAxes   = "XYZ";
-
-#ifdef K4ACTSTRACKING_ACTS_V32
-      // Fill the parsing restrictions in r
-      lConfig.parseRanges.push_back({Acts::binR, {120, 600}});
-
-      // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::binZ, {-2210, -750}});
-
-      // Fill the layer splitting parameters in z
-      lConfig.splitConfigs.push_back({Acts::binZ, 10});
-#else
-      // Fill the parsing restrictions in r
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, {120, 600}});
-
-      // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, {-2210, -750}});
-
-      // Fill the layer splitting parameters in z
-      lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisZ, 10});
-#endif
-      // Save
-      layerBuilderConfig.layerConfigurations[0].push_back(lConfig);
-    }
-
-    {  // barrel
-      // Create the layer config object and fill it
-      Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName  = "InnerTrackerBarrel*";
-      lConfig.sensorNames = {"sensor*"};
-      lConfig.localAxes   = "XYZ";
-
-#ifdef K4ACTSTRACKING_ACTS_V32
-      // Fill the parsing restrictions in r
-      lConfig.parseRanges.push_back({Acts::binR, {500, 600}});
-
-      // Fill the layer splitting parameters in r
-      lConfig.splitConfigs.push_back({Acts::binR, 10});
-
-      // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::binZ, {-750, 750}});
-#else
-      // Fill the parsing restrictions in r
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, {500, 600}});
-
-      // Fill the layer splitting parameters in r
-      lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisR, 10});
-
-      // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, {-750, 750}});
-#endif
-
-      // Save
-      layerBuilderConfig.layerConfigurations[1].push_back(lConfig);
-    }
-
-    {  // positive endcap
-      // Create the layer config object and fill it
-      Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName  = "InnerTrackerEndcap*";
-      lConfig.sensorNames = {"sensor*"};
-      lConfig.localAxes   = "XYZ";
-
-#ifdef K4ACTSTRACKING_ACTS_V32
-      // Fill the parsing restrictions in r
-      lConfig.parseRanges.push_back({Acts::binR, {120, 600}});
-
-      // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::binZ, {750, 2210}});
-
-      // Fill the layer splitting parameters in z
-      lConfig.splitConfigs.push_back({Acts::binZ, 10});
-#else
-      // Fill the parsing restrictions in r
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, {120, 600}});
-
-      // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, {750, 2210}});
-
-      // Fill the layer splitting parameters in z
-      lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisZ, 10});
-#endif
-      // Save
-      layerBuilderConfig.layerConfigurations[2].push_back(lConfig);
-    }
-
-    // Save
-    layerBuilderConfigs.push_back(layerBuilderConfig);
-  }
-
-  {  // OuterTracker
-    Acts::TGeoLayerBuilder::Config layerBuilderConfig;
-    layerBuilderConfig.configurationName  = "OuterTrackers";
-    layerBuilderConfig.autoSurfaceBinning = true;
-    layerBuilderConfig.surfaceBinMatcher  = Acts::SurfaceBinningMatcher();
-    // AutoBinning
-    auto& binTolerances = layerBuilderConfig.surfaceBinMatcher.tolerances;
-
-#ifdef K4ACTSTRACKING_ACTS_V32
-    binTolerances[Acts::binR]   = {5, 5};
-    binTolerances[Acts::binZ]   = {5, 5};
-    binTolerances[Acts::binPhi] = {0.025, 0.025};
-#else
-    binTolerances[static_cast<int>(Acts::AxisDirection::AxisR)]   = {5, 5};
-    binTolerances[static_cast<int>(Acts::AxisDirection::AxisZ)]   = {5, 5};
-    binTolerances[static_cast<int>(Acts::AxisDirection::AxisPhi)] = {0.025, 0.025};
-#endif
-
-    {  // negative endcap
-      // Create the layer config object and fill it
-      Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName  = "OuterTrackerEndcap*";
-      lConfig.sensorNames = {"sensor*"};
-      lConfig.localAxes   = "XYZ";
-
-#ifdef K4ACTSTRACKING_ACTS_V32
-      // Fill the parsing restrictions in r
-      lConfig.parseRanges.push_back({Acts::binR, {570, 1550}});
-
-      // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::binZ, {-2210, -1300}});
-
-      // Fill the layer splitting parameters in z
-      lConfig.splitConfigs.push_back({Acts::binZ, 10});
-#else
-      // Fill the parsing restrictions in r
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, {570, 1550}});
-
-      // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, {-2210, -1300}});
-
-      // Fill the layer splitting parameters in z
-      lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisZ, 10});
-#endif
-
-      // Save
-      layerBuilderConfig.layerConfigurations[0].push_back(lConfig);
-    }
-
-    {  // barrel
-      // Create the layer config object and fill it
-      Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName  = "OuterTrackerBarrel*";
-      lConfig.sensorNames = {"sensor*"};
-      lConfig.localAxes   = "XYZ";
-
-#ifdef K4ACTSTRACKING_ACTS_V32
-      // Fill the parsing restrictions in r
-      lConfig.parseRanges.push_back({Acts::binR, {600, 1550}});
-
-      // Fill the layer splitting parameters in r
-      lConfig.splitConfigs.push_back({Acts::binR, 10});
-
-      // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::binZ, {-1300, 1300}});
-#else
-      // Fill the parsing restrictions in r
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, {600, 1550}});
-
-      // Fill the layer splitting parameters in r
-      lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisR, 10});
-
-      // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, {-1300, 1300}});
-
-#endif
-
-      // Save
-      layerBuilderConfig.layerConfigurations[1].push_back(lConfig);
-    }
-
-    {  // positive endcap
-      // Create the layer config object and fill it
-      Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName  = "OuterTrackerEndcap*";
-      lConfig.sensorNames = {"sensor*"};
-      lConfig.localAxes   = "XYZ";
-
-#ifdef K4ACTSTRACKING_ACTS_V32
-      // Fill the parsing restrictions in r
-      lConfig.parseRanges.push_back({Acts::binR, {570, 1550}});
-
-      // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::binZ, {1300, 2210}});
-
-      // Fill the layer splitting parameters in z
-      lConfig.splitConfigs.push_back({Acts::binZ, 10});
-#else
-      // Fill the parsing restrictions in r
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, {570, 1550}});
-
-      // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, {1300, 2210}});
-
-      // Fill the layer splitting parameters in z
-      lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisZ, 10});
-#endif
-      // Save
-      layerBuilderConfig.layerConfigurations[2].push_back(lConfig);
+      layerBuilderConfig.layerConfigurations[idx].push_back(lConfig);
     }
 
     // Save
@@ -687,45 +335,59 @@ void ACTSAlgBase::buildDetector() {
       // (in order to configure them to work appropriately)
       Acts::SurfaceArrayCreator::Config sacConfigLB;
       sacConfigLB.surfaceMatcher = lbc.surfaceBinMatcher;
-      auto surfaceArrayCreatorLB = std::make_shared<const Acts::SurfaceArrayCreator>(
-          sacConfigLB, Acts::getDefaultLogger(lbc.configurationName + "SurfaceArrayCreator", surfaceLogLevel));
+      auto surfaceArrayCreatorLB =
+          std::make_shared<const Acts::SurfaceArrayCreator>(
+              sacConfigLB, Acts::getDefaultLogger(
+                               lbc.configurationName + "SurfaceArrayCreator",
+                               surfaceLogLevel));
 
       // configure the layer creator that uses the surface array creator
       Acts::LayerCreator::Config lcConfigLB;
       lcConfigLB.surfaceArrayCreator = surfaceArrayCreatorLB;
-      layerCreatorLB                 = std::make_shared<const Acts::LayerCreator>(
-          lcConfigLB, Acts::getDefaultLogger(lbc.configurationName + "LayerCreator", layerLogLevel));
+      layerCreatorLB = std::make_shared<const Acts::LayerCreator>(
+          lcConfigLB,
+          Acts::getDefaultLogger(lbc.configurationName + "LayerCreator",
+                                 layerLogLevel));
     }
 
     // Configure the proto layer helper
     Acts::ProtoLayerHelper::Config plhConfigLB;
-    auto                           protoLayerHelperLB = std::make_shared<const Acts::ProtoLayerHelper>(
-        plhConfigLB, Acts::getDefaultLogger(lbc.configurationName + "ProtoLayerHelper", layerLogLevel));
+    auto protoLayerHelperLB = std::make_shared<const Acts::ProtoLayerHelper>(
+        plhConfigLB,
+        Acts::getDefaultLogger(lbc.configurationName + "ProtoLayerHelper",
+                               layerLogLevel));
 
     //-------------------------------------------------------------------------------------
-    lbc.layerCreator     = (layerCreatorLB != nullptr) ? layerCreatorLB : layerCreator;
-    lbc.protoLayerHelper = (protoLayerHelperLB != nullptr) ? protoLayerHelperLB : protoLayerHelper;
+    lbc.layerCreator =
+        (layerCreatorLB != nullptr) ? layerCreatorLB : layerCreator;
+    lbc.protoLayerHelper =
+        (protoLayerHelperLB != nullptr) ? protoLayerHelperLB : protoLayerHelper;
 
     auto layerBuilder = std::make_shared<const Acts::TGeoLayerBuilder>(
-        lbc, Acts::getDefaultLogger(lbc.configurationName + "LayerBuilder", layerLogLevel));
+        lbc, Acts::getDefaultLogger(lbc.configurationName + "LayerBuilder",
+                                    layerLogLevel));
     // remember the layer builder
     tgLayerBuilders.push_back(layerBuilder);
 
     // build the pixel volume
     Acts::CylinderVolumeBuilder::Config volumeConfig;
     volumeConfig.trackingVolumeHelper = cylinderVolumeHelper;
-    volumeConfig.volumeName           = lbc.configurationName;
-    volumeConfig.buildToRadiusZero    = (volumeBuilders.size() == 0);
-    volumeConfig.layerEnvelopeR       = {1. * Acts::UnitConstants::mm, 5. * Acts::UnitConstants::mm};
-    auto ringLayoutConfiguration      = [&](const std::vector<Acts::TGeoLayerBuilder::LayerConfig>& lConfigs) -> void {
+    volumeConfig.volumeName = lbc.configurationName;
+    volumeConfig.buildToRadiusZero = (volumeBuilders.size() == 0);
+    volumeConfig.layerEnvelopeR = {1. * Acts::UnitConstants::mm,
+                                   5. * Acts::UnitConstants::mm};
+    auto ringLayoutConfiguration =
+        [&](const std::vector<Acts::TGeoLayerBuilder::LayerConfig>& lConfigs)
+        -> void {
       for (const auto& lcfg : lConfigs) {
         for (const auto& scfg : lcfg.splitConfigs) {
-#ifdef K4ACTSTRACKING_ACTS_V32
+        #ifdef K4ACTSTRACKING_ACTS_V32
           if (scfg.first == Acts::binR and scfg.second > 0.) {
-#else
+        #else
           if (scfg.first == Acts::AxisDirection::AxisR and scfg.second > 0.) {
-#endif
-            volumeConfig.ringTolerance   = std::max(volumeConfig.ringTolerance, scfg.second);
+        #endif
+            volumeConfig.ringTolerance =
+                std::max(volumeConfig.ringTolerance, scfg.second);
             volumeConfig.checkRingLayout = true;
           }
         }
@@ -734,11 +396,14 @@ void ACTSAlgBase::buildDetector() {
     ringLayoutConfiguration(lbc.layerConfigurations[0]);
     ringLayoutConfiguration(lbc.layerConfigurations[2]);
     volumeConfig.layerBuilder = layerBuilder;
-    auto volumeBuilder        = std::make_shared<const Acts::CylinderVolumeBuilder>(
-        volumeConfig, Acts::getDefaultLogger(lbc.configurationName + "VolumeBuilder", volumeLogLevel));
+    auto volumeBuilder = std::make_shared<const Acts::CylinderVolumeBuilder>(
+        volumeConfig,
+        Acts::getDefaultLogger(lbc.configurationName + "VolumeBuilder",
+                               volumeLogLevel));
     // add to the list of builders
     volumeBuilders.push_back(volumeBuilder);
   }
+
 
   //-------------------------------------------------------------------------------------
   // create the tracking geometry

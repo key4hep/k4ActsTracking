@@ -113,6 +113,11 @@ protected:
       this, "DetectorSchema", "MuColl_v1",
       "The detector schema to use for geometry ID mapping. Options: MuColl_v1, MAIA_v0, MuSIC_v1, MuSIC_v2"};
 
+  //! Subdetector Json file
+  Gaudi::Property<std::string> m_tgeodescFile{
+      this, "TGeoDescFile", std::string(""),
+      "Path to the JSON file describing the subdetectors."};
+
   /**
  	 * @brief Gets the geometry Mapping Tool (To decode Cell IDs)
  	 * @return ACTSTracking Geometry Mapping Tool
