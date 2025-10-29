@@ -85,8 +85,8 @@ const Acts::Surface* ACTSAlgBase::findSurface(const edm4hep::TrackerHit hit) con
 
 StatusCode ACTSAlgBase::initialize() {
   // Parse parameters
-  m_matFile  = findFile(m_matFile);
-  m_tgeoFile = findFile(m_tgeoFile);
+  m_matFile      = findFile(m_matFile);
+  m_tgeoFile     = findFile(m_tgeoFile);
   m_tgeodescFile = findFile(m_tgeodescFile);
 
   // Load geometry
@@ -220,7 +220,7 @@ void ACTSAlgBase::buildDetector() {
   //
   // Detector definition
   std::vector<Acts::TGeoLayerBuilder::Config> layerBuilderConfigs;
-  
+
   // Check if the geometry has been defined
   if (m_tgeodescFile.empty()) {
     error() << "No TGeo description file provided for subdetectors! Cannot build tracking geometry." << endmsg;
@@ -229,7 +229,7 @@ void ACTSAlgBase::buildDetector() {
 
   // Open the description file
   nlohmann::json tgeodesc;
-  std::ifstream tgeoDescFile(m_tgeodescFile.value(), std::ifstream::in | std::ifstream::binary);
+  std::ifstream  tgeoDescFile(m_tgeodescFile.value(), std::ifstream::in | std::ifstream::binary);
   if (!tgeoDescFile.is_open()) {
     error() << "Could not open TGeo description file " << m_tgeodescFile.value() << endmsg;
     throw std::runtime_error("Could not open TGeo description file " + m_tgeodescFile.value());
@@ -246,39 +246,42 @@ void ACTSAlgBase::buildDetector() {
     // Volume information
     Acts::TGeoLayerBuilder::Config layerBuilderConfig;
     layerBuilderConfig.configurationName  = volume["geo-tgeo-volume-name"];
-    layerBuilderConfig.unit = 1 * Acts::UnitConstants::cm;
+    layerBuilderConfig.unit               = 1 * Acts::UnitConstants::cm;
     layerBuilderConfig.autoSurfaceBinning = true;
 
     // AutoBinning
-    std::vector<std::pair<double, double>> binTolerances{ (int)Acts::binValues, {0., 0.} };
-  #ifdef K4ACTSTRACKING_ACTS_V32
-    binTolerances[Acts::binR] = range_from_json(volume["geo-tgeo-sfbin-r-tolerance"]);
-    binTolerances[Acts::binZ] = range_from_json(volume["geo-tgeo-sfbin-z-tolerance"]);
+    std::vector<std::pair<double, double>> binTolerances{(int)Acts::binValues, {0., 0.}};
+#ifdef K4ACTSTRACKING_ACTS_V32
+    binTolerances[Acts::binR]   = range_from_json(volume["geo-tgeo-sfbin-r-tolerance"]);
+    binTolerances[Acts::binZ]   = range_from_json(volume["geo-tgeo-sfbin-z-tolerance"]);
     binTolerances[Acts::binPhi] = range_from_json(volume["geo-tgeo-sfbin-phi-tolerance"]);
-  #else
+#else
     binTolerances[static_cast<int>(Acts::AxisDirection::AxisR)] = range_from_json(volume["geo-tgeo-sfbin-r-tolerance"]);
     binTolerances[static_cast<int>(Acts::AxisDirection::AxisZ)] = range_from_json(volume["geo-tgeo-sfbin-z-tolerance"]);
-    binTolerances[static_cast<int>(Acts::AxisDirection::AxisPhi)] = range_from_json(volume["geo-tgeo-sfbin-phi-tolerance"]);
-  #endif
+    binTolerances[static_cast<int>(Acts::AxisDirection::AxisPhi)] =
+        range_from_json(volume["geo-tgeo-sfbin-phi-tolerance"]);
+#endif
     layerBuilderConfig.surfaceBinMatcher = Acts::SurfaceBinningMatcher(binTolerances);
-    
+
     // Loop over subvolumes (two endcaps and one barrel)
-    std::array<std::string, 3> subvolumeNames = {"negative","central","positive"}; // List of possible subvolume names. Order corresponds to layerConfigurations.
-    for(std::size_t idx = 0; idx < 3; idx++) {
+    std::array<std::string, 3> subvolumeNames = {
+        "negative", "central",
+        "positive"};  // List of possible subvolume names. Order corresponds to layerConfigurations.
+    for (std::size_t idx = 0; idx < 3; idx++) {
       const std::string& subvolumeName = subvolumeNames[idx];
-      if(!volume["geo-tgeo-volume-layers"][subvolumeName]) {
+      if (!volume["geo-tgeo-volume-layers"][subvolumeName]) {
         // Skip disabled volume
         continue;
       }
 
       // Create the layer config object and fill it
       Acts::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName = volume["geo-tgeo-subvolume-names"][subvolumeName];
+      lConfig.volumeName  = volume["geo-tgeo-subvolume-names"][subvolumeName];
       lConfig.sensorNames = volume["geo-tgeo-sensitive-names"][subvolumeName];
-      lConfig.localAxes = volume["geo-tgeo-sensitive-axes"][subvolumeName];
-      lConfig.envelope = std::pair<double, double>(0.1 * Acts::UnitConstants::mm, 0.1 * Acts::UnitConstants::mm);
+      lConfig.localAxes   = volume["geo-tgeo-sensitive-axes"][subvolumeName];
+      lConfig.envelope    = std::pair<double, double>(0.1 * Acts::UnitConstants::mm, 0.1 * Acts::UnitConstants::mm);
 
-    #ifdef K4ACTSTRACKING_ACTS_V32
+#ifdef K4ACTSTRACKING_ACTS_V32
       // Fill the parsing restrictions in r
       lConfig.parseRanges.push_back({Acts::binR, range_from_json(volume["geo-tgeo-layer-r-ranges"][subvolumeName])});
 
@@ -287,34 +290,36 @@ void ACTSAlgBase::buildDetector() {
 
       // Fill the layer splitting parameters in r
       float rsplit = volume["geo-tgeo-layer-r-split"][subvolumeName];
-      if(rsplit > 0) {
+      if (rsplit > 0) {
         lConfig.splitConfigs.push_back({Acts::binR, rsplit});
       }
 
       // Fill the layer splitting parameters in z
       float zsplit = volume["geo-tgeo-layer-z-split"][subvolumeName];
-      if(zsplit > 0) {
+      if (zsplit > 0) {
         lConfig.splitConfigs.push_back({Acts::binZ, zsplit});
       }
-    #else
+#else
       // Fill the parsing restrictions in r
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisR, range_from_json(volume["geo-tgeo-layer-r-ranges"][subvolumeName])});
+      lConfig.parseRanges.push_back(
+          {Acts::AxisDirection::AxisR, range_from_json(volume["geo-tgeo-layer-r-ranges"][subvolumeName])});
 
       // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::AxisDirection::AxisZ, range_from_json(volume["geo-tgeo-layer-z-ranges"][subvolumeName])});
+      lConfig.parseRanges.push_back(
+          {Acts::AxisDirection::AxisZ, range_from_json(volume["geo-tgeo-layer-z-ranges"][subvolumeName])});
 
       // Fill the layer splitting parameters in r
       float rsplit = volume["geo-tgeo-layer-r-split"][subvolumeName];
-      if(rsplit > 0) {
+      if (rsplit > 0) {
         lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisR, rsplit});
       }
 
       // Fill the layer splitting parameters in z
       float zsplit = volume["geo-tgeo-layer-z-split"][subvolumeName];
-      if(zsplit > 0) {
+      if (zsplit > 0) {
         lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisZ, zsplit});
       }
-    #endif
+#endif
 
       // Save
       layerBuilderConfig.layerConfigurations[idx].push_back(lConfig);
@@ -335,59 +340,45 @@ void ACTSAlgBase::buildDetector() {
       // (in order to configure them to work appropriately)
       Acts::SurfaceArrayCreator::Config sacConfigLB;
       sacConfigLB.surfaceMatcher = lbc.surfaceBinMatcher;
-      auto surfaceArrayCreatorLB =
-          std::make_shared<const Acts::SurfaceArrayCreator>(
-              sacConfigLB, Acts::getDefaultLogger(
-                               lbc.configurationName + "SurfaceArrayCreator",
-                               surfaceLogLevel));
+      auto surfaceArrayCreatorLB = std::make_shared<const Acts::SurfaceArrayCreator>(
+          sacConfigLB, Acts::getDefaultLogger(lbc.configurationName + "SurfaceArrayCreator", surfaceLogLevel));
 
       // configure the layer creator that uses the surface array creator
       Acts::LayerCreator::Config lcConfigLB;
       lcConfigLB.surfaceArrayCreator = surfaceArrayCreatorLB;
-      layerCreatorLB = std::make_shared<const Acts::LayerCreator>(
-          lcConfigLB,
-          Acts::getDefaultLogger(lbc.configurationName + "LayerCreator",
-                                 layerLogLevel));
+      layerCreatorLB                 = std::make_shared<const Acts::LayerCreator>(
+          lcConfigLB, Acts::getDefaultLogger(lbc.configurationName + "LayerCreator", layerLogLevel));
     }
 
     // Configure the proto layer helper
     Acts::ProtoLayerHelper::Config plhConfigLB;
-    auto protoLayerHelperLB = std::make_shared<const Acts::ProtoLayerHelper>(
-        plhConfigLB,
-        Acts::getDefaultLogger(lbc.configurationName + "ProtoLayerHelper",
-                               layerLogLevel));
+    auto                           protoLayerHelperLB = std::make_shared<const Acts::ProtoLayerHelper>(
+        plhConfigLB, Acts::getDefaultLogger(lbc.configurationName + "ProtoLayerHelper", layerLogLevel));
 
     //-------------------------------------------------------------------------------------
-    lbc.layerCreator =
-        (layerCreatorLB != nullptr) ? layerCreatorLB : layerCreator;
-    lbc.protoLayerHelper =
-        (protoLayerHelperLB != nullptr) ? protoLayerHelperLB : protoLayerHelper;
+    lbc.layerCreator     = (layerCreatorLB != nullptr) ? layerCreatorLB : layerCreator;
+    lbc.protoLayerHelper = (protoLayerHelperLB != nullptr) ? protoLayerHelperLB : protoLayerHelper;
 
     auto layerBuilder = std::make_shared<const Acts::TGeoLayerBuilder>(
-        lbc, Acts::getDefaultLogger(lbc.configurationName + "LayerBuilder",
-                                    layerLogLevel));
+        lbc, Acts::getDefaultLogger(lbc.configurationName + "LayerBuilder", layerLogLevel));
     // remember the layer builder
     tgLayerBuilders.push_back(layerBuilder);
 
     // build the pixel volume
     Acts::CylinderVolumeBuilder::Config volumeConfig;
     volumeConfig.trackingVolumeHelper = cylinderVolumeHelper;
-    volumeConfig.volumeName = lbc.configurationName;
-    volumeConfig.buildToRadiusZero = (volumeBuilders.size() == 0);
-    volumeConfig.layerEnvelopeR = {1. * Acts::UnitConstants::mm,
-                                   5. * Acts::UnitConstants::mm};
-    auto ringLayoutConfiguration =
-        [&](const std::vector<Acts::TGeoLayerBuilder::LayerConfig>& lConfigs)
-        -> void {
+    volumeConfig.volumeName           = lbc.configurationName;
+    volumeConfig.buildToRadiusZero    = (volumeBuilders.size() == 0);
+    volumeConfig.layerEnvelopeR       = {1. * Acts::UnitConstants::mm, 5. * Acts::UnitConstants::mm};
+    auto ringLayoutConfiguration      = [&](const std::vector<Acts::TGeoLayerBuilder::LayerConfig>& lConfigs) -> void {
       for (const auto& lcfg : lConfigs) {
         for (const auto& scfg : lcfg.splitConfigs) {
-        #ifdef K4ACTSTRACKING_ACTS_V32
+#ifdef K4ACTSTRACKING_ACTS_V32
           if (scfg.first == Acts::binR and scfg.second > 0.) {
-        #else
+#else
           if (scfg.first == Acts::AxisDirection::AxisR and scfg.second > 0.) {
-        #endif
-            volumeConfig.ringTolerance =
-                std::max(volumeConfig.ringTolerance, scfg.second);
+#endif
+            volumeConfig.ringTolerance   = std::max(volumeConfig.ringTolerance, scfg.second);
             volumeConfig.checkRingLayout = true;
           }
         }
@@ -396,14 +387,11 @@ void ACTSAlgBase::buildDetector() {
     ringLayoutConfiguration(lbc.layerConfigurations[0]);
     ringLayoutConfiguration(lbc.layerConfigurations[2]);
     volumeConfig.layerBuilder = layerBuilder;
-    auto volumeBuilder = std::make_shared<const Acts::CylinderVolumeBuilder>(
-        volumeConfig,
-        Acts::getDefaultLogger(lbc.configurationName + "VolumeBuilder",
-                               volumeLogLevel));
+    auto volumeBuilder        = std::make_shared<const Acts::CylinderVolumeBuilder>(
+        volumeConfig, Acts::getDefaultLogger(lbc.configurationName + "VolumeBuilder", volumeLogLevel));
     // add to the list of builders
     volumeBuilders.push_back(volumeBuilder);
   }
-
 
   //-------------------------------------------------------------------------------------
   // create the tracking geometry
