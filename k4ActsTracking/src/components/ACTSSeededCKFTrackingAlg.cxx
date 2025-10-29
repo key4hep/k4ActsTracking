@@ -398,8 +398,8 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
       const SSPoint* bottomSP = seed.sp().front();
 
       const ACTSTracking::SourceLink& sourceLink = bottomSP->sourceLink();
-      const Acts::GeometryIdentifier& geoId = sourceLink.geometryId();
-      const Acts::Surface* surface = trackingGeometry()->findSurface(geoId);
+      const Acts::GeometryIdentifier& geoId      = sourceLink.geometryId();
+      const Acts::Surface*            surface    = trackingGeometry()->findSurface(geoId);
       if (surface == nullptr) {
         info() << "surface with geoID " << geoId << " is not found in the tracking gemetry" << endmsg;
         continue;
@@ -422,7 +422,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
       const Acts::BoundVector& params = optParams.value();
 
       //float charge = std::copysign(1, params[Acts::eBoundQOverP]);
-      float p      = std::abs(1 / params[Acts::eBoundQOverP]);
+      float p = std::abs(1 / params[Acts::eBoundQOverP]);
 
       // build the track covariance matrix using the smearing sigmas
       Acts::BoundSquareMatrix cov                 = Acts::BoundSquareMatrix::Zero();
