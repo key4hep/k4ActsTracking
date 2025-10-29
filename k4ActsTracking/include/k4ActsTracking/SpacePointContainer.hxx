@@ -34,7 +34,7 @@ namespace ACTSTracking {
     explicit SpacePointContainer(CollectionType& container) : m_storage(container) {}
     explicit SpacePointContainer(CollectionType* container) : m_storage(container) {}
 
-    SpacePointContainer(const SpacePointContainer<collection_t>&)                          = delete;
+    SpacePointContainer(const SpacePointContainer<collection_t>&) = delete;
     SpacePointContainer<collection_t>& operator=(const SpacePointContainer<collection_t>&) = delete;
 
     SpacePointContainer(SpacePointContainer<collection_t>&& other) noexcept
