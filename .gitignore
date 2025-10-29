@@ -246,3 +246,8 @@ test/k4FWCoreTest/**/*.root
 ## k4MarlinWrapper
 test/inputFiles/*.slcio
 test/gaudi_opts/testConverterConstants.py
+
+# Local build and setup files
+buildsub/
+installsub/
+setup.sh

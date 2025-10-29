@@ -1,0 +1,4771 @@
+{
+    "Surfaces": {
+        "acts-geometry-hierarchy-map": {
+            "format-version": 0,
+            "value-identifier": "Material Surface Map"
+        },
+        "entries": [
+            {
+                "boundary": 1,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 1
+            },
+            {
+                "boundary": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 1
+            },
+            {
+                "boundary": 3,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 1
+            },
+            {
+                "boundary": 1,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 2
+            },
+            {
+                "boundary": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 2
+            },
+            {
+                "boundary": 3,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 2
+            },
+            {
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        14.362603187561035,
+                                        338.6573181152344,
+                                        92.02017974853516,
+                                        11.79052448272705,
+                                        5.6043216318357736e-05
+                                    ],
+                                    "thickness": 3.0714399814605713
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 3
+            },
+            {
+                "approach": 1,
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        47.44829559326172,
+                                        509.06280517578125,
+                                        30.9010009765625,
+                                        8.657980918884277,
+                                        7.642604759894311e-05
+                                    ],
+                                    "thickness": 1.3895479440689087
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 3
+            },
+            {
+                "approach": 2,
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        422.3080139160156,
+                                        936.056640625,
+                                        13.524438858032227,
+                                        6.396064758300781,
+                                        6.301147368503734e-05
+                                    ],
+                                    "thickness": 4.116147041320801
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 3
+            },
+            {
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        179.36224365234375,
+                                        478.01483154296875,
+                                        15.615734100341797,
+                                        7.440582275390625,
+                                        0.000113680973299779
+                                    ],
+                                    "thickness": 0.29045307636260986
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 3
+            },
+            {
+                "approach": 1,
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        469.0094909667969,
+                                        992.0046997070313,
+                                        13.140887260437012,
+                                        6.311839580535889,
+                                        6.0278391174506396e-05
+                                    ],
+                                    "thickness": 3.979461193084717
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 3
+            },
+            {
+                "approach": 2,
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        604.8438110351563,
+                                        1487.404296875,
+                                        14.611620903015137,
+                                        6.437863349914551,
+                                        3.7699657696066424e-05
+                                    ],
+                                    "thickness": 2.900130271911621
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 3
+            },
+            {
+                "layer": 6,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        500.443603515625,
+                                        903.3598022460938,
+                                        11.971665382385254,
+                                        6.0377116203308105,
+                                        7.004684448475018e-05
+                                    ],
+                                    "thickness": 3.544405221939087
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 3
+            },
+            {
+                "approach": 1,
+                "layer": 6,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        239.1216278076172,
+                                        658.4841918945313,
+                                        15.986454963684082,
+                                        7.276030540466309,
+                                        8.123412408167496e-05
+                                    ],
+                                    "thickness": 1.5042482614517212
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 3
+            },
+            {
+                "approach": 2,
+                "layer": 6,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        439.9728698730469,
+                                        989.0440673828125,
+                                        13.6870756149292,
+                                        6.414315223693848,
+                                        5.9191697800997645e-05
+                                    ],
+                                    "thickness": 4.030116558074951
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 3
+            },
+            {
+                "layer": 8,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        177.63858032226563,
+                                        476.65252685546875,
+                                        15.710975646972656,
+                                        7.480268955230713,
+                                        0.00011352766159689054
+                                    ],
+                                    "thickness": 0.27772608399391174
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 3
+            },
+            {
+                "approach": 1,
+                "layer": 8,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        466.87042236328125,
+                                        987.8474731445313,
+                                        13.143786430358887,
+                                        6.313608646392822,
+                                        6.053292236174457e-05
+                                    ],
+                                    "thickness": 4.035345077514648
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 3
+            },
+            {
+                "approach": 2,
+                "layer": 8,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        613.1489868164063,
+                                        1525.52734375,
+                                        14.743041038513184,
+                                        6.445760250091553,
+                                        3.65515224984847e-05
+                                    ],
+                                    "thickness": 2.9085757732391357
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 3
+            },
+            {
+                "layer": 10,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        582.9231567382813,
+                                        1051.858642578125,
+                                        11.97389030456543,
+                                        6.043525695800781,
+                                        6.0093960200902075e-05
+                                    ],
+                                    "thickness": 3.0868818759918213
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 3
+            },
+            {
+                "approach": 1,
+                "layer": 10,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        240.50662231445313,
+                                        668.3961791992188,
+                                        16.118059158325195,
+                                        7.294518947601318,
+                                        7.961531809996814e-05
+                                    ],
+                                    "thickness": 1.4886337518692017
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 3
+            },
+            {
+                "approach": 2,
+                "layer": 10,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        441.8818054199219,
+                                        1002.7767944335938,
+                                        13.778427124023438,
+                                        6.427979469299316,
+                                        5.813969255541451e-05
+                                    ],
+                                    "thickness": 3.9653780460357666
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 3
+            },
+            {
+                "layer": 12,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        300.9319763183594,
+                                        534.6776123046875,
+                                        11.966939926147461,
+                                        6.0195417404174805,
+                                        0.00011552844080142677
+                                    ],
+                                    "thickness": 0.22613568603992462
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 3
+            },
+            {
+                "approach": 1,
+                "layer": 12,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        486.2200012207031,
+                                        1051.31005859375,
+                                        13.320256233215332,
+                                        6.335306644439697,
+                                        5.6453911383869126e-05
+                                    ],
+                                    "thickness": 3.7930946350097656
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 3
+            },
+            {
+                "approach": 2,
+                "layer": 12,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        737.3051147460938,
+                                        1855.607666015625,
+                                        14.854758262634277,
+                                        6.401066780090332,
+                                        2.9756181902484968e-05
+                                    ],
+                                    "thickness": 2.705514907836914
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 3
+            },
+            {
+                "boundary": 1,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        18.332599639892578,
+                                        196.15774536132813,
+                                        54.60344696044922,
+                                        21.07967185974121,
+                                        0.00012623473594430834
+                                    ],
+                                    "thickness": 1546.0289306640625
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 3
+            },
+            {
+                "boundary": 1,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 4
+            },
+            {
+                "boundary": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 4
+            },
+            {
+                "boundary": 3,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 4
+            },
+            {
+                "boundary": 1,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 5
+            },
+            {
+                "boundary": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 5
+            },
+            {
+                "boundary": 3,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 5
+            },
+            {
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        82.75904083251953,
+                                        462.1617126464844,
+                                        19.680341720581055,
+                                        7.351158618927002,
+                                        0.00010697294783312827
+                                    ],
+                                    "thickness": 0.12147076427936554
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 6
+            },
+            {
+                "boundary": 1,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 7
+            },
+            {
+                "boundary": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 7
+            },
+            {
+                "boundary": 3,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 7
+            },
+            {
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        1051.8311767578125,
+                                        1897.1514892578125,
+                                        12.010031700134277,
+                                        6.056704044342041,
+                                        3.309866588097066e-05
+                                    ],
+                                    "thickness": 2.1463966369628906
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 8
+            },
+            {
+                "approach": 1,
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        232.96372985839844,
+                                        669.1747436523438,
+                                        16.589839935302734,
+                                        7.418112754821777,
+                                        7.806639769114554e-05
+                                    ],
+                                    "thickness": 1.4122706651687622
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 8
+            },
+            {
+                "approach": 2,
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        437.0009460449219,
+                                        1000.9520263671875,
+                                        13.866856575012207,
+                                        6.448556423187256,
+                                        5.8024332247441635e-05
+                                    ],
+                                    "thickness": 3.885061025619507
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 8
+            },
+            {
+                "boundary": 1,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        110.26241302490234,
+                                        444.986572265625,
+                                        17.337011337280273,
+                                        7.159886837005615,
+                                        0.00011907795851584524
+                                    ],
+                                    "thickness": 0.35206153988838196
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 8
+            },
+            {
+                "boundary": 1,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 9
+            },
+            {
+                "boundary": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 9
+            },
+            {
+                "boundary": 3,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 9
+            },
+            {
+                "boundary": 1,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 10
+            },
+            {
+                "boundary": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 10
+            },
+            {
+                "boundary": 3,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 10
+            },
+            {
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        3.8720808029174805,
+                                        108.69026947021484,
+                                        176.5160675048828,
+                                        70.58773803710938,
+                                        0.00010136358469026163
+                                    ],
+                                    "thickness": 167.27835083007813
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 11
+            },
+            {
+                "boundary": 1,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 12
+            },
+            {
+                "boundary": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 12
+            },
+            {
+                "boundary": 3,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 12
+            },
+            {
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        279.7609558105469,
+                                        531.184326171875,
+                                        12.312280654907227,
+                                        6.143881320953369,
+                                        0.00011760813504224643
+                                    ],
+                                    "thickness": 0.49205806851387024
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "approach": 1,
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        145.62820434570313,
+                                        489.3294677734375,
+                                        18.215049743652344,
+                                        8.100207328796387,
+                                        0.00010202925477642566
+                                    ],
+                                    "thickness": 0.35556867718696594
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "approach": 2,
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        144.2872772216797,
+                                        463.07000732421875,
+                                        16.656335830688477,
+                                        7.551785469055176,
+                                        0.00011510092735989019
+                                    ],
+                                    "thickness": 0.4318827688694
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        122.67185974121094,
+                                        445.361328125,
+                                        19.09210205078125,
+                                        8.893760681152344,
+                                        0.00011011166498064995
+                                    ],
+                                    "thickness": 0.5205675959587097
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "approach": 1,
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        107.61327362060547,
+                                        427.67987060546875,
+                                        18.967832565307617,
+                                        8.156000137329102,
+                                        0.00011652018292807043
+                                    ],
+                                    "thickness": 0.45857304334640503
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "approach": 2,
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        51.0192985534668,
+                                        336.3275146484375,
+                                        27.41289710998535,
+                                        9.659672737121582,
+                                        0.00012026675540255383
+                                    ],
+                                    "thickness": 0.2638258934020996
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "layer": 6,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        39.935569763183594,
+                                        305.4411315917969,
+                                        36.4351921081543,
+                                        13.759333610534668,
+                                        0.00010777453280752525
+                                    ],
+                                    "thickness": 0.1932387799024582
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "approach": 1,
+                "layer": 6,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        122.61779022216797,
+                                        448.3232421875,
+                                        18.564340591430664,
+                                        8.454618453979492,
+                                        0.0001114392580348067
+                                    ],
+                                    "thickness": 0.3231508731842041
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "approach": 2,
+                "layer": 6,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        102.36693572998047,
+                                        439.4505310058594,
+                                        22.77981948852539,
+                                        10.608055114746094,
+                                        9.992879495257512e-05
+                                    ],
+                                    "thickness": 0.24428771436214447
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "layer": 8,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        137.67088317871094,
+                                        477.870361328125,
+                                        18.811904907226563,
+                                        9.276116371154785,
+                                        0.00010327975178370252
+                                    ],
+                                    "thickness": 0.18864522874355316
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "approach": 1,
+                "layer": 8,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        122.17604064941406,
+                                        455.5726013183594,
+                                        18.991491317749023,
+                                        8.77296257019043,
+                                        0.00010844415373867378
+                                    ],
+                                    "thickness": 0.22110603749752045
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "approach": 2,
+                "layer": 8,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        71.52191925048828,
+                                        391.9308776855469,
+                                        26.011159896850586,
+                                        11.092630386352539,
+                                        0.0001042967414832674
+                                    ],
+                                    "thickness": 0.2566004693508148
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "layer": 10,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        95.16207122802734,
+                                        434.5625915527344,
+                                        22.443201065063477,
+                                        10.021373748779297,
+                                        0.00010194825881626457
+                                    ],
+                                    "thickness": 0.1560608595609665
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "approach": 1,
+                "layer": 10,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        96.41716003417969,
+                                        429.90435791015625,
+                                        22.64876937866211,
+                                        10.200521469116211,
+                                        0.00010308273340342566
+                                    ],
+                                    "thickness": 0.19537509977817535
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "approach": 2,
+                "layer": 10,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        112.27281951904297,
+                                        446.27435302734375,
+                                        20.230701446533203,
+                                        9.26050090789795,
+                                        0.00010662728163879365
+                                    ],
+                                    "thickness": 0.18306228518486023
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "layer": 12,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        101.45914459228516,
+                                        453.6876220703125,
+                                        23.69499969482422,
+                                        11.351911544799805,
+                                        9.43303675740026e-05
+                                    ],
+                                    "thickness": 0.2004888355731964
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "approach": 1,
+                "layer": 12,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        93.9000015258789,
+                                        425.49481201171875,
+                                        22.402299880981445,
+                                        10.07965087890625,
+                                        0.00010513669985812157
+                                    ],
+                                    "thickness": 0.21947941184043884
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "approach": 2,
+                "layer": 12,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        80.48888397216797,
+                                        408.7262268066406,
+                                        23.486469268798828,
+                                        10.11124038696289,
+                                        0.00010696751269279048
+                                    ],
+                                    "thickness": 0.19432097673416138
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "layer": 14,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        86.93547821044922,
+                                        441.3502197265625,
+                                        27.828044891357422,
+                                        13.357126235961914,
+                                        8.68557981448248e-05
+                                    ],
+                                    "thickness": 0.1755477637052536
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "approach": 1,
+                "layer": 14,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        71.58052825927734,
+                                        393.5841979980469,
+                                        27.219820022583008,
+                                        11.826844215393066,
+                                        0.00010036840103566647
+                                    ],
+                                    "thickness": 0.14231902360916138
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "approach": 2,
+                "layer": 14,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        102.2983627319336,
+                                        448.1575012207031,
+                                        23.45135498046875,
+                                        11.263134002685547,
+                                        9.605813102098182e-05
+                                    ],
+                                    "thickness": 0.14401765167713165
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "layer": 16,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        100.5196762084961,
+                                        459.6531677246094,
+                                        25.22789764404297,
+                                        12.48099422454834,
+                                        8.88742069946602e-05
+                                    ],
+                                    "thickness": 0.1777452826499939
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "approach": 1,
+                "layer": 16,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        93.66158294677734,
+                                        438.78070068359375,
+                                        23.839136123657227,
+                                        11.126303672790527,
+                                        9.758061787579209e-05
+                                    ],
+                                    "thickness": 0.14472375810146332
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "approach": 2,
+                "layer": 16,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        78.53622436523438,
+                                        420.24163818359375,
+                                        28.04098892211914,
+                                        13.051203727722168,
+                                        9.133759158430621e-05
+                                    ],
+                                    "thickness": 0.186583012342453
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "boundary": 1,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        21.085922241210938,
+                                        310.8930969238281,
+                                        28.026775360107422,
+                                        5.633786678314209,
+                                        0.0001410893746651709
+                                    ],
+                                    "thickness": 142.6827392578125
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 13
+            },
+            {
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        93.02546691894531,
+                                        456.553955078125,
+                                        28.234302520751953,
+                                        14.033682823181152,
+                                        8.312838326673955e-05
+                                    ],
+                                    "thickness": 0.09004847705364227
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 14
+            },
+            {
+                "approach": 1,
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        261.8672790527344,
+                                        401.0386047363281,
+                                        10.02219009399414,
+                                        4.684340953826904,
+                                        0.00019054781296290457
+                                    ],
+                                    "thickness": 1.1444185972213745
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 14
+            },
+            {
+                "approach": 2,
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        93.7127456665039,
+                                        456.18804931640625,
+                                        28.16080665588379,
+                                        14.015332221984863,
+                                        8.301771595142782e-05
+                                    ],
+                                    "thickness": 0.10714559257030487
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 14
+            },
+            {
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        91.05074310302734,
+                                        452.16864013671875,
+                                        28.538454055786133,
+                                        14.131462097167969,
+                                        8.376245386898518e-05
+                                    ],
+                                    "thickness": 0.08923420310020447
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 14
+            },
+            {
+                "approach": 1,
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        89.68504333496094,
+                                        448.6932678222656,
+                                        28.778955459594727,
+                                        14.205634117126465,
+                                        8.4217383118812e-05
+                                    ],
+                                    "thickness": 0.12536212801933289
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 14
+            },
+            {
+                "approach": 2,
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        85.57414245605469,
+                                        442.1457824707031,
+                                        29.19376564025879,
+                                        14.250173568725586,
+                                        8.459249511361122e-05
+                                    ],
+                                    "thickness": 0.0990813747048378
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 14
+            },
+            {
+                "layer": 6,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        82.19680786132813,
+                                        435.9927062988281,
+                                        29.569808959960938,
+                                        14.265501022338867,
+                                        8.480245742248371e-05
+                                    ],
+                                    "thickness": 0.10237101465463638
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 14
+            },
+            {
+                "approach": 1,
+                "layer": 6,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        88.9519271850586,
+                                        448.4704895019531,
+                                        28.75480079650879,
+                                        14.149388313293457,
+                                        8.385734690818936e-05
+                                    ],
+                                    "thickness": 0.09431985765695572
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 14
+            },
+            {
+                "approach": 2,
+                "layer": 6,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        78.65949249267578,
+                                        428.2293395996094,
+                                        30.12166976928711,
+                                        14.417110443115234,
+                                        8.532469655619934e-05
+                                    ],
+                                    "thickness": 0.09016292542219162
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 14
+            },
+            {
+                "layer": 8,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        140.91673278808594,
+                                        473.8952331542969,
+                                        16.550668716430664,
+                                        7.566848278045654,
+                                        0.00011410393926780671
+                                    ],
+                                    "thickness": 0.1346777081489563
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 14
+            },
+            {
+                "approach": 1,
+                "layer": 8,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        146.71568298339844,
+                                        471.77520751953125,
+                                        16.482749938964844,
+                                        7.852907180786133,
+                                        0.00011368074046913534
+                                    ],
+                                    "thickness": 0.17701563239097595
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 14
+            },
+            {
+                "approach": 2,
+                "layer": 8,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        113.4908447265625,
+                                        433.2174072265625,
+                                        20.98508071899414,
+                                        9.833605766296387,
+                                        0.00010665529407560825
+                                    ],
+                                    "thickness": 0.1836394965648651
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 14
+            },
+            {
+                "layer": 10,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        171.65342712402344,
+                                        483.2825622558594,
+                                        16.32716178894043,
+                                        7.659651279449463,
+                                        0.00010855237633222714
+                                    ],
+                                    "thickness": 0.12399554997682571
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 14
+            },
+            {
+                "approach": 1,
+                "layer": 10,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        149.92376708984375,
+                                        469.8829040527344,
+                                        17.49713134765625,
+                                        8.184717178344727,
+                                        0.00011030248424503952
+                                    ],
+                                    "thickness": 0.13805797696113586
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 14
+            },
+            {
+                "approach": 2,
+                "layer": 10,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        202.1331787109375,
+                                        507.6646423339844,
+                                        14.969414710998535,
+                                        7.162796497344971,
+                                        0.00010974465112667531
+                                    ],
+                                    "thickness": 0.08611370623111725
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 14
+            },
+            {
+                "boundary": 1,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        3.8653523921966553,
+                                        108.47850799560547,
+                                        176.7349090576172,
+                                        71.04313659667969,
+                                        0.00010156349890166894
+                                    ],
+                                    "thickness": 46.77838134765625
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 14
+            },
+            {
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        96.7215576171875,
+                                        432.4585266113281,
+                                        21.173723220825195,
+                                        9.411893844604492,
+                                        0.00010755359835457057
+                                    ],
+                                    "thickness": 0.16586925089359283
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "approach": 1,
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        79.05548095703125,
+                                        421.4607238769531,
+                                        27.997716903686523,
+                                        13.06727123260498,
+                                        9.109118400374427e-05
+                                    ],
+                                    "thickness": 0.1924724280834198
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "approach": 2,
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        104.18721771240234,
+                                        453.2902526855469,
+                                        23.069154739379883,
+                                        11.101956367492676,
+                                        9.600125486031175e-05
+                                    ],
+                                    "thickness": 0.15565674006938934
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        94.77291870117188,
+                                        429.8329772949219,
+                                        23.104820251464844,
+                                        10.359403610229492,
+                                        0.00010150624439120293
+                                    ],
+                                    "thickness": 0.13437522947788239
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "approach": 1,
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        97.94711303710938,
+                                        445.95281982421875,
+                                        25.05583381652832,
+                                        12.121612548828125,
+                                        9.226415568264201e-05
+                                    ],
+                                    "thickness": 0.16061151027679443
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "approach": 2,
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        90.99805450439453,
+                                        433.8563232421875,
+                                        24.48105812072754,
+                                        11.266504287719727,
+                                        9.663245873525739e-05
+                                    ],
+                                    "thickness": 0.13952964544296265
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "layer": 6,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        74.07281494140625,
+                                        395.4037170410156,
+                                        25.279579162597656,
+                                        10.696825981140137,
+                                        0.00010537845810176805
+                                    ],
+                                    "thickness": 0.18793846666812897
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "approach": 1,
+                "layer": 6,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        91.26432800292969,
+                                        436.2617492675781,
+                                        24.21787452697754,
+                                        11.270256996154785,
+                                        9.717809734866023e-05
+                                    ],
+                                    "thickness": 0.16034740209579468
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "approach": 2,
+                "layer": 6,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        70.32508850097656,
+                                        385.4637145996094,
+                                        25.814388275146484,
+                                        10.836467742919922,
+                                        0.00010677369573386386
+                                    ],
+                                    "thickness": 0.16575480997562408
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "layer": 8,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        141.78636169433594,
+                                        464.5636901855469,
+                                        18.190820693969727,
+                                        8.500018119812012,
+                                        0.0001079152716556564
+                                    ],
+                                    "thickness": 0.17418040335178375
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "approach": 1,
+                "layer": 8,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        115.96516418457031,
+                                        457.806884765625,
+                                        20.09965705871582,
+                                        9.45803451538086,
+                                        0.0001040342467604205
+                                    ],
+                                    "thickness": 0.23924073576927185
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "approach": 2,
+                "layer": 8,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        103.3213882446289,
+                                        446.64532470703125,
+                                        22.9899959564209,
+                                        10.805702209472656,
+                                        9.770139877218753e-05
+                                    ],
+                                    "thickness": 0.18616116046905518
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "layer": 10,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        69.4214859008789,
+                                        389.31414794921875,
+                                        26.256128311157227,
+                                        11.00485610961914,
+                                        0.00010467244283063337
+                                    ],
+                                    "thickness": 0.15332601964473724
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "approach": 1,
+                "layer": 10,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        91.10985565185547,
+                                        437.6985778808594,
+                                        25.325374603271484,
+                                        12.03040885925293,
+                                        9.364883590023965e-05
+                                    ],
+                                    "thickness": 0.14456355571746826
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "approach": 2,
+                "layer": 10,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        83.51179504394531,
+                                        419.11627197265625,
+                                        25.061304092407227,
+                                        11.329107284545898,
+                                        9.912543464452028e-05
+                                    ],
+                                    "thickness": 0.18280695378780365
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "layer": 12,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        170.92808532714844,
+                                        476.25189208984375,
+                                        15.439815521240234,
+                                        7.3553924560546875,
+                                        0.0001164825662272051
+                                    ],
+                                    "thickness": 0.3450504541397095
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "approach": 1,
+                "layer": 12,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        67.42845916748047,
+                                        389.0689392089844,
+                                        27.95875358581543,
+                                        12.01909065246582,
+                                        0.00010007487435359508
+                                    ],
+                                    "thickness": 0.2637762427330017
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "approach": 2,
+                "layer": 12,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        83.55924224853516,
+                                        420.1060485839844,
+                                        24.702577590942383,
+                                        10.86129379272461,
+                                        0.00010022800415754318
+                                    ],
+                                    "thickness": 0.22646555304527283
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "layer": 14,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        33.692115783691406,
+                                        274.3043212890625,
+                                        37.802345275878906,
+                                        13.54610538482666,
+                                        0.00011798828927567229
+                                    ],
+                                    "thickness": 0.18274825811386108
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "approach": 1,
+                "layer": 14,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        106.86160278320313,
+                                        452.87591552734375,
+                                        22.347253799438477,
+                                        10.798016548156738,
+                                        9.805677109397948e-05
+                                    ],
+                                    "thickness": 0.14988763630390167
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "approach": 2,
+                "layer": 14,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        110.70528411865234,
+                                        440.53131103515625,
+                                        19.317276000976563,
+                                        8.729898452758789,
+                                        0.00011128034384455532
+                                    ],
+                                    "thickness": 0.2920995354652405
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "layer": 16,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        158.13638305664063,
+                                        460.4981689453125,
+                                        16.27175521850586,
+                                        7.6536478996276855,
+                                        0.00011675804853439331
+                                    ],
+                                    "thickness": 0.64993816614151
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "approach": 1,
+                "layer": 16,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        62.08816909790039,
+                                        373.6665954589844,
+                                        27.298908233642578,
+                                        10.953208923339844,
+                                        0.00010692019714042544
+                                    ],
+                                    "thickness": 0.3090035319328308
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "approach": 2,
+                "layer": 16,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        45.97183609008789,
+                                        322.1950988769531,
+                                        29.244813919067383,
+                                        9.85153579711914,
+                                        0.00012056128616677597
+                                    ],
+                                    "thickness": 0.2930139899253845
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "boundary": 1,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        3.8648736476898193,
+                                        108.4500961303711,
+                                        176.7790069580078,
+                                        71.0743637084961,
+                                        0.00010155401832889766
+                                    ],
+                                    "thickness": 49.1073112487793
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 15
+            },
+            {
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        3.8777778148651123,
+                                        108.80422973632813,
+                                        176.0645294189453,
+                                        70.3212661743164,
+                                        0.00010148678120458499
+                                    ],
+                                    "thickness": 165.2715606689453
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 16
+            },
+            {
+                "boundary": 1,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        20.964069366455078,
+                                        310.11749267578125,
+                                        28.17397117614746,
+                                        5.656607151031494,
+                                        0.00014102811110205948
+                                    ],
+                                    "thickness": 140.53060913085938
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 16
+            },
+            {
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        197.7015380859375,
+                                        557.4915161132813,
+                                        16.177040100097656,
+                                        7.795782089233398,
+                                        9.487658098805696e-05
+                                    ],
+                                    "thickness": 0.2702431082725525
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 17
+            },
+            {
+                "approach": 1,
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        188.40753173828125,
+                                        528.8515625,
+                                        16.12167739868164,
+                                        7.819580554962158,
+                                        9.960687020793557e-05
+                                    ],
+                                    "thickness": 0.4763054847717285
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 17
+            },
+            {
+                "approach": 2,
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        263.0068054199219,
+                                        539.6407470703125,
+                                        12.870905876159668,
+                                        6.4519171714782715,
+                                        0.00011156834079883993
+                                    ],
+                                    "thickness": 0.9561225771903992
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 17
+            },
+            {
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        165.8106231689453,
+                                        507.1329345703125,
+                                        17.835548400878906,
+                                        8.266753196716309,
+                                        9.891943773254752e-05
+                                    ],
+                                    "thickness": 0.2981136441230774
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 17
+            },
+            {
+                "approach": 1,
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        180.10841369628906,
+                                        510.8809814453125,
+                                        16.381999969482422,
+                                        7.821246147155762,
+                                        0.00010238330287393183
+                                    ],
+                                    "thickness": 0.8198539614677429
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 17
+            },
+            {
+                "approach": 2,
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        237.04051208496094,
+                                        531.9461059570313,
+                                        13.662409782409668,
+                                        6.798590183258057,
+                                        0.00010990410373779014
+                                    ],
+                                    "thickness": 1.1292415857315063
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 17
+            },
+            {
+                "boundary": 1,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        178.59230041503906,
+                                        495.54315185546875,
+                                        14.129986763000488,
+                                        6.3851165771484375,
+                                        0.0001184344946523197
+                                    ],
+                                    "thickness": 1.6677004098892212
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 17
+            },
+            {
+                "boundary": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        155.59365844726563,
+                                        478.68804931640625,
+                                        17.772653579711914,
+                                        8.29829216003418,
+                                        0.00010560719965724275
+                                    ],
+                                    "thickness": 0.08376073092222214
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 17
+            },
+            {
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        1084.0814208984375,
+                                        1954.2503662109375,
+                                        12.00666332244873,
+                                        6.056602954864502,
+                                        3.2127754820976406e-05
+                                    ],
+                                    "thickness": 2.207099676132202
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 18
+            },
+            {
+                "approach": 1,
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        446.6373291015625,
+                                        1022.0631103515625,
+                                        13.858948707580566,
+                                        6.4374470710754395,
+                                        5.6834673159755766e-05
+                                    ],
+                                    "thickness": 3.976513624191284
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 18
+            },
+            {
+                "approach": 2,
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        235.3781280517578,
+                                        674.2645874023438,
+                                        16.53624153137207,
+                                        7.395929336547852,
+                                        7.758690480841324e-05
+                                    ],
+                                    "thickness": 1.4373193979263306
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 18
+            },
+            {
+                "boundary": 1,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        172.5426483154297,
+                                        472.9034729003906,
+                                        14.042672157287598,
+                                        6.38430118560791,
+                                        0.0001245736493729055
+                                    ],
+                                    "thickness": 1.5803245306015015
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 18
+            },
+            {
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        79.02678680419922,
+                                        464.1412658691406,
+                                        19.831005096435547,
+                                        7.330705165863037,
+                                        0.00010650827607605606
+                                    ],
+                                    "thickness": 0.12112606316804886
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 19
+            },
+            {
+                "boundary": 1,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        109.37042999267578,
+                                        443.29193115234375,
+                                        17.40826988220215,
+                                        7.1765971183776855,
+                                        0.00011924938735319301
+                                    ],
+                                    "thickness": 0.3538413941860199
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 19
+            },
+            {
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        233.4195098876953,
+                                        570.9773559570313,
+                                        14.838750839233398,
+                                        7.139993667602539,
+                                        9.855051030172035e-05
+                                    ],
+                                    "thickness": 0.18063409626483917
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 20
+            },
+            {
+                "approach": 1,
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        170.8106231689453,
+                                        496.80810546875,
+                                        16.673370361328125,
+                                        7.973831653594971,
+                                        0.00010510093852644786
+                                    ],
+                                    "thickness": 0.9788479804992676
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 20
+            },
+            {
+                "approach": 2,
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        237.90577697753906,
+                                        532.33349609375,
+                                        13.617344856262207,
+                                        6.777340412139893,
+                                        0.00010988609574269503
+                                    ],
+                                    "thickness": 1.1556987762451172
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 20
+            },
+            {
+                "boundary": 1,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        79.62786102294922,
+                                        422.6986083984375,
+                                        24.054780960083008,
+                                        9.812799453735352,
+                                        0.00010157217911910266
+                                    ],
+                                    "thickness": 0.17265523970127106
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 20
+            },
+            {
+                "boundary": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        273.7315368652344,
+                                        520.0568237304688,
+                                        12.217636108398438,
+                                        6.113774299621582,
+                                        0.00012165422231191769
+                                    ],
+                                    "thickness": 0.32727664709091187
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 20
+            },
+            {
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        300.6399841308594,
+                                        534.3524780273438,
+                                        11.967695236206055,
+                                        6.019845485687256,
+                                        0.00011557485413504764
+                                    ],
+                                    "thickness": 0.22460554540157318
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 21
+            },
+            {
+                "approach": 1,
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        737.1734008789063,
+                                        1855.115966796875,
+                                        14.853934288024902,
+                                        6.401217937469482,
+                                        2.976438008772675e-05
+                                    ],
+                                    "thickness": 2.69026517868042
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 21
+            },
+            {
+                "approach": 2,
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        486.5960693359375,
+                                        1052.3768310546875,
+                                        13.321919441223145,
+                                        6.335603713989258,
+                                        5.639393566525541e-05
+                                    ],
+                                    "thickness": 3.803856372833252
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 21
+            },
+            {
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        587.7846069335938,
+                                        1060.6217041015625,
+                                        11.974241256713867,
+                                        6.043929100036621,
+                                        5.959220288787037e-05
+                                    ],
+                                    "thickness": 3.059931755065918
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 21
+            },
+            {
+                "approach": 1,
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        441.6199645996094,
+                                        1001.6585083007813,
+                                        13.773494720458984,
+                                        6.427371025085449,
+                                        5.821586091769859e-05
+                                    ],
+                                    "thickness": 3.949747085571289
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 21
+            },
+            {
+                "approach": 2,
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        240.0930938720703,
+                                        668.3428955078125,
+                                        16.138259887695313,
+                                        7.301572322845459,
+                                        7.955265027703717e-05
+                                    ],
+                                    "thickness": 1.4873827695846558
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 21
+            },
+            {
+                "layer": 6,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        177.91461181640625,
+                                        477.674560546875,
+                                        15.717209815979004,
+                                        7.479529857635498,
+                                        0.00011327916581649333
+                                    ],
+                                    "thickness": 0.2794942557811737
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 21
+            },
+            {
+                "approach": 1,
+                "layer": 6,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        614.4087524414063,
+                                        1528.255615234375,
+                                        14.740330696105957,
+                                        6.445078372955322,
+                                        3.6487585020950064e-05
+                                    ],
+                                    "thickness": 2.885406255722046
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 21
+            },
+            {
+                "approach": 2,
+                "layer": 6,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        467.86669921875,
+                                        989.8214721679688,
+                                        13.142995834350586,
+                                        6.312547206878662,
+                                        6.0409409343265e-05
+                                    ],
+                                    "thickness": 4.017806053161621
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 21
+            },
+            {
+                "layer": 8,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        509.23138427734375,
+                                        919.2348022460938,
+                                        11.972278594970703,
+                                        6.038560390472412,
+                                        6.88293221173808e-05
+                                    ],
+                                    "thickness": 3.4574599266052246
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 21
+            },
+            {
+                "approach": 1,
+                "layer": 8,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        440.7366943359375,
+                                        990.2474975585938,
+                                        13.682310104370117,
+                                        6.412930488586426,
+                                        5.913159839110449e-05
+                                    ],
+                                    "thickness": 4.033370494842529
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 21
+            },
+            {
+                "approach": 2,
+                "layer": 8,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        238.37826538085938,
+                                        658.7239990234375,
+                                        16.034255981445313,
+                                        7.288919925689697,
+                                        8.105888264253736e-05
+                                    ],
+                                    "thickness": 1.4955741167068481
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 21
+            },
+            {
+                "layer": 10,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        178.21786499023438,
+                                        475.9400939941406,
+                                        15.642447471618652,
+                                        7.457385540008545,
+                                        0.00011406302655814216
+                                    ],
+                                    "thickness": 0.2883020043373108
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 21
+            },
+            {
+                "approach": 1,
+                "layer": 10,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        608.83544921875,
+                                        1500.8157958984375,
+                                        14.639082908630371,
+                                        6.438350200653076,
+                                        3.731557444552891e-05
+                                    ],
+                                    "thickness": 2.8848278522491455
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 21
+            },
+            {
+                "approach": 2,
+                "layer": 10,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        469.14251708984375,
+                                        991.04541015625,
+                                        13.130334854125977,
+                                        6.310209274291992,
+                                        6.0364065575413406e-05
+                                    ],
+                                    "thickness": 3.965653657913208
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 21
+            },
+            {
+                "layer": 12,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        14.325937271118164,
+                                        339.8941345214844,
+                                        93.85191345214844,
+                                        11.815464973449707,
+                                        5.495717050507665e-05
+                                    ],
+                                    "thickness": 3.048222303390503
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 21
+            },
+            {
+                "approach": 1,
+                "layer": 12,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        423.0393371582031,
+                                        931.1245727539063,
+                                        13.490330696105957,
+                                        6.39239501953125,
+                                        6.342896813293919e-05
+                                    ],
+                                    "thickness": 4.13389778137207
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 21
+            },
+            {
+                "approach": 2,
+                "layer": 12,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        50.33086013793945,
+                                        519.3844604492188,
+                                        29.933725357055664,
+                                        8.563657760620117,
+                                        7.619685493409634e-05
+                                    ],
+                                    "thickness": 1.3910456895828247
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 21
+            },
+            {
+                "boundary": 1,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        59.399940490722656,
+                                        377.272216796875,
+                                        27.983665466308594,
+                                        10.682141304016113,
+                                        0.00010391310206614435
+                                    ],
+                                    "thickness": 0.19674527645111084
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 21
+            },
+            {
+                "boundary": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        18.323219299316406,
+                                        196.13156127929688,
+                                        54.6175537109375,
+                                        21.08460235595703,
+                                        0.0001262316363863647
+                                    ],
+                                    "thickness": 1543.9361572265625
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 21
+            },
+            {
+                "boundary": 1,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 22
+            },
+            {
+                "boundary": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 22
+            },
+            {
+                "boundary": 3,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 22
+            },
+            {
+                "boundary": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": null,
+                                    "thickness": 0.0
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 22
+            },
+            {
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        15.003082275390625,
+                                        381.1842346191406,
+                                        123.33263397216797,
+                                        11.680614471435547,
+                                        3.8977726944722235e-05
+                                    ],
+                                    "thickness": 2.8165388107299805
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 23
+            },
+            {
+                "approach": 1,
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        167.61912536621094,
+                                        674.1266479492188,
+                                        18.3692626953125,
+                                        7.572420597076416,
+                                        7.39233146305196e-05
+                                    ],
+                                    "thickness": 1.4774667024612427
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 23
+            },
+            {
+                "approach": 2,
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        440.9320983886719,
+                                        998.4577026367188,
+                                        13.7564058303833,
+                                        6.425564289093018,
+                                        5.844942279509269e-05
+                                    ],
+                                    "thickness": 4.4688720703125
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 23
+            },
+            {
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        97.85794830322266,
+                                        402.6825256347656,
+                                        24.71845054626465,
+                                        11.749566078186035,
+                                        0.00010232227941742167
+                                    ],
+                                    "thickness": 1.4082401990890503
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 23
+            },
+            {
+                "approach": 1,
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        279.8802490234375,
+                                        833.287841796875,
+                                        16.482980728149414,
+                                        7.008727550506592,
+                                        6.362589192576706e-05
+                                    ],
+                                    "thickness": 5.068108081817627
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 23
+            },
+            {
+                "approach": 2,
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        402.3109436035156,
+                                        1307.8330078125,
+                                        17.624406814575195,
+                                        6.8061442375183105,
+                                        3.8743757613701746e-05
+                                    ],
+                                    "thickness": 3.471365451812744
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 23
+            },
+            {
+                "layer": 6,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        147.63327026367188,
+                                        620.7474975585938,
+                                        25.49503517150879,
+                                        9.485461235046387,
+                                        6.507793295895681e-05
+                                    ],
+                                    "thickness": 4.938858509063721
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 23
+            },
+            {
+                "approach": 1,
+                "layer": 6,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        92.02486419677734,
+                                        398.108642578125,
+                                        26.55743408203125,
+                                        12.61697769165039,
+                                        9.874298120848835e-05
+                                    ],
+                                    "thickness": 28.56582260131836
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 23
+            },
+            {
+                "approach": 2,
+                "layer": 6,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        441.82586669921875,
+                                        1001.3052368164063,
+                                        13.765027046203613,
+                                        6.424850940704346,
+                                        5.8261339290766045e-05
+                                    ],
+                                    "thickness": 4.43967866897583
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 23
+            },
+            {
+                "layer": 8,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        100.73526763916016,
+                                        407.15338134765625,
+                                        24.147462844848633,
+                                        11.436952590942383,
+                                        0.00010275743989041075
+                                    ],
+                                    "thickness": 1.162327527999878
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 23
+            },
+            {
+                "approach": 1,
+                "layer": 8,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        331.1311340332031,
+                                        882.1776123046875,
+                                        15.539274215698242,
+                                        6.8144731521606445,
+                                        6.196586764417589e-05
+                                    ],
+                                    "thickness": 4.8365607261657715
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 23
+            },
+            {
+                "approach": 2,
+                "layer": 8,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        429.3028869628906,
+                                        1296.98779296875,
+                                        17.39964485168457,
+                                        6.820626258850098,
+                                        3.922350151697174e-05
+                                    ],
+                                    "thickness": 3.474099636077881
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 23
+            },
+            {
+                "boundary": 1,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        18.11258316040039,
+                                        195.78611755371094,
+                                        54.939022064208984,
+                                        21.17667579650879,
+                                        0.00012594227155204862
+                                    ],
+                                    "thickness": 2135.2138671875
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 23
+            },
+            {
+                "boundary": 3,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        20.052814483642578,
+                                        208.72161865234375,
+                                        52.18886184692383,
+                                        19.95549201965332,
+                                        0.00012268885620869696
+                                    ],
+                                    "thickness": 2237.8759765625
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 23
+            },
+            {
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        1261.0352783203125,
+                                        4083.0595703125,
+                                        18.82032585144043,
+                                        6.342732906341553,
+                                        1.183422591566341e-05
+                                    ],
+                                    "thickness": 1.6304974555969238
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 24
+            },
+            {
+                "approach": 1,
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        254.94322204589844,
+                                        700.112548828125,
+                                        15.989546775817871,
+                                        7.222853183746338,
+                                        7.658442336833104e-05
+                                    ],
+                                    "thickness": 1.238196849822998
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 24
+            },
+            {
+                "approach": 2,
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        491.54412841796875,
+                                        1039.256591796875,
+                                        13.15112590789795,
+                                        6.308699607849121,
+                                        5.748584590037353e-05
+                                    ],
+                                    "thickness": 3.5246620178222656
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 24
+            },
+            {
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        1210.8021240234375,
+                                        4035.160888671875,
+                                        19.37108039855957,
+                                        6.351174831390381,
+                                        1.1792422810685821e-05
+                                    ],
+                                    "thickness": 1.6095855236053467
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 24
+            },
+            {
+                "approach": 1,
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        253.26307678222656,
+                                        697.667724609375,
+                                        15.999982833862305,
+                                        7.2295756340026855,
+                                        7.646880840184167e-05
+                                    ],
+                                    "thickness": 1.231641411781311
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 24
+            },
+            {
+                "approach": 2,
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        540.2144165039063,
+                                        1183.554443359375,
+                                        13.494659423828125,
+                                        6.342877388000488,
+                                        4.960905425832607e-05
+                                    ],
+                                    "thickness": 3.1288843154907227
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 24
+            },
+            {
+                "layer": 6,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        92.3359375,
+                                        402.8792419433594,
+                                        26.894283294677734,
+                                        12.606203079223633,
+                                        9.674035391071811e-05
+                                    ],
+                                    "thickness": 14.730208396911621
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 24
+            },
+            {
+                "approach": 1,
+                "layer": 6,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        632.9690551757813,
+                                        1474.7196044921875,
+                                        14.0704984664917,
+                                        6.357805252075195,
+                                        3.890811785822734e-05
+                                    ],
+                                    "thickness": 4.578391075134277
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 24
+            },
+            {
+                "approach": 2,
+                "layer": 6,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        89.18888092041016,
+                                        389.6021728515625,
+                                        26.923376083374023,
+                                        12.96452808380127,
+                                        0.00010003455099649727
+                                    ],
+                                    "thickness": 140.5409698486328
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 24
+            },
+            {
+                "boundary": 1,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        280.1107177734375,
+                                        507.07781982421875,
+                                        12.000131607055664,
+                                        6.021388053894043,
+                                        0.0001247007749043405
+                                    ],
+                                    "thickness": 1.2779840230941772
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 24
+            },
+            {
+                "boundary": 3,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        19.1578311920166,
+                                        202.36192321777344,
+                                        53.319671630859375,
+                                        20.537870407104492,
+                                        0.00012457295088097453
+                                    ],
+                                    "thickness": 2320.77197265625
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 24
+            },
+            {
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        100.41886138916016,
+                                        406.6100769042969,
+                                        24.2080135345459,
+                                        11.470124244689941,
+                                        0.00010273514635628089
+                                    ],
+                                    "thickness": 1.187416672706604
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 25
+            },
+            {
+                "approach": 1,
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        427.2023010253906,
+                                        1293.15576171875,
+                                        17.434337615966797,
+                                        6.826645374298096,
+                                        3.930097955162637e-05
+                                    ],
+                                    "thickness": 3.473074436187744
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 25
+            },
+            {
+                "approach": 2,
+                "layer": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        326.7883605957031,
+                                        876.3383178710938,
+                                        15.624606132507324,
+                                        6.835231781005859,
+                                        6.218772614374757e-05
+                                    ],
+                                    "thickness": 4.845430374145508
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 25
+            },
+            {
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        147.7466278076172,
+                                        621.1828002929688,
+                                        25.491424560546875,
+                                        9.481855392456055,
+                                        6.504368502646685e-05
+                                    ],
+                                    "thickness": 4.930856704711914
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 25
+            },
+            {
+                "approach": 1,
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        441.65838623046875,
+                                        1000.5985717773438,
+                                        13.762383460998535,
+                                        6.4244771003723145,
+                                        5.831046655657701e-05
+                                    ],
+                                    "thickness": 4.434881687164307
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 25
+            },
+            {
+                "approach": 2,
+                "layer": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        92.0309829711914,
+                                        398.1273498535156,
+                                        26.556392669677734,
+                                        12.616212844848633,
+                                        9.873986709862947e-05
+                                    ],
+                                    "thickness": 28.50586700439453
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 25
+            },
+            {
+                "layer": 6,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        97.9417495727539,
+                                        402.7527160644531,
+                                        24.70816993713379,
+                                        11.743959426879883,
+                                        0.00010234319779556245
+                                    ],
+                                    "thickness": 1.3936867713928223
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 25
+            },
+            {
+                "approach": 1,
+                "layer": 6,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        396.577880859375,
+                                        1304.5396728515625,
+                                        17.68497085571289,
+                                        6.810194492340088,
+                                        3.8783138734288514e-05
+                                    ],
+                                    "thickness": 3.451211452484131
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 25
+            },
+            {
+                "approach": 2,
+                "layer": 6,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        288.0797119140625,
+                                        844.7625732421875,
+                                        16.271467208862305,
+                                        6.956445217132568,
+                                        6.321983528323472e-05
+                                    ],
+                                    "thickness": 4.996153354644775
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 25
+            },
+            {
+                "layer": 8,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        15.028939247131348,
+                                        380.3836364746094,
+                                        122.20764923095703,
+                                        11.704507827758789,
+                                        3.934242340619676e-05
+                                    ],
+                                    "thickness": 2.826535701751709
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 25
+            },
+            {
+                "approach": 1,
+                "layer": 8,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        440.618408203125,
+                                        996.941162109375,
+                                        13.748810768127441,
+                                        6.424880027770996,
+                                        5.855547351529822e-05
+                                    ],
+                                    "thickness": 4.450150489807129
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 25
+            },
+            {
+                "approach": 2,
+                "layer": 8,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        163.0245819091797,
+                                        672.1461791992188,
+                                        18.511852264404297,
+                                        7.580867290496826,
+                                        7.390901737380773e-05
+                                    ],
+                                    "thickness": 1.4759351015090942
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 25
+            },
+            {
+                "boundary": 1,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        280.2408142089844,
+                                        507.2628173828125,
+                                        12.000466346740723,
+                                        6.021753311157227,
+                                        0.00012469828652683645
+                                    ],
+                                    "thickness": 1.2775577306747437
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 25
+            },
+            {
+                "boundary": 2,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        18.112058639526367,
+                                        195.7801055908203,
+                                        54.94015884399414,
+                                        21.17734146118164,
+                                        0.00012594746658578515
+                                    ],
+                                    "thickness": 2135.030029296875
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 25
+            },
+            {
+                "boundary": 3,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        20.052860260009766,
+                                        208.71446228027344,
+                                        52.18923568725586,
+                                        19.95592498779297,
+                                        0.00012269204307813197
+                                    ],
+                                    "thickness": 2237.851318359375
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 25
+            },
+            {
+                "boundary": 4,
+                "value": {
+                    "material": {
+                        "data": [
+                            [
+                                {
+                                    "material": [
+                                        277.9231872558594,
+                                        506.40118408203125,
+                                        12.032936096191406,
+                                        6.032435894012451,
+                                        0.00012517439608927816
+                                    ],
+                                    "thickness": 3.2842001914978027
+                                }
+                            ]
+                        ],
+                        "mapMaterial": true,
+                        "type": "homogeneous"
+                    }
+                },
+                "volume": 25
+            }
+        ]
+    },
+    "Volumes": {
+        "acts-geometry-hierarchy-map": {
+            "format-version": 0,
+            "value-identifier": "Material Volume Map"
+        },
+        "entries": []
+    }
+}
