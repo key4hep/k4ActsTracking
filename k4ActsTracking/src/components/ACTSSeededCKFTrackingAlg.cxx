@@ -120,7 +120,7 @@ StatusCode ACTSSeededCKFTrackingAlg::initialize() {
     m_seedFinding_deltaRMinBottom = m_seedFinding_deltaRMin;
   if (m_seedFinding_deltaRMaxBottom == 0.f)
     m_seedFinding_deltaRMaxBottom = m_seedFinding_deltaRMax;
-  
+
   return init;
 }
 
