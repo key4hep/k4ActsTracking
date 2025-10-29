@@ -104,11 +104,11 @@ namespace ACTSTracking {
 
       const Acts::Vector3 hitPos(curr_hit.getPosition().x, curr_hit.getPosition().y, curr_hit.getPosition().z);
 
-      Acts::Result<Acts::Vector3> fieldRes = magneticField->getField(hitPos, magCache);
+      fieldRes = magneticField->getField(hitPos, magCache);
       if (!fieldRes.ok()) {
         throw std::runtime_error("Field lookup error: " + fieldRes.error().value());
       }
-      Acts::Vector3 field = *fieldRes;
+      field = *fieldRes;
 
       edm4hep::TrackState* trackState =
           ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtOther, trk_state.smoothed(),

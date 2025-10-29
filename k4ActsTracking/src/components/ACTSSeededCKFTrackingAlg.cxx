@@ -167,12 +167,12 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
 
     Acts::SquareMatrix2            localCov = Acts::SquareMatrix2::Zero();
     const edm4hep::TrackerHitPlane hitplane = hitPair.second;
-    if (&hitplane) {
-      localCov(0, 0) = std::pow(hitplane.getDu() * Acts::UnitConstants::mm, 2);
-      localCov(1, 1) = std::pow(hitplane.getDv() * Acts::UnitConstants::mm, 2);
-    } else {
-      throw std::runtime_error("Currently only support TrackerHitPlane.");
-    }
+    //if (&hitplane) {
+    localCov(0, 0) = std::pow(hitplane.getDu() * Acts::UnitConstants::mm, 2);
+    localCov(1, 1) = std::pow(hitplane.getDv() * Acts::UnitConstants::mm, 2);
+    //} else {
+    //  throw std::runtime_error("Currently only support TrackerHitPlane.");
+    //}
 
     ACTSTracking::SourceLink sourceLink(surface->geometryId(), measurements.size(), &hitPair.second);
     Acts::SourceLink         src_wrap{sourceLink};
@@ -226,8 +226,8 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
   Acts::MagneticFieldProvider::Cache magCache        = magneticField()->makeCache(magFieldContext);
 
   // Initialize track finder
-  using Updater    = Acts::GainMatrixUpdater;
-  using Smoother   = Acts::GainMatrixSmoother;
+  //using Updater    = Acts::GainMatrixUpdater;
+  //using Smoother   = Acts::GainMatrixSmoother;
   using Stepper    = Acts::EigenStepper<>;
   using Navigator  = Acts::Navigator;
   using Propagator = Acts::Propagator<Stepper, Navigator>;
@@ -329,7 +329,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
   gridCfg.impactMax   = finderCfg.impactMax;
   if (m_seedFinding_zBinEdges.size() > 0) {
     gridCfg.zBinEdges.resize(m_seedFinding_zBinEdges.size());
-    for (int k = 0; k < m_seedFinding_zBinEdges.size(); k++) {
+    for (size_t k = 0; k < m_seedFinding_zBinEdges.size(); k++) {
       float pos = std::atof(m_seedFinding_zBinEdges[k].c_str());
       if (pos >= finderCfg.zMin && pos < finderCfg.zMax) {
         gridCfg.zBinEdges[k] = pos;
@@ -397,9 +397,9 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
     for (const Acts::Seed<SSPoint>& seed : seeds) {
       const SSPoint* bottomSP = seed.sp().front();
 
-      const auto&                     sourceLink = bottomSP->sourceLink();
-      const Acts::GeometryIdentifier& geoId      = sourceLink.geometryId();
-      const Acts::Surface*            surface    = trackingGeometry()->findSurface(geoId);
+      const ACTSTracking::SourceLink& sourceLink = bottomSP->sourceLink();
+      const Acts::GeometryIdentifier& geoId = sourceLink.geometryId();
+      const Acts::Surface* surface = trackingGeometry()->findSurface(geoId);
       if (surface == nullptr) {
         info() << "surface with geoID " << geoId << " is not found in the tracking gemetry" << endmsg;
         continue;
@@ -421,7 +421,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
 
       const Acts::BoundVector& params = optParams.value();
 
-      float charge = std::copysign(1, params[Acts::eBoundQOverP]);
+      //float charge = std::copysign(1, params[Acts::eBoundQOverP]);
       float p      = std::abs(1 / params[Acts::eBoundQOverP]);
 
       // build the track covariance matrix using the smearing sigmas
@@ -437,7 +437,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
       paramseeds.push_back(paramseed);
 
       // Add seed to edm4hep collection
-      edm4hep::MutableTrack seedTrack = seedCollection->create();
+      edm4hep::MutableTrack seedTrack = seedCollection.create();
 
       Acts::Vector3 globalPos =
           surface->localToGlobal(geometryContext(), {params[Acts::eBoundLoc0], params[Acts::eBoundLoc1]}, {0, 0, 0});
@@ -454,13 +454,13 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
 
       // hits
       for (const ACTSTracking::SeedSpacePoint* sp : seed.sp()) {
-        const ACTSTracking::SourceLink& sourceLink = sp->sourceLink();
-        seedTrack.addToTrackerHits(*(sourceLink.edm4hepTHitP()));  //trackHit);
+        const ACTSTracking::SourceLink& hitSourceLink = sp->sourceLink();
+        seedTrack.addToTrackerHits(*(hitSourceLink.edm4hepTHitP()));  //trackHit);
       }
 
       seedTrack.addToTrackStates(*seedTrackState);
 
-      debug() << "Seed Paramemeters" << std::endl << paramseed << endmsg;
+      debug() << "Seed Parameters" << std::endl << paramseed << endmsg;
     }
 
     debug() << "Seeds found: " << std::endl << paramseeds.size() << endmsg;
@@ -501,7 +501,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
           edm4hep::MutableTrack* track = ACTSTracking::ACTS2edm4hep_track(trackTip, magneticField(), magCache);
 
           // Save results
-          trackCollection->push_back(*track);
+          trackCollection.push_back(*track);
         }
       } else {
         warning() << "Track fit error: " << result.error() << endmsg;
@@ -516,7 +516,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
   auto                          entireEnd      = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> entireDuration = entireEnd - entireStart;
   //m_histEntireReco->Fill(entireDuration.count());
-  info() << "Track Collection Size: " << trackCollection->size() << endmsg;
+  info() << "Track Collection Size: " << trackCollection.size() << endmsg;
 
   return std::make_tuple(std::move(seedCollection), std::move(trackCollection));
 }

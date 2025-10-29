@@ -124,8 +124,8 @@ edm4hep::TrackCollection ACTSDuplicateRemoval::operator()(const edm4hep::TrackCo
   for (const edm4hep::Track& track : sortedInput) {
     total++;
     bool foundAnEqual = false;
-    int  startIdx     = (finalTracks.size() >= 10) ? finalTracks.size() - 10 : 0;
-    for (int i = startIdx; i < finalTracks.size(); ++i) {
+    size_t  startIdx     = (finalTracks.size() >= 10) ? finalTracks.size() - 10 : 0;
+    for (size_t i = startIdx; i < finalTracks.size(); ++i) {
       const edm4hep::Track& otherTrack = finalTracks[i];
 
       if (!ACTSTracking::tracks_equal(track, otherTrack))
@@ -143,7 +143,7 @@ edm4hep::TrackCollection ACTSDuplicateRemoval::operator()(const edm4hep::TrackCo
     }
   }
 
-  for (const auto track : finalTracks) {
+  for (const auto &track : finalTracks) {
     outputTracks.push_back(track);
   }
 
