@@ -337,7 +337,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
   gridCfg.impactMax   = finderCfg.impactMax;
   if (m_seedFinding_zBinEdges.size() > 0) {
     gridCfg.zBinEdges.resize(m_seedFinding_zBinEdges.size());
-    for (int k = 0; k < m_seedFinding_zBinEdges.size(); k++) {
+    for (size_t k = 0; k < m_seedFinding_zBinEdges.size(); k++) {
       float pos = std::atof(m_seedFinding_zBinEdges[k].c_str());
       if (pos >= finderCfg.zMin && pos < finderCfg.zMax) {
         gridCfg.zBinEdges[k] = pos;
