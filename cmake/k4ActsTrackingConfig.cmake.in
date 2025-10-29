@@ -1,0 +1,28 @@
+###############################################################################
+# k4ActsTracking CMake config
+#
+# Exported Targets
+#   k4ActsTracking::k4ActsTracking         Base library providing core
+#                                          functionality
+#   k4ActsTracking::k4ActsTrackingPlugins  The Gaudi plugins for actual
+#                                          services and algorithms
+#
+###############################################################################
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(k4FWCore @k4FWCore_VERSION@)
+find_dependency(Acts @Acts_VERSION@ REQUIRED COMPONENTS Core PluginDD4hep)
+find_dependency(DD4hep @DD4hep_VERSION@ REQUIRED COMPONENTS DDCore DDRec)
+
+# - Include the targets file to create the imported targets that a client can
+# link to (libraries) or execute (programs)
+if (NOT TARGET k4ActsTracking::k4ActsTracking)
+  include("${CMAKE_CURRENT_LIST_DIR}/k4ActsTrackingTargets.cmake")
+endif()
+
+check_required_components(k4ActsTracking)
+
+include(FindPackageHandleStandardArgs)
+get_property(TEST_K4ACTSTRACKING_LIBRARY TARGET k4ActsTracking::k4ActsTrackingPlugins PROPERTY LOCATION)
+find_package_handle_standard_args(k4ActsTracking DEFAULT_MSG CMAKE_CURRENT_LIST_FILE TEST_K4ACTSTRACKING_LIBRARY)

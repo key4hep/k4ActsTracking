@@ -1,15 +1,33 @@
+/*
+ * Copyright (c) 2014-2024 Key4hep-Project.
+ *
+ * This file is part of Key4hep.
+ * See https://key4hep.github.io/key4hep-doc/ for further info.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 #include "k4ActsTracking/ACTSSeededCKFTrackingAlg.hxx"
 
 // edm4hep
 #include <edm4hep/MCParticle.h>
-#include <edm4hep/SimTrackerHit.h>
-#include <edm4hep/TrackerHitPlane.h>
-#include <edm4hep/TrackState.h>
 #include <edm4hep/MutableTrack.h>
+#include <edm4hep/SimTrackerHit.h>
+#include <edm4hep/TrackState.h>
+#include <edm4hep/TrackerHitPlane.h>
 
 // Gaudi
-#include <GaudiKernel/MsgStream.h>
 #include <GaudiKernel/ITHistSvc.h>
+#include <GaudiKernel/MsgStream.h>
 
 // ACTS
 #include <Acts/EventData/MultiTrajectory.hpp>
@@ -51,8 +69,8 @@ using SSPointGrid = Acts::CylindricalSpacePointGrid<SSPoint>;
 DECLARE_COMPONENT(ACTSSeededCKFTrackingAlg)
 
 // Constructor
-ACTSSeededCKFTrackingAlg::ACTSSeededCKFTrackingAlg(const std::string& name, ISvcLocator* svcLoc) 
-	: ACTSAlgBase(name, svcLoc) {}
+ACTSSeededCKFTrackingAlg::ACTSSeededCKFTrackingAlg(const std::string& name, ISvcLocator* svcLoc)
+    : ACTSAlgBase(name, svcLoc) {}
 
 StatusCode ACTSSeededCKFTrackingAlg::initialize() {
 	info() << "Initializing ACTSSeededCKFTrackingAlg" << endmsg;
@@ -546,5 +564,3 @@ std::tuple<edm4hep::TrackCollection,
 	
 	return std::make_tuple(std::move(seedCollection), std::move(trackCollection));
 }
-
-

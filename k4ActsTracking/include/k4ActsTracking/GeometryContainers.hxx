@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2014-2024 Key4hep-Project.
+ *
+ * This file is part of Key4hep.
+ * See https://key4hep.github.io/key4hep-doc/ for further info.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 // Copied from GeometryContainers.hpp from the Acts project
 #pragma once
 
@@ -5,59 +23,52 @@
 #include <boost/container/flat_set.hpp>
 
 namespace ACTSTracking {
-/**
+  /**
  * @brief extract the geometry identifier from a variety of types
  */
-struct GeometryIdGetter {
-  /**
+  struct GeometryIdGetter {
+    /**
    * @brief explicit geometry identifier are just forwarded
    */
-  constexpr Acts::GeometryIdentifier operator()(
-      Acts::GeometryIdentifier geometryId) const {
-    return geometryId;
-  }
-  /**
+    constexpr Acts::GeometryIdentifier operator()(Acts::GeometryIdentifier geometryId) const { return geometryId; }
+    /**
    * @brief encoded geometry ids are converted back to geometry identifiers.
    */
-  constexpr Acts::GeometryIdentifier operator()(
-      Acts::GeometryIdentifier::Value encoded) const {
-    return Acts::GeometryIdentifier(encoded);
-  }
-  /**
+    constexpr Acts::GeometryIdentifier operator()(Acts::GeometryIdentifier::Value encoded) const {
+      return Acts::GeometryIdentifier(encoded);
+    }
+    /**
    * @brief support elements in map-like structures.
    */
-  template <typename T>
-  constexpr Acts::GeometryIdentifier operator()(
-      const std::pair<Acts::GeometryIdentifier, T>& mapItem) const {
-    return mapItem.first;
-  }
-  /**
+    template <typename T>
+    constexpr Acts::GeometryIdentifier operator()(const std::pair<Acts::GeometryIdentifier, T>& mapItem) const {
+      return mapItem.first;
+    }
+    /**
    * @brief support elements that implement `.geometryId()`.
    */
-  template <typename T>
-  inline auto operator()(const T& thing) const
-      -> decltype(thing.geometryId(), Acts::GeometryIdentifier()) {
-    return thing.geometryId();
-  }
-};
+    template <typename T>
+    inline auto operator()(const T& thing) const -> decltype(thing.geometryId(), Acts::GeometryIdentifier()) {
+      return thing.geometryId();
+    }
+  };
 
-namespace detail {
-struct CompareGeometryId {
-  /**
+  namespace detail {
+    struct CompareGeometryId {
+      /**
    * @brief indicate that comparisons between keys and full objects are allowed.
    */
-  using is_transparent = void;
-  /** 
+      using is_transparent = void;
+      /**
    * @brief compare two elements using the automatic key extraction.
    */
-  template <typename Left, typename Right>
-  constexpr bool operator()(Left&& lhs, Right&& rhs) const {
-    return GeometryIdGetter()(lhs) < GeometryIdGetter()(rhs);
-  }
-};
-}  // namespace detail
+      template <typename Left, typename Right> constexpr bool operator()(Left&& lhs, Right&& rhs) const {
+        return GeometryIdGetter()(lhs) < GeometryIdGetter()(rhs);
+      }
+    };
+  }  // namespace detail
 
-/**
+  /**
  * @brief Store elements that know their detector geometry id, e.g. simulation hits.
  *
  * @tparam T type to be stored, must be compatible with `CompareGeometryId`
@@ -69,11 +80,9 @@ struct CompareGeometryId {
  * also be accessed by index that uniquely identifies each element regardless
  * of geometry id.
  */
-template <typename T>
-using GeometryIdMultiset =
-    boost::container::flat_multiset<T, detail::CompareGeometryId>;
+  template <typename T> using GeometryIdMultiset = boost::container::flat_multiset<T, detail::CompareGeometryId>;
 
-/**
+  /**
  * @brief Store elements indexed by an geometry id.
  *
  * @tparam T type to be stored
@@ -87,56 +96,51 @@ using GeometryIdMultiset =
  * 			const auto& el = entry.second; // stored element
  * 	}
  */
-template <typename T>
-using GeometryIdMultimap =
-    GeometryIdMultiset<std::pair<Acts::GeometryIdentifier, T>>;
+  template <typename T> using GeometryIdMultimap = GeometryIdMultiset<std::pair<Acts::GeometryIdentifier, T>>;
 
-/**
+  /**
  * @brief The accessor for the GeometryIdMultiset container
  *
  * It wraps up a few lookup methods to be used in the Combinatorial Kalman
  * Filter
  */
-template <typename T>
-struct GeometryIdMultisetAccessor {
-  using Container = GeometryIdMultiset<T>;
-  using Key = Acts::GeometryIdentifier;
-  using Value = typename GeometryIdMultiset<T>::value_type;
-  using Iterator = typename GeometryIdMultiset<T>::const_iterator;
+  template <typename T> struct GeometryIdMultisetAccessor {
+    using Container = GeometryIdMultiset<T>;
+    using Key       = Acts::GeometryIdentifier;
+    using Value     = typename GeometryIdMultiset<T>::value_type;
+    using Iterator  = typename GeometryIdMultiset<T>::const_iterator;
 
-  /// pointer to the container
-  const Container* container = nullptr;
+    /// pointer to the container
+    const Container* container = nullptr;
 
-  /**
+    /**
    * @brief count the number of elements with requested geoId
    */
-  size_t count(const Acts::GeometryIdentifier& geoId) const {
-    assert(container != nullptr);
-    return container->count(geoId);
-  }
+    size_t count(const Acts::GeometryIdentifier& geoId) const {
+      assert(container != nullptr);
+      return container->count(geoId);
+    }
 
-  /**
+    /**
    * @brief get the range of elements with requested geoId
    */
-  std::pair<Iterator, Iterator> range(
-      const Acts::GeometryIdentifier& geoId) const {
-    assert(container != nullptr);
-    return container->equal_range(geoId);
-  }
+    std::pair<Iterator, Iterator> range(const Acts::GeometryIdentifier& geoId) const {
+      assert(container != nullptr);
+      return container->equal_range(geoId);
+    }
 
-  /**
+    /**
    * @brief get the range of elements with requested geoId
    */
-  std::pair<Iterator, Iterator> range(
-      const Acts::Surface& surface) const {
-    assert(container != nullptr);
-    auto [begin, end] = container->equal_range(surface.geometryId());
-    return {Iterator{begin}, Iterator{end}};
-  }
+    std::pair<Iterator, Iterator> range(const Acts::Surface& surface) const {
+      assert(container != nullptr);
+      auto [begin, end] = container->equal_range(surface.geometryId());
+      return {Iterator{begin}, Iterator{end}};
+    }
 
-  /**
+    /**
    * @brief get the element using the iterator
    */
-  const Value& at(const Iterator& it) const { return *it; }
-};
+    const Value& at(const Iterator& it) const { return *it; }
+  };
 }  // namespace ACTSTracking

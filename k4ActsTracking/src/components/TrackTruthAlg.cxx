@@ -1,3 +1,22 @@
+/*
+ * Copyright (c) 2014-2024 Key4hep-Project.
+ *
+ * This file is part of Key4hep.
+ * See https://key4hep.github.io/key4hep-doc/ for further info.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #include "k4ActsTracking/TrackTruthAlg.hxx"
 
 // ACTSTracking
@@ -14,72 +33,73 @@
 
 DECLARE_COMPONENT(TrackTruthAlg)
 
-TrackTruthAlg::TrackTruthAlg(const std::string& name, ISvcLocator* svcLoc) : MultiTransformer(name, svcLoc, {
-		KeyValues("InputTrackCollectionName", {"Tracks"}),
-		KeyValues("InputTrackerHit2SimTrackerHitRelationName", {"TrackMCRelation"}) },
-		{ KeyValues("OutputParticle2TrackRelationName", {"Particle2TrackRelationName"}) })	{}
+TrackTruthAlg::TrackTruthAlg(const std::string& name, ISvcLocator* svcLoc)
+    : MultiTransformer(name, svcLoc,
+                       {KeyValues("InputTrackCollectionName", {"Tracks"}),
+                        KeyValues("InputTrackerHit2SimTrackerHitRelationName", {"TrackMCRelation"})},
+                       {KeyValues("OutputParticle2TrackRelationName", {"Particle2TrackRelationName"})}) {}
 
 std::tuple<edm4hep::TrackMCParticleLinkCollection> TrackTruthAlg::operator()(
-			const edm4hep::TrackCollection& tracks,
-                        const edm4hep::TrackerHitSimTrackerHitLinkCollection& trackerHitRelations) const{
-	MsgStream log(msgSvc(), name());
-	log << MSG::DEBUG << trackerHitRelations.size() << endmsg;
+    const edm4hep::TrackCollection&                       tracks,
+    const edm4hep::TrackerHitSimTrackerHitLinkCollection& trackerHitRelations) const {
+  MsgStream log(msgSvc(), name());
+  log << MSG::DEBUG << trackerHitRelations.size() << endmsg;
 
-	// Map TrackerHits to SimTrackerHits
-	std::map<edm4hep::TrackerHit, edm4hep::SimTrackerHit> trackerHit2SimHit;
-	for (const auto& hitRel : trackerHitRelations) {
-		edm4hep::TrackerHit trackerHit = hitRel.getFrom();
-		edm4hep::SimTrackerHit simTrackerHit = hitRel.getTo();
-		log << MSG::DEBUG <<"Hit:\n"<< trackerHit <<endmsg;
-		log<< MSG::DEBUG << "Sim:\n"<<simTrackerHit<<endmsg;
-		trackerHit2SimHit[trackerHit] = simTrackerHit;
-	}
+  // Map TrackerHits to SimTrackerHits
+  std::map<edm4hep::TrackerHit, edm4hep::SimTrackerHit> trackerHit2SimHit;
+  for (const auto& hitRel : trackerHitRelations) {
+    edm4hep::TrackerHit    trackerHit    = hitRel.getFrom();
+    edm4hep::SimTrackerHit simTrackerHit = hitRel.getTo();
+    log << MSG::DEBUG << "Hit:\n" << trackerHit << endmsg;
+    log << MSG::DEBUG << "Sim:\n" << simTrackerHit << endmsg;
+    trackerHit2SimHit[trackerHit] = simTrackerHit;
+  }
 
-	log << MSG::DEBUG << "Map size: " << trackerHit2SimHit.size() << endmsg;
-	// Map best matches MCP to Track
-	std::map<edm4hep::MCParticle, edm4hep::Track> mcBestMatchTrack;
-	std::map<edm4hep::MCParticle, float> mcBestMatchFrac;
+  log << MSG::DEBUG << "Map size: " << trackerHit2SimHit.size() << endmsg;
+  // Map best matches MCP to Track
+  std::map<edm4hep::MCParticle, edm4hep::Track> mcBestMatchTrack;
+  std::map<edm4hep::MCParticle, float>          mcBestMatchFrac;
 
-	for (const auto& track: tracks) {
-		//Get Track
-		std::map<edm4hep::MCParticle, uint32_t> trackHit2Mc;
-		for (auto& hit : track.getTrackerHits()) {
-			//Search for SimHit
-			const edm4hep::SimTrackerHit* simHit = nullptr;
-			log << MSG::DEBUG << "hit:\n" << hit <<endmsg;
-			/// @TODO: I am not happy with this. Again an edm4hep problem
-			for (const auto& pair : trackerHit2SimHit) {
-				log << MSG::DEBUG << "sim:\n" << pair.first<<endmsg;
-				if (pair.first == hit) {
-					simHit = (&pair.second);
-					break;
-				}
-			}
-			if (simHit && simHit->getParticle().isAvailable()) {
-				trackHit2Mc[simHit->getParticle()]++; //Increment MC Particle counter
-			}
-		}
+  for (const auto& track : tracks) {
+    //Get Track
+    std::map<edm4hep::MCParticle, uint32_t> trackHit2Mc;
+    for (auto& hit : track.getTrackerHits()) {
+      //Search for SimHit
+      const edm4hep::SimTrackerHit* simHit = nullptr;
+      log << MSG::DEBUG << "hit:\n" << hit << endmsg;
+      /// @TODO: I am not happy with this. Again an edm4hep problem
+      for (const auto& pair : trackerHit2SimHit) {
+        log << MSG::DEBUG << "sim:\n" << pair.first << endmsg;
+        if (pair.first == hit) {
+          simHit = (&pair.second);
+          break;
+        }
+      }
+      if (simHit && simHit->getParticle().isAvailable()) {
+        trackHit2Mc[simHit->getParticle()]++;  //Increment MC Particle counter
+      }
+    }
 
-		// Update Best Matches
-		for (const auto& [mcParticle, hitCount] : trackHit2Mc) {
-			float frac = static_cast<float>(hitCount) / track.trackerHits_size();
-			bool better = mcBestMatchTrack.count(mcParticle) == 0 || // no best matches exist
-				      mcBestMatchFrac[mcParticle] < frac; // this match is better (more hits on track)
-			if (better) {
-				mcBestMatchTrack[mcParticle] = track;
-				mcBestMatchFrac[mcParticle] = frac;
-			}
-		}
-	}
+    // Update Best Matches
+    for (const auto& [mcParticle, hitCount] : trackHit2Mc) {
+      float frac   = static_cast<float>(hitCount) / track.trackerHits_size();
+      bool  better = mcBestMatchTrack.count(mcParticle) == 0 ||  // no best matches exist
+                    mcBestMatchFrac[mcParticle] < frac;          // this match is better (more hits on track)
+      if (better) {
+        mcBestMatchTrack[mcParticle] = track;
+        mcBestMatchFrac[mcParticle]  = frac;
+      }
+    }
+  }
 
-	// Save the best matches
-	edm4hep::TrackMCParticleLinkCollection outColMC2T;
-	for (const auto& [mcParticle, track] : mcBestMatchTrack) {
-		edm4hep::MutableTrackMCParticleLink link = outColMC2T.create();
-		link.setFrom(track);
-		link.setTo(mcParticle);
-		link.setWeight(mcBestMatchFrac[mcParticle]);
-	}
+  // Save the best matches
+  edm4hep::TrackMCParticleLinkCollection outColMC2T;
+  for (const auto& [mcParticle, track] : mcBestMatchTrack) {
+    edm4hep::MutableTrackMCParticleLink link = outColMC2T.create();
+    link.setFrom(track);
+    link.setTo(mcParticle);
+    link.setWeight(mcBestMatchFrac[mcParticle]);
+  }
 
-	return std::make_tuple(std::move(outColMC2T));
+  return std::make_tuple(std::move(outColMC2T));
 }

@@ -16,7 +16,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ]]
-include(CTest)
 
 #--- The genConf directory has been renamed to genConfDir in Gaudi 35r1
 #--- See https://gitlab.cern.ch/gaudi/Gaudi/-/merge_requests/1158
