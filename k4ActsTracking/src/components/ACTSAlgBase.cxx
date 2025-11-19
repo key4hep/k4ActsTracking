@@ -250,7 +250,7 @@ void ACTSAlgBase::buildDetector() {
     layerBuilderConfig.autoSurfaceBinning = true;
 
     // AutoBinning
-    std::vector<std::pair<double, double>> binTolerances{(int)Acts::binValues, {0., 0.}};
+    std::vector<std::pair<double, double>> binTolerances{Acts::numAxisDirections(), {0., 0.}};
 #ifdef K4ACTSTRACKING_ACTS_V32
     binTolerances[Acts::binR]   = range_from_json(volume["geo-tgeo-sfbin-r-tolerance"]);
     binTolerances[Acts::binZ]   = range_from_json(volume["geo-tgeo-sfbin-z-tolerance"]);

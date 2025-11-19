@@ -19,6 +19,8 @@
 
 #include "k4ActsTracking/GeometryIdSelector.hxx"
 
+#include <algorithm>
+
 using namespace ACTSTracking;
 
 GeometryIdSelector::GeometryIdSelector(const std::vector<Acts::GeometryIdentifier>& selection) {

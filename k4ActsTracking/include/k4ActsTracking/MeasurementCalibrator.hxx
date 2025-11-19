@@ -18,20 +18,15 @@
  */
 #pragma once
 
-#include <Acts/EventData/Measurement.hpp>
 #include "Acts/EventData/SourceLink.hpp"
 #include "Acts/EventData/VectorMultiTrajectory.hpp"
 #include "Acts/Geometry/GeometryContext.hpp"
 #include "Acts/Utilities/CalibrationContext.hpp"
 
+#include "k4ActsTracking/Measurement.hxx"
 #include "k4ActsTracking/SourceLink.hxx"
 
 namespace ACTSTracking {
-  //! Hit stored as an measurement
-  using Measurement = Acts::BoundVariantMeasurement;
-
-  //! Collection of measurements
-  using MeasurementContainer = std::vector<Measurement>;
 
   class MeasurementCalibrator {
   public:
@@ -54,14 +49,21 @@ namespace ACTSTracking {
 
     void calibrate(const Acts::GeometryContext& gctx, const Acts::CalibrationContext& cctx,
                    const Acts::SourceLink& sourceLink, Acts::VectorMultiTrajectory::TrackStateProxy trackState) const {
-      trackState.setUncalibratedSourceLink(sourceLink);
-      const auto& idxSourceLink = sourceLink.get<ACTSTracking::SourceLink>();
+      trackState.setUncalibratedSourceLink(Acts::SourceLink{sourceLink});
+      const SourceLink& idxSourceLink = sourceLink.get<SourceLink>();
 
       assert((idxSourceLink.index() < m_measurements.size()) and "Source link index is outside the container bounds");
 
-      const auto& meas = std::get<1>(m_measurements[idxSourceLink.index()]);  ///< @TODO workaround
-      trackState.allocateCalibrated(meas.size());
-      trackState.setCalibrated(meas);
+      const Measurement& measurement = m_measurements[idxSourceLink.index()];
+
+      Acts::visit_measurement(measurement.size(), [&](auto N) -> void {
+        constexpr std::size_t kMeasurementSize = decltype(N)::value;
+
+        trackState.allocateCalibrated(kMeasurementSize);
+        trackState.calibrated<kMeasurementSize>()           = measurement.parameters<kMeasurementSize>();
+        trackState.calibratedCovariance<kMeasurementSize>() = measurement.covariance<kMeasurementSize>();
+        trackState.setProjectorSubspaceIndices(measurement.subspaceIndices<kMeasurementSize>());
+      });
     }
 
   private:
