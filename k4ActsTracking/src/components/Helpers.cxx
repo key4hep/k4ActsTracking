@@ -111,8 +111,8 @@ namespace ACTSTracking {
       field = *fieldRes;
 
       edm4hep::TrackState* trackState =
-          ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtOther, trk_state.smoothed(),
-                                                trk_state.smoothedCovariance(), field[2] / Acts::UnitConstants::T);
+          ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtOther, trk_state.parameters(),
+                                                trk_state.covariance(), field[2] / Acts::UnitConstants::T);
       statesOnTrack.push_back(*trackState);
     }
 
