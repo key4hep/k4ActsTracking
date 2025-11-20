@@ -27,11 +27,7 @@
 #include <Acts/MagneticField/MagneticFieldProvider.hpp>
 #include <Acts/Utilities/CalibrationContext.hpp>
 
-#ifdef K4ACTSTRACKING_ACTS_HAS_TGEO_PLUGIN
-#include <Acts/Plugins/TGeo/TGeoDetectorElement.hpp>
-#else
-#include <Acts/Plugins/Root/TGeoDetectorElement.hpp>
-#endif
+#include <Acts/Plugins/Root/include/ActsPlugins/Root/TGeoDetectorElement.hpp>
 
 // edm4hep
 #include <edm4hep/TrackCollection.h>

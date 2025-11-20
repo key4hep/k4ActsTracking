@@ -42,17 +42,9 @@
 #include <Acts/Geometry/TrackingVolumeArrayCreator.hpp>
 #include <Acts/MagneticField/ConstantBField.hpp>
 #include <Acts/Plugins/Json/JsonMaterialDecorator.hpp>
-#ifndef K4ACTSTRACKING_ACTS_V32
 #include <Acts/Utilities/AxisDefinitions.hpp>
-#endif
-
-#ifdef K4ACTSTRACKING_ACTS_HAS_TGEO_PLUGIN
-#include <Acts/Plugins/TGeo/TGeoDetectorElement.hpp>
-#include <Acts/Plugins/TGeo/TGeoLayerBuilder.hpp>
-#else
-#include <Acts/Plugins/Root/TGeoDetectorElement.hpp>
-#include <Acts/Plugins/Root/TGeoLayerBuilder.hpp>
-#endif
+#include <Acts/Plugins/Root/include/ActsPlugins/Root/TGeoDetectorElement.hpp>
+#include <Acts/Plugins/Root/include/ActsPlugins/Root/TGeoLayerBuilder.hpp>
 
 // ACTSTracking
 #include "k4ActsTracking/Helpers.hxx"
@@ -251,16 +243,9 @@ void ACTSAlgBase::buildDetector() {
 
     // AutoBinning
     std::vector<std::pair<double, double>> binTolerances{Acts::numAxisDirections(), {0., 0.}};
-#ifdef K4ACTSTRACKING_ACTS_V32
-    binTolerances[Acts::binR]   = range_from_json(volume["geo-tgeo-sfbin-r-tolerance"]);
-    binTolerances[Acts::binZ]   = range_from_json(volume["geo-tgeo-sfbin-z-tolerance"]);
-    binTolerances[Acts::binPhi] = range_from_json(volume["geo-tgeo-sfbin-phi-tolerance"]);
-#else
     binTolerances[static_cast<int>(Acts::AxisDirection::AxisR)] = range_from_json(volume["geo-tgeo-sfbin-r-tolerance"]);
     binTolerances[static_cast<int>(Acts::AxisDirection::AxisZ)] = range_from_json(volume["geo-tgeo-sfbin-z-tolerance"]);
-    binTolerances[static_cast<int>(Acts::AxisDirection::AxisPhi)] =
-        range_from_json(volume["geo-tgeo-sfbin-phi-tolerance"]);
-#endif
+    binTolerances[static_cast<int>(Acts::AxisDirection::AxisPhi)] = range_from_json(volume["geo-tgeo-sfbin-phi-tolerance"]);
     layerBuilderConfig.surfaceBinMatcher = Acts::SurfaceBinningMatcher(binTolerances);
 
     // Loop over subvolumes (two endcaps and one barrel)
@@ -281,25 +266,6 @@ void ACTSAlgBase::buildDetector() {
       lConfig.localAxes   = volume["geo-tgeo-sensitive-axes"][subvolumeName];
       lConfig.envelope    = std::pair<double, double>(0.1 * Acts::UnitConstants::mm, 0.1 * Acts::UnitConstants::mm);
 
-#ifdef K4ACTSTRACKING_ACTS_V32
-      // Fill the parsing restrictions in r
-      lConfig.parseRanges.push_back({Acts::binR, range_from_json(volume["geo-tgeo-layer-r-ranges"][subvolumeName])});
-
-      // Fill the parsing restrictions in z
-      lConfig.parseRanges.push_back({Acts::binZ, range_from_json(volume["geo-tgeo-layer-z-ranges"][subvolumeName])});
-
-      // Fill the layer splitting parameters in r
-      float rsplit = volume["geo-tgeo-layer-r-split"][subvolumeName];
-      if (rsplit > 0) {
-        lConfig.splitConfigs.push_back({Acts::binR, rsplit});
-      }
-
-      // Fill the layer splitting parameters in z
-      float zsplit = volume["geo-tgeo-layer-z-split"][subvolumeName];
-      if (zsplit > 0) {
-        lConfig.splitConfigs.push_back({Acts::binZ, zsplit});
-      }
-#else
       // Fill the parsing restrictions in r
       lConfig.parseRanges.push_back(
           {Acts::AxisDirection::AxisR, range_from_json(volume["geo-tgeo-layer-r-ranges"][subvolumeName])});
@@ -319,7 +285,6 @@ void ACTSAlgBase::buildDetector() {
       if (zsplit > 0) {
         lConfig.splitConfigs.push_back({Acts::AxisDirection::AxisZ, zsplit});
       }
-#endif
 
       // Save
       layerBuilderConfig.layerConfigurations[idx].push_back(lConfig);
@@ -373,11 +338,7 @@ void ACTSAlgBase::buildDetector() {
     auto ringLayoutConfiguration      = [&](const std::vector<Acts::TGeoLayerBuilder::LayerConfig>& lConfigs) -> void {
       for (const auto& lcfg : lConfigs) {
         for (const auto& scfg : lcfg.splitConfigs) {
-#ifdef K4ACTSTRACKING_ACTS_V32
-          if (scfg.first == Acts::binR and scfg.second > 0.) {
-#else
           if (scfg.first == Acts::AxisDirection::AxisR and scfg.second > 0.) {
-#endif
             volumeConfig.ringTolerance   = std::max(volumeConfig.ringTolerance, scfg.second);
             volumeConfig.checkRingLayout = true;
           }
