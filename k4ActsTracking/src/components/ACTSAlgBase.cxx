@@ -41,10 +41,10 @@
 #include <Acts/Geometry/TrackingGeometryBuilder.hpp>
 #include <Acts/Geometry/TrackingVolumeArrayCreator.hpp>
 #include <Acts/MagneticField/ConstantBField.hpp>
-#include <Acts/Plugins/Json/JsonMaterialDecorator.hpp>
+#include <ActsPlugins/Json/JsonMaterialDecorator.hpp>
 #include <Acts/Utilities/AxisDefinitions.hpp>
-#include <Acts/Plugins/Root/include/ActsPlugins/Root/TGeoDetectorElement.hpp>
-#include <Acts/Plugins/Root/include/ActsPlugins/Root/TGeoLayerBuilder.hpp>
+#include <ActsPlugins/Root/TGeoDetectorElement.hpp>
+#include <ActsPlugins/Root/TGeoLayerBuilder.hpp>
 
 // ACTSTracking
 #include "k4ActsTracking/Helpers.hxx"
@@ -211,7 +211,7 @@ void ACTSAlgBase::buildDetector() {
 
   //
   // Detector definition
-  std::vector<Acts::TGeoLayerBuilder::Config> layerBuilderConfigs;
+  std::vector<ActsPlugins::TGeoLayerBuilder::Config> layerBuilderConfigs;
 
   // Check if the geometry has been defined
   if (m_tgeodescFile.empty()) {
@@ -236,7 +236,7 @@ void ACTSAlgBase::buildDetector() {
   // Loop over volumes to define sub-detectors
   for (const auto& volume : tgeodesc["Volumes"]) {
     // Volume information
-    Acts::TGeoLayerBuilder::Config layerBuilderConfig;
+    ActsPlugins::TGeoLayerBuilder::Config layerBuilderConfig;
     layerBuilderConfig.configurationName  = volume["geo-tgeo-volume-name"];
     layerBuilderConfig.unit               = 1 * Acts::UnitConstants::cm;
     layerBuilderConfig.autoSurfaceBinning = true;
@@ -260,7 +260,7 @@ void ACTSAlgBase::buildDetector() {
       }
 
       // Create the layer config object and fill it
-      Acts::TGeoLayerBuilder::LayerConfig lConfig;
+      ActsPlugins::TGeoLayerBuilder::LayerConfig lConfig;
       lConfig.volumeName  = volume["geo-tgeo-subvolume-names"][subvolumeName];
       lConfig.sensorNames = volume["geo-tgeo-sensitive-names"][subvolumeName];
       lConfig.localAxes   = volume["geo-tgeo-sensitive-axes"][subvolumeName];
@@ -295,7 +295,7 @@ void ACTSAlgBase::buildDetector() {
   }
 
   // remember the layer builders to collect the detector elements
-  std::vector<std::shared_ptr<const Acts::TGeoLayerBuilder>> tgLayerBuilders;
+  std::vector<std::shared_ptr<const ActsPlugins::TGeoLayerBuilder>> tgLayerBuilders;
 
   for (auto& lbc : layerBuilderConfigs) {
     std::shared_ptr<const Acts::LayerCreator> layerCreatorLB = nullptr;
@@ -324,7 +324,7 @@ void ACTSAlgBase::buildDetector() {
     lbc.layerCreator     = (layerCreatorLB != nullptr) ? layerCreatorLB : layerCreator;
     lbc.protoLayerHelper = (protoLayerHelperLB != nullptr) ? protoLayerHelperLB : protoLayerHelper;
 
-    auto layerBuilder = std::make_shared<const Acts::TGeoLayerBuilder>(
+    auto layerBuilder = std::make_shared<const ActsPlugins::TGeoLayerBuilder>(
         lbc, Acts::getDefaultLogger(lbc.configurationName + "LayerBuilder", layerLogLevel));
     // remember the layer builder
     tgLayerBuilders.push_back(layerBuilder);
@@ -335,7 +335,7 @@ void ACTSAlgBase::buildDetector() {
     volumeConfig.volumeName           = lbc.configurationName;
     volumeConfig.buildToRadiusZero    = (volumeBuilders.size() == 0);
     volumeConfig.layerEnvelopeR       = {1. * Acts::UnitConstants::mm, 5. * Acts::UnitConstants::mm};
-    auto ringLayoutConfiguration      = [&](const std::vector<Acts::TGeoLayerBuilder::LayerConfig>& lConfigs) -> void {
+    auto ringLayoutConfiguration      = [&](const std::vector<ActsPlugins::TGeoLayerBuilder::LayerConfig>& lConfigs) -> void {
       for (const auto& lcfg : lConfigs) {
         for (const auto& scfg : lcfg.splitConfigs) {
           if (scfg.first == Acts::AxisDirection::AxisR and scfg.second > 0.) {

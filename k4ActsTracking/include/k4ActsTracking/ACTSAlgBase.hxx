@@ -27,7 +27,7 @@
 #include <Acts/MagneticField/MagneticFieldProvider.hpp>
 #include <Acts/Utilities/CalibrationContext.hpp>
 
-#include <Acts/Plugins/Root/include/ActsPlugins/Root/TGeoDetectorElement.hpp>
+#include <ActsPlugins/Root/TGeoDetectorElement.hpp>
 
 // edm4hep
 #include <edm4hep/TrackCollection.h>
@@ -64,7 +64,7 @@
  */
 struct ACTSAlgBase : k4FWCore::MultiTransformer<std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection>(
                          const edm4hep::TrackerHitPlaneCollection&)> {
-  using DetectorElementPtr = std::shared_ptr<const Acts::TGeoDetectorElement>;
+  using DetectorElementPtr = std::shared_ptr<const ActsPlugins::TGeoDetectorElement>;
   using DetectorStore      = std::vector<DetectorElementPtr>;
 
 public:
