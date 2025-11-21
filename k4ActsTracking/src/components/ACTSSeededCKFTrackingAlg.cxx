@@ -173,12 +173,8 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
 
     Acts::SquareMatrix2            localCov = Acts::SquareMatrix2::Zero();
     const edm4hep::TrackerHitPlane hitplane = hitPair.second;
-    if (&hitplane) {
-      localCov(0, 0) = std::pow(hitplane.getDu() * Acts::UnitConstants::mm, 2);
-      localCov(1, 1) = std::pow(hitplane.getDv() * Acts::UnitConstants::mm, 2);
-    } else {
-      throw std::runtime_error("Currently only support TrackerHitPlane.");
-    }
+    localCov(0, 0)                          = std::pow(hitplane.getDu() * Acts::UnitConstants::mm, 2);
+    localCov(1, 1)                          = std::pow(hitplane.getDv() * Acts::UnitConstants::mm, 2);
 
     ACTSTracking::SourceLink  sourceLink(surface->geometryId(), measurements.size(), &hitPair.second);
     Acts::SourceLink          src_wrap{sourceLink};
