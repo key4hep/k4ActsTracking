@@ -142,11 +142,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
   debug() << "Working with " << sortedHits.size() << " hits." << endmsg;
 
   // Sort by GeoID
-  std::sort(sortedHits.begin(), sortedHits.end(),
-            [](const std::pair<Acts::GeometryIdentifier, edm4hep::TrackerHitPlane>& hit0,
-               const std::pair<Acts::GeometryIdentifier, edm4hep::TrackerHitPlane>& hit1) -> bool {
-              return hit0.first < hit1.first;
-            });
+  std::ranges::sort(sortedHits, std::less{}, [](const auto& hit) { return hit.first; });
 
   // Turn the edm4hep TrackerHit's into Acts objects
   // Assumes that the hits are sorted by the GeoID
