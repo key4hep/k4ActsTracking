@@ -432,7 +432,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
       const Acts::Vector3         seedPos(bottomSP->x(), bottomSP->y(), bottomSP->z());
       Acts::Result<Acts::Vector3> seedField = magneticField()->getField(seedPos, magCache);
       if (!seedField.ok()) {
-        throw std::runtime_error("Field lookup error: " + seedField.error().value());
+        throw std::runtime_error("Field lookup error: " + std::to_string(seedField.error().value()));
       }
 
       Acts::Result<Acts::BoundVector> optParams =
@@ -468,7 +468,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
       // state
       Acts::Result<Acts::Vector3> hitField = magneticField()->getField(globalPos, magCache);
       if (!hitField.ok()) {
-        throw std::runtime_error("Field lookup error: " + hitField.error().value());
+        throw std::runtime_error("Field lookup error: " + std::to_string(hitField.error().value()));
       }
 
       edm4hep::TrackState* seedTrackState = ACTSTracking::ACTS2edm4hep_trackState(
