@@ -460,7 +460,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
       paramseeds.push_back(paramseed);
 
       // Add seed to edm4hep collection
-      edm4hep::MutableTrack seedTrack = seedCollection->create();
+      edm4hep::MutableTrack seedTrack = seedCollection.create();
 
       Acts::Vector3 globalPos =
           surface->localToGlobal(geometryContext(), {params[Acts::eBoundLoc0], params[Acts::eBoundLoc1]}, {0, 0, 0});
@@ -533,7 +533,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
           edm4hep::MutableTrack* track = ACTSTracking::ACTS2edm4hep_track(trackTip, magneticField(), magCache);
 
           // Save results
-          trackCollection->push_back(*track);
+          trackCollection.push_back(*track);
         }
       } else {
         warning() << "Track fit error: " << result.error() << endmsg;
@@ -548,7 +548,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
   auto                          entireEnd      = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> entireDuration = entireEnd - entireStart;
   //m_histEntireReco->Fill(entireDuration.count());
-  info() << "Track Collection Size: " << trackCollection->size() << endmsg;
+  info() << "Track Collection Size: " << trackCollection.size() << endmsg;
 
   return std::make_tuple(std::move(seedCollection), std::move(trackCollection));
 }
