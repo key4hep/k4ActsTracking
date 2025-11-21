@@ -233,8 +233,6 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
   Acts::MagneticFieldProvider::Cache magCache        = magneticField()->makeCache(magFieldContext);
 
   // Initialize track finder
-  using Updater    = Acts::GainMatrixUpdater;
-  using Smoother   = Acts::GainMatrixSmoother;
   using Stepper    = Acts::EigenStepper<>;
   using Navigator  = Acts::Navigator;
   using Propagator = Acts::Propagator<Stepper, Navigator>;
@@ -496,8 +494,6 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
     if (!m_runCKF)
       continue;
 
-    using TrackContainer =
-        Acts::TrackContainer<Acts::VectorTrackContainer, Acts::VectorMultiTrajectory, std::shared_ptr>;
     auto           trackContainer      = std::make_shared<Acts::VectorTrackContainer>();
     auto           trackStateContainer = std::make_shared<Acts::VectorMultiTrajectory>();
     TrackContainer tracks(trackContainer, trackStateContainer);
