@@ -442,8 +442,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
 
       const Acts::BoundVector& params = *optParams;
 
-      float charge = std::copysign(1, params[Acts::eBoundQOverP]);
-      float p      = std::abs(1 / params[Acts::eBoundQOverP]);
+      float p = std::abs(1 / params[Acts::eBoundQOverP]);
 
       // build the track covariance matrix using the smearing sigmas
       Acts::BoundSquareMatrix cov                 = Acts::BoundSquareMatrix::Zero();
