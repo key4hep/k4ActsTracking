@@ -30,8 +30,6 @@ namespace ACTSTracking {
 
   class MeasurementCalibrator {
   public:
-    /// Construct an invalid calibrator. Required to allow copying.
-    MeasurementCalibrator() = default;
     /// Construct using a user-provided container to chose measurements from.
     MeasurementCalibrator(const MeasurementContainer& measurements) : m_measurements(measurements) {}
 
@@ -47,8 +45,8 @@ namespace ACTSTracking {
       return m_measurements[sourceLink.index()];
     }
 
-    void calibrate(const Acts::GeometryContext& gctx, const Acts::CalibrationContext& cctx,
-                   const Acts::SourceLink& sourceLink, Acts::VectorMultiTrajectory::TrackStateProxy trackState) const {
+    void calibrate(const Acts::GeometryContext&, const Acts::CalibrationContext&, const Acts::SourceLink& sourceLink,
+                   Acts::VectorMultiTrajectory::TrackStateProxy trackState) const {
       trackState.setUncalibratedSourceLink(Acts::SourceLink{sourceLink});
       const SourceLink& idxSourceLink = sourceLink.get<SourceLink>();
 

@@ -74,12 +74,12 @@ namespace ACTSTracking {
       covariance<kSize>() = cov;
     }
 
-    VariableSizeMeasurement()                               = delete;
-    VariableSizeMeasurement(const VariableSizeMeasurement&) = default;
-    VariableSizeMeasurement(VariableSizeMeasurement&&)      = default;
-    ~VariableSizeMeasurement()                              = default;
+    VariableSizeMeasurement()                                          = delete;
+    VariableSizeMeasurement(const VariableSizeMeasurement&)            = default;
+    VariableSizeMeasurement(VariableSizeMeasurement&&)                 = default;
+    ~VariableSizeMeasurement()                                         = default;
     VariableSizeMeasurement& operator=(const VariableSizeMeasurement&) = default;
-    VariableSizeMeasurement& operator=(VariableSizeMeasurement&&) = default;
+    VariableSizeMeasurement& operator=(VariableSizeMeasurement&&)      = default;
 
     const Acts::SourceLink& sourceLink() const { return m_source; }
 

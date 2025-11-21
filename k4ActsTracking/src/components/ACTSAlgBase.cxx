@@ -41,8 +41,8 @@
 #include <Acts/Geometry/TrackingGeometryBuilder.hpp>
 #include <Acts/Geometry/TrackingVolumeArrayCreator.hpp>
 #include <Acts/MagneticField/ConstantBField.hpp>
-#include <ActsPlugins/Json/JsonMaterialDecorator.hpp>
 #include <Acts/Utilities/AxisDefinitions.hpp>
+#include <ActsPlugins/Json/JsonMaterialDecorator.hpp>
 #include <ActsPlugins/Root/TGeoDetectorElement.hpp>
 #include <ActsPlugins/Root/TGeoLayerBuilder.hpp>
 
@@ -245,7 +245,8 @@ void ACTSAlgBase::buildDetector() {
     std::vector<std::pair<double, double>> binTolerances{Acts::numAxisDirections(), {0., 0.}};
     binTolerances[static_cast<int>(Acts::AxisDirection::AxisR)] = range_from_json(volume["geo-tgeo-sfbin-r-tolerance"]);
     binTolerances[static_cast<int>(Acts::AxisDirection::AxisZ)] = range_from_json(volume["geo-tgeo-sfbin-z-tolerance"]);
-    binTolerances[static_cast<int>(Acts::AxisDirection::AxisPhi)] = range_from_json(volume["geo-tgeo-sfbin-phi-tolerance"]);
+    binTolerances[static_cast<int>(Acts::AxisDirection::AxisPhi)] =
+        range_from_json(volume["geo-tgeo-sfbin-phi-tolerance"]);
     layerBuilderConfig.surfaceBinMatcher = Acts::SurfaceBinningMatcher(binTolerances);
 
     // Loop over subvolumes (two endcaps and one barrel)
@@ -335,7 +336,8 @@ void ACTSAlgBase::buildDetector() {
     volumeConfig.volumeName           = lbc.configurationName;
     volumeConfig.buildToRadiusZero    = (volumeBuilders.size() == 0);
     volumeConfig.layerEnvelopeR       = {1. * Acts::UnitConstants::mm, 5. * Acts::UnitConstants::mm};
-    auto ringLayoutConfiguration      = [&](const std::vector<ActsPlugins::TGeoLayerBuilder::LayerConfig>& lConfigs) -> void {
+    auto ringLayoutConfiguration =
+        [&](const std::vector<ActsPlugins::TGeoLayerBuilder::LayerConfig>& lConfigs) -> void {
       for (const auto& lcfg : lConfigs) {
         for (const auto& scfg : lcfg.splitConfigs) {
           if (scfg.first == Acts::AxisDirection::AxisR and scfg.second > 0.) {

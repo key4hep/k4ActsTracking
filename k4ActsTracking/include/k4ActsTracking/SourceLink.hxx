@@ -34,11 +34,11 @@ namespace ACTSTracking {
 
     // Construct an invalid source link. Must be default constructible to
     /// satisfy SourceLinkConcept.
-    SourceLink()                  = default;
-    SourceLink(const SourceLink&) = default;
-    SourceLink(SourceLink&&)      = default;
+    SourceLink()                             = default;
+    SourceLink(const SourceLink&)            = default;
+    SourceLink(SourceLink&&)                 = default;
     SourceLink& operator=(const SourceLink&) = default;
-    SourceLink& operator=(SourceLink&&) = default;
+    SourceLink& operator=(SourceLink&&)      = default;
 
     /// Access the geometry identifier.
     constexpr Acts::GeometryIdentifier geometryId() const { return m_geometryId; }

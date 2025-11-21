@@ -162,7 +162,7 @@ Acts::GeometryIdentifier GeometryIdMappingTool::getGeometryID(uint32_t systemID,
 
   // Layer ID is counting within sub detector, with pairings depending on the
   // sub detector
-  uint64_t layer_id;
+  uint64_t layer_id{0};
   switch (signSystemID) {
     case VertexEndCapNegative:
       switch (det_type) {
