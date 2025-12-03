@@ -27,6 +27,7 @@
 #include "Acts/Definitions/Units.hpp"
 #include "Acts/Geometry/GeometryContext.hpp"
 #include "Acts/Geometry/TrackingGeometry.hpp"
+#include "Acts/MagneticField/MagneticFieldProvider.hpp"
 #include "Acts/Surfaces/Surface.hpp"
 #include "Acts/Utilities/Logger.hpp"
 
@@ -58,6 +59,9 @@ private:
   /// ACTS Tracking Geometry
   std::shared_ptr<const Acts::TrackingGeometry> m_trackingGeo{nullptr};
 
+  /// ACTS Magnetic field
+  std::shared_ptr<const Acts::MagneticFieldProvider> m_magneticField{nullptr};
+
   /// ACTS Material Decorator
   std::shared_ptr<const Acts::IMaterialDecorator> m_materialDeco{nullptr};
 
@@ -85,7 +89,11 @@ public:
   StatusCode createGeoObj();
 
   virtual std::shared_ptr<const Acts::TrackingGeometry> trackingGeometry() const;
+
+  virtual std::shared_ptr<const Acts::MagneticFieldProvider> magneticField() const;
 };
 
 inline std::shared_ptr<const Acts::TrackingGeometry> ActsGeoSvc::trackingGeometry() const { return m_trackingGeo; }
+
+inline std::shared_ptr<const Acts::MagneticFieldProvider> ActsGeoSvc::magneticField() const { return m_magneticField; }
 #endif
