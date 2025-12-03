@@ -4,14 +4,18 @@
 
 #include <k4FWCore/GaudiChecks.h>
 
+#include <Acts/Definitions/Algebra.hpp>
 #include <Acts/Definitions/Units.hpp>
 #include <Acts/Geometry/Blueprint.hpp>
 #include <Acts/Geometry/BlueprintNode.hpp>
 #include <Acts/Geometry/BlueprintOptions.hpp>
 #include <Acts/Geometry/ContainerBlueprintNode.hpp>
+#include <Acts/Geometry/CylinderVolumeBounds.hpp>
+#include <Acts/Geometry/Extent.hpp>
 #include <Acts/Geometry/GeometryContext.hpp>
 #include <Acts/Geometry/GeometryIdentifier.hpp>
 #include <Acts/Geometry/TrackingGeometry.hpp>
+#include <Acts/Geometry/VolumeAttachmentStrategy.hpp>
 #include <Acts/Utilities/AxisDefinitions.hpp>
 #include <Acts/Visualization/ObjVisualization3D.hpp>
 #include <ActsPlugins/DD4hep/BlueprintBuilder.hpp>
@@ -35,7 +39,7 @@ StatusCode ActsGeoGen3Svc::initialize() {
                                                     .dd4hepDetector = m_geoSvc->getDetector(),
                                                     .lengthScale    = Acts::UnitConstants::cm,
                                                 },
-                                                gaudiLogger->cloneWithSuffix("BlpBld")};
+                                                gaudiLogger->cloneWithSuffix("|BlpBld")};
 
   using Acts::Experimental::Blueprint;
   using Acts::Experimental::BlueprintOptions;
@@ -48,15 +52,25 @@ StatusCode ActsGeoGen3Svc::initialize() {
   cfg.envelope[AxisR] = {0_mm, 20_mm};
   Blueprint root{cfg};
 
-  debug() << "Finding " << m_detElementName.value() << " detector element" << endmsg;
-  auto innerTrackerBarrelElem = builder.findDetElementByName(m_detElementName.value()).value();
-  debug() << "Adding layers from " << m_detElementName.value() << " matching " << m_layerPattern.value() << endmsg;
-  auto innerTrackerBarrel = builder.addLayers(innerTrackerBarrelElem, "XYZ", AxisR, std::regex{m_layerPattern.value()});
+  auto& outer = root.addCylinderContainer("MAIA_v0", AxisR);
+  outer.addStaticVolume(Acts::Transform3::Identity(),
+                        std::make_unique<Acts::CylinderVolumeBounds>(0_mm, 10_mm, 1000_mm), "Beampipe");
 
-  debug() << "Found " << innerTrackerBarrel->children().size() << " children in innerTrackerBarrel" << endmsg;
+  outer.addCylinderContainer("InnerTracker", AxisZ, [&](auto& innerTracker) {
+    auto envelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
 
-  debug() << "Adding inner tracker barrel to the root blueprint" << endmsg;
-  root.addChild(innerTrackerBarrel);
+    auto barrel = builder.layerHelper()
+                      .barrel()
+                      .setAxes("XYZ")
+                      .setPattern(m_layerPattern.value())
+                      .setContainer(m_detElementName.value())
+                      .setEnvelope(envelope)
+                      .build();
+
+    barrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
+
+    innerTracker.addChild(barrel);
+  });
 
   BlueprintOptions      options;
   Acts::GeometryContext gctxt{};
