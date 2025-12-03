@@ -2,7 +2,10 @@
 #include "k4ActsTracking/IActsGeoSvc.h"
 
 #include <k4FWCore/GaudiChecks.h>
+#include <k4FWCore/Producer.h>
 #include <k4Interface/IGeoSvc.h>
+
+#include <podio/UserDataCollection.h>
 
 #include <Acts/EventData/GenericBoundTrackParameters.hpp>
 #include <Acts/EventData/ParticleHypothesis.hpp>
@@ -18,25 +21,21 @@
 
 #include <DD4hep/Detector.h>
 
-#include <Gaudi/Algorithm.h>
-#include <GaudiKernel/StatusCode.h>
-
 #include <fmt/format.h>
 #include <fmt/ranges.h>
 
-#include <fstream>
 #include <memory>
 
-struct ActsTestPropagator : public Gaudi::Algorithm {
-  explicit ActsTestPropagator(const std::string& name, ISvcLocator* svcLoc) : Gaudi::Algorithm(name, svcLoc) {}
+struct ActsTestPropagator final : public k4FWCore::Producer<std::vector<podio::UserDataCollection<double>>()> {
+  explicit ActsTestPropagator(const std::string& name, ISvcLocator* svcLoc)
+      : Producer(name, svcLoc, {},
+                 {KeyValues("OutputCollections", {"step_x", "step_y", "step_z", "step_geoID", "step_size"})}) {}
 
   ~ActsTestPropagator() = default;
 
   StatusCode initialize() override;
 
-  StatusCode execute(const EventContext&) const override;
-
-  StatusCode finalize() override;
+  std::vector<podio::UserDataCollection<double>> operator()() const override;
 
   Gaudi::Property<std::string> m_outFileName{this, "StepsOutputFile", "acts_steps.csv",
                                              "Output file for writing step positions and geometry id"};
@@ -48,8 +47,6 @@ private:
   std::shared_ptr<Acts::ConstantBField> m_magneticField{nullptr};
 
   std::unique_ptr<const Acts::Logger> m_actsLogger{nullptr};
-
-  mutable std::ofstream m_outputFile;
 };
 
 StatusCode ActsTestPropagator::initialize() {
@@ -61,16 +58,10 @@ StatusCode ActsTestPropagator::initialize() {
 
   m_actsLogger = makeActsGaudiLogger(this);
 
-  m_outputFile.open(m_outFileName.value());
-  if (!m_outputFile.is_open()) {
-    error() << "Failed to open output file: " << m_outFileName.value() << endmsg;
-    return StatusCode::FAILURE;
-  }
-
   return StatusCode::SUCCESS;
 }
 
-StatusCode ActsTestPropagator::execute(const EventContext&) const {
+std::vector<podio::UserDataCollection<double>> ActsTestPropagator::operator()() const {
   // Largely taken from ActsExamples/Propagation/PropagatorInterface
 
   // The step length logger for testing & end of world aborter
@@ -102,10 +93,12 @@ StatusCode ActsTestPropagator::execute(const EventContext&) const {
   const auto startParameters = Acts::BoundTrackParameters::createCurvilinear(
       Acts::Vector4{0, 0, 0, 0}, Acts::Vector3{0, 0.5, 0.5}, 0.5, std::nullopt, Acts::ParticleHypothesis::pion());
 
+  std::vector<podio::UserDataCollection<double>> stepOutputs(5);
+
   auto initResult = propagator.initialize(state, startParameters);
   if (!initResult.ok()) {
     error() << initResult.error() << endmsg;
-    return StatusCode::FAILURE;
+    return stepOutputs;
   }
   debug() << "Initialized propagator" << endmsg;
 
@@ -114,29 +107,32 @@ StatusCode ActsTestPropagator::execute(const EventContext&) const {
   auto resultTmp = propagator.propagate(state);
   if (!resultTmp.ok()) {
     error() << resultTmp.error() << endmsg;
-    return StatusCode::FAILURE;
+    return stepOutputs;
   }
   debug() << "Done with propagation" << endmsg;
 
   auto result = propagator.makeResult(std::move(state), resultTmp, options, true);
   if (!result.ok()) {
     error() << result.error() << endmsg;
-    return StatusCode::FAILURE;
+    return stepOutputs;
   }
   const auto& steppingResults = result.value().get<SteppingLogger::result_type>();
+
+  auto& stepsX      = stepOutputs[0].vec();
+  auto& stepsY      = stepOutputs[1].vec();
+  auto& stepsZ      = stepOutputs[2].vec();
+  auto& stepsGeoID  = stepOutputs[3].vec();
+  auto& stepsLength = stepOutputs[4].vec();
+
   for (const auto& step : steppingResults.steps) {
-    m_outputFile << fmt::format("{}, {}, {}, {}, {}\n", step.position.x(), step.position.y(), step.position.z(),
-                                step.stepSize.value(), step.geoID.value());
+    stepsX.push_back(step.position.x());
+    stepsY.push_back(step.position.y());
+    stepsZ.push_back(step.position.z());
+    stepsGeoID.push_back(step.geoID.value());
+    stepsLength.push_back(step.stepSize.value());
   }
 
-  return StatusCode::SUCCESS;
-}
-
-StatusCode ActsTestPropagator::finalize() {
-  if (m_outputFile.is_open()) {
-    m_outputFile.close();
-  }
-  return StatusCode::SUCCESS;
+  return stepOutputs;
 }
 
 DECLARE_COMPONENT(ActsTestPropagator);

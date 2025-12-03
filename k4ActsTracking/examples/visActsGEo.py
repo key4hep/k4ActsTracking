@@ -3,12 +3,15 @@
 from Gaudi.Configuration import VERBOSE, DEBUG
 
 from Configurables import ActsGeoGen3Svc, GeoSvc, ActsTestPropagator, EventDataSvc
-from k4FWCore import ApplicationMgr
+from k4FWCore import ApplicationMgr, IOSvc
 from k4FWCore.parseArgs import parser
 
 parser.add_argument("--compactFile", help="Compact file")
 
 args = parser.parse_known_args()[0]
+
+iosvc = IOSvc()
+iosvc.Output = "steps.root"
 
 geoSvc = GeoSvc()
 geoSvc.detectors = [args.compactFile]
