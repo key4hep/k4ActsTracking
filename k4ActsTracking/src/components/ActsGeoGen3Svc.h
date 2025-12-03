@@ -30,7 +30,7 @@ public:
   StatusCode initialize() override;
 
   Gaudi::Property<std::string> m_detElementName{this, "DetElementName", "Name of the DetElement", "InnerTrackerBarrel"};
-  Gaudi::Property<std::string> m_layerPattern{this, "LayerPatternExpr", "Layer pattern match expression", "layer\\d"};
+  Gaudi::Property<std::string> m_layerPattern{this, "LayerPatternExpr", "Layer pattern match expression", "layer"};
 
 private:
   dd4hep::Detector*                             m_dd4hepGeo{nullptr};
