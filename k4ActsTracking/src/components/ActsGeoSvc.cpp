@@ -23,6 +23,7 @@
 #include "k4Interface/IGeoSvc.h"
 
 #include "Acts/Geometry/TrackingGeometry.hpp"
+#include "Acts/MagneticField/ConstantBField.hpp"
 #include "Acts/Visualization/GeometryView3D.hpp"
 #include "Acts/Visualization/ObjVisualization3D.hpp"
 #if __has_include("ActsPlugins/DD4hep/ConvertDD4hepDetector.hpp")
@@ -35,6 +36,11 @@ namespace ActsPlugins {
 
 }  // namespace ActsPlugins
 #endif
+
+#include <fmt/format.h>
+#include <fmt/ranges.h>
+
+#include <array>
 
 using namespace Gaudi;
 
@@ -58,6 +64,15 @@ StatusCode ActsGeoSvc::initialize() {
   m_trackingGeo = ActsPlugins::convertDD4hepDetector(
       m_dd4hepGeo->world(), *logger, bTypePhi, bTypeR, bTypeZ, layerEnvelopeR, layerEnvelopeZ, defaultLayerThickness,
       ActsPlugins::sortDetElementsByID, m_trackingGeoCtx, m_materialDeco);
+
+  std::array<double, 3> magneticFieldVector = {0, 0, 0};
+  std::array<double, 3> position            = {0, 0, 0};
+  m_dd4hepGeo->field().magneticField(position.data(), magneticFieldVector.data());
+  debug() << fmt::format("Retrieved magnetic field at position {}: {}", position, magneticFieldVector) << endmsg;
+  m_magneticField = std::make_shared<Acts::ConstantBField>(
+      Acts::Vector3(magneticFieldVector[0] / dd4hep::tesla * Acts::UnitConstants::T,
+                    magneticFieldVector[1] / dd4hep::tesla * Acts::UnitConstants::T,
+                    magneticFieldVector[2] / dd4hep::tesla * Acts::UnitConstants::T));
 
   /// Setting geometry debug option
   if (m_debugGeometry == true) {

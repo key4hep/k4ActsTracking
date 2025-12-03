@@ -34,6 +34,7 @@ namespace dd4hep {
 namespace Acts {
   class TrackingGeometry;
   class Surface;
+  class MagneticFieldProvider;
 }  // namespace Acts
 
 class GAUDI_API IActsGeoSvc : virtual public IService {
@@ -43,9 +44,10 @@ public:
 public:
   DeclareInterfaceID(IActsGeoSvc, 1, 0);
 
-  virtual std::shared_ptr<const Acts::TrackingGeometry> trackingGeometry() const = 0;
+  virtual std::shared_ptr<const Acts::TrackingGeometry>      trackingGeometry() const = 0;
+  virtual std::shared_ptr<const Acts::MagneticFieldProvider> magneticField() const    = 0;
 
-  virtual ~IActsGeoSvc() {}
+  virtual ~IActsGeoSvc() = default;
 };
 
 #endif  // IACTSGEOSVC_H
