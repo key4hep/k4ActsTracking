@@ -22,7 +22,8 @@ actsGeoSvc.LayerPatternExpr = r"layer\\d"
 actsGeoSvc.OutputLevel = DEBUG
 
 propTest = ActsTestPropagator("TestPropagator")
-propTest.OutputLevel = VERBOSE
+propTest.OutputLevel = DEBUG
+propTest.NumTracks = 10000
 
 
 ApplicationMgr(
