@@ -50,9 +50,11 @@ StatusCode ActsGeoGen3Svc::initialize() {
 
   auto gaudiLogger = makeActsGaudiLogger(this);
 
+  info() << fmt::format("Acts::cm: {}, dd4hep::cm: {}", Acts::UnitConstants::cm, dd4hep::cm) << endmsg;
+
   ActsPlugins::DD4hep::BlueprintBuilder builder{{
                                                     .dd4hepDetector = m_geoSvc->getDetector(),
-                                                    .lengthScale    = Acts::UnitConstants::cm,
+                                                    .lengthScale    = Acts::UnitConstants::cm / dd4hep::cm,
                                                 },
                                                 gaudiLogger->cloneWithSuffix("|BlpBld")};
 
