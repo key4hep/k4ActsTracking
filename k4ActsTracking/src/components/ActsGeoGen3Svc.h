@@ -3,6 +3,7 @@
 
 #include "k4ActsTracking/IActsGeoSvc.h"
 
+#include <Gaudi/Property.h>
 #include <k4Interface/IGeoSvc.h>
 
 #include "GaudiKernel/Service.h"
@@ -27,6 +28,9 @@ public:
   ~ActsGeoGen3Svc() = default;
 
   StatusCode initialize() override;
+
+  Gaudi::Property<std::string> m_detElementName{this, "DetElementName", "Name of the DetElement", "InnerTrackerBarrel"};
+  Gaudi::Property<std::string> m_layerPattern{this, "LayerPatternExpr", "Layer pattern match expression", "layer\\d"};
 
 private:
   dd4hep::Detector*                             m_dd4hepGeo{nullptr};
