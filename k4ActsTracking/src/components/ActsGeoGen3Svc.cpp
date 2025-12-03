@@ -70,6 +70,10 @@ StatusCode ActsGeoGen3Svc::initialize() {
   auto& outer = root.addCylinderContainer("MAIA_v0", AxisR);
   outer.addStaticVolume(Acts::Transform3::Identity(),
                         std::make_unique<Acts::CylinderVolumeBounds>(0_mm, 10_mm, 1000_mm), "Beampipe");
+  // We want to pull the next volume in towards the beampipe to map material to
+  // the correct places in the end. We need to ensure that the enclosing
+  // cylinder contains the beampipe entirely.
+  outer.setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
 
   outer.addCylinderContainer("InnerTracker", AxisZ, [&](auto& innerTracker) {
     auto envelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
