@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
-from Gaudi.Configuration import VERBOSE
+from Gaudi.Configuration import VERBOSE, DEBUG
 
-from Configurables import ActsGeoGen3Svc, GeoSvc
+from Configurables import ActsGeoGen3Svc, GeoSvc, ActsTestPropagator, EventDataSvc
 from k4FWCore import ApplicationMgr
 from k4FWCore.parseArgs import parser
 
@@ -16,7 +16,15 @@ geoSvc.detectors = [args.compactFile]
 actsGeoSvc = ActsGeoGen3Svc("ActsGeoSvc")
 actsGeoSvc.DetElementName = "InnerTrackerBarrel"
 actsGeoSvc.LayerPatternExpr = r"layer\\d"
-actsGeoSvc.OutputLevel = VERBOSE
+actsGeoSvc.OutputLevel = DEBUG
+
+propTest = ActsTestPropagator("TestPropagator")
+propTest.OutputLevel = VERBOSE
 
 
-ApplicationMgr(TopAlg=[], ExtSvc=[geoSvc, actsGeoSvc])
+ApplicationMgr(
+    TopAlg=[propTest],
+    ExtSvc=[geoSvc, actsGeoSvc, EventDataSvc()],
+    EvtMax=1,
+    EvtSel="NONE",
+)

@@ -1,10 +1,12 @@
 #include "k4ActsTracking/ActsGaudiLogger.h"
 #include "k4ActsTracking/IActsGeoSvc.h"
 
-#include <Evaluator/DD4hepUnits.h>
 #include <k4FWCore/GaudiChecks.h>
 #include <k4Interface/IGeoSvc.h>
 
+#include <Acts/EventData/GenericBoundTrackParameters.hpp>
+#include <Acts/EventData/ParticleHypothesis.hpp>
+#include <Acts/EventData/TrackParameters.hpp>
 #include <Acts/Geometry/GeometryContext.hpp>
 #include <Acts/MagneticField/ConstantBField.hpp>
 #include <Acts/MagneticField/MagneticFieldContext.hpp>
@@ -22,11 +24,13 @@
 #include <fmt/format.h>
 #include <fmt/ranges.h>
 
-#include <array>
+#include <fstream>
 #include <memory>
 
 struct ActsTestPropagator : public Gaudi::Algorithm {
-  explicit ActsTestPropagator(const std::string& name, ISvcLocator* svcLoc);
+  explicit ActsTestPropagator(const std::string& name, ISvcLocator* svcLoc) : Gaudi::Algorithm(name, svcLoc) {}
+
+  ~ActsTestPropagator() = default;
 
   StatusCode initialize() override;
 
@@ -39,6 +43,8 @@ private:
   std::shared_ptr<Acts::ConstantBField> m_magneticField{nullptr};
 
   std::unique_ptr<const Acts::Logger> m_actsLogger{nullptr};
+
+  std::ofstream m_outputFile;
 };
 
 StatusCode ActsTestPropagator::initialize() {
@@ -47,15 +53,6 @@ StatusCode ActsTestPropagator::initialize() {
 
   m_actsGeoSvc = svcLoc()->service<IActsGeoSvc>("ActsGeoSvc");
   K4_GAUDI_CHECK(m_actsGeoSvc);
-
-  std::array<double, 3> magneticFieldVector = {0, 0, 0};
-  std::array<double, 3> position            = {0, 0, 0};
-  m_geoSvc->getDetector()->field().magneticField(position.data(), magneticFieldVector.data());
-  debug() << fmt::format("Retrieved magnetic field at position {}: {}", position, magneticFieldVector) << endmsg;
-  m_magneticField = std::make_shared<Acts::ConstantBField>(
-      Acts::Vector3(magneticFieldVector[0] / dd4hep::tesla * Acts::UnitConstants::T,
-                    magneticFieldVector[1] / dd4hep::tesla * Acts::UnitConstants::T,
-                    magneticFieldVector[2] / dd4hep::tesla * Acts::UnitConstants::T));
 
   m_actsLogger = makeActsGaudiLogger(this);
 
@@ -78,16 +75,45 @@ StatusCode ActsTestPropagator::execute(const EventContext&) const {
   using PropagatorOptions = Propagator::template Options<ActorList>;
 
   // Configurations
-  // Navigator::Config navigatorCfg{trackingGeometry()};
-  // navigatorCfg.resolvePassive   = false;
-  // navigatorCfg.resolveMaterial  = true;
-  // navigatorCfg.resolveSensitive = true;
+  Navigator::Config navigatorCfg{m_actsGeoSvc->trackingGeometry()};
+  navigatorCfg.resolvePassive   = false;
+  navigatorCfg.resolveMaterial  = true;
+  navigatorCfg.resolveSensitive = true;
 
-  // Stepper    stepper(m_magneticField);
-  // Navigator  navigator(navigatorCfg);
-  // Propagator propagator(std::move(stepper), std::move(navigator));
+  Stepper    stepper(m_actsGeoSvc->magneticField());
+  Navigator  navigator(navigatorCfg, m_actsLogger->cloneWithSuffix(":Nav"));
+  Propagator propagator(std::move(stepper), std::move(navigator), m_actsLogger->cloneWithSuffix(":Prop"));
 
   auto options = PropagatorOptions{Acts::GeometryContext{}, Acts::MagneticFieldContext{}};
 
+  auto state = propagator.makeState(options);
+
+  const auto startParameters = Acts::BoundTrackParameters::createCurvilinear(
+      Acts::Vector4{0, 0, 0, 0}, Acts::Vector3{0, 0.5, 0.5}, 0.5, std::nullopt, Acts::ParticleHypothesis::pion());
+
+  auto initResult = propagator.initialize(state, startParameters);
+  if (!initResult.ok()) {
+    error() << initResult.error() << endmsg;
+    return StatusCode::FAILURE;
+  }
+  debug() << "Initialized propagator" << endmsg;
+
+  // Propagate using the propagator
+  debug() << "Starting propagation" << endmsg;
+  auto resultTmp = propagator.propagate(state);
+  if (!resultTmp.ok()) {
+    error() << resultTmp.error() << endmsg;
+    return StatusCode::FAILURE;
+  }
+  debug() << "Done with propagation" << endmsg;
+
+  auto result = propagator.makeResult(std::move(state), resultTmp, options, true);
+  if (!result.ok()) {
+    error() << result.error() << endmsg;
+    return StatusCode::FAILURE
+  }
+
   return StatusCode::SUCCESS;
 }
+
+DECLARE_COMPONENT(ActsTestPropagator);
