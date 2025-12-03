@@ -21,6 +21,8 @@
 #define IACTSGEOSVC_H
 
 #include <GaudiKernel/IService.h>
+
+#include <memory>
 #include <unordered_map>
 
 namespace dd4hep {
@@ -41,7 +43,7 @@ public:
 public:
   DeclareInterfaceID(IActsGeoSvc, 1, 0);
 
-  virtual const Acts::TrackingGeometry& trackingGeometry() const = 0;
+  virtual std::shared_ptr<const Acts::TrackingGeometry> trackingGeometry() const = 0;
 
   virtual ~IActsGeoSvc() {}
 };
