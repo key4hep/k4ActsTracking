@@ -36,6 +36,11 @@ struct ActsTestPropagator : public Gaudi::Algorithm {
 
   StatusCode execute(const EventContext&) const override;
 
+  StatusCode finalize() override;
+
+  Gaudi::Property<std::string> m_outFileName{this, "StepsOutputFile", "acts_steps.csv",
+                                             "Output file for writing step positions and geometry id"};
+
 private:
   SmartIF<IActsGeoSvc> m_actsGeoSvc;
   SmartIF<IGeoSvc>     m_geoSvc;
@@ -44,7 +49,7 @@ private:
 
   std::unique_ptr<const Acts::Logger> m_actsLogger{nullptr};
 
-  std::ofstream m_outputFile;
+  mutable std::ofstream m_outputFile;
 };
 
 StatusCode ActsTestPropagator::initialize() {
@@ -55,6 +60,12 @@ StatusCode ActsTestPropagator::initialize() {
   K4_GAUDI_CHECK(m_actsGeoSvc);
 
   m_actsLogger = makeActsGaudiLogger(this);
+
+  m_outputFile.open(m_outFileName.value());
+  if (!m_outputFile.is_open()) {
+    error() << "Failed to open output file: " << m_outFileName.value() << endmsg;
+    return StatusCode::FAILURE;
+  }
 
   return StatusCode::SUCCESS;
 }
@@ -110,9 +121,21 @@ StatusCode ActsTestPropagator::execute(const EventContext&) const {
   auto result = propagator.makeResult(std::move(state), resultTmp, options, true);
   if (!result.ok()) {
     error() << result.error() << endmsg;
-    return StatusCode::FAILURE
+    return StatusCode::FAILURE;
+  }
+  const auto& steppingResults = result.value().get<SteppingLogger::result_type>();
+  for (const auto& step : steppingResults.steps) {
+    m_outputFile << fmt::format("{}, {}, {}, {}, {}\n", step.position.x(), step.position.y(), step.position.z(),
+                                step.stepSize.value(), step.geoID.value());
   }
 
+  return StatusCode::SUCCESS;
+}
+
+StatusCode ActsTestPropagator::finalize() {
+  if (m_outputFile.is_open()) {
+    m_outputFile.close();
+  }
   return StatusCode::SUCCESS;
 }
 
