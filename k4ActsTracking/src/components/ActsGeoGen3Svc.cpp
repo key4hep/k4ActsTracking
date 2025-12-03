@@ -16,6 +16,7 @@
 #include <Acts/Geometry/GeometryIdentifier.hpp>
 #include <Acts/Geometry/TrackingGeometry.hpp>
 #include <Acts/Geometry/VolumeAttachmentStrategy.hpp>
+#include <Acts/MagneticField/ConstantBField.hpp>
 #include <Acts/Utilities/AxisDefinitions.hpp>
 #include <Acts/Visualization/ObjVisualization3D.hpp>
 #include <ActsPlugins/DD4hep/BlueprintBuilder.hpp>
@@ -25,6 +26,11 @@
 
 #include <GaudiKernel/StatusCode.h>
 
+#include <fmt/format.h>
+#include <fmt/ranges.h>
+
+#include <array>
+
 DECLARE_COMPONENT(ActsGeoGen3Svc)
 
 ActsGeoGen3Svc::ActsGeoGen3Svc(const std::string& name, ISvcLocator* svcLoc) : base_class(name, svcLoc) {}
@@ -32,6 +38,15 @@ ActsGeoGen3Svc::ActsGeoGen3Svc(const std::string& name, ISvcLocator* svcLoc) : b
 StatusCode ActsGeoGen3Svc::initialize() {
   m_geoSvc = Gaudi::svcLocator()->service<IGeoSvc>("GeoSvc");
   K4_GAUDI_CHECK(m_geoSvc);
+
+  std::array<double, 3> magneticFieldVector = {0, 0, 0};
+  std::array<double, 3> position            = {0, 0, 0};
+  m_geoSvc->getDetector()->field().magneticField(position.data(), magneticFieldVector.data());
+  debug() << fmt::format("Retrieved magnetic field at position {}: {}", position, magneticFieldVector) << endmsg;
+  m_magneticField = std::make_shared<Acts::ConstantBField>(
+      Acts::Vector3(magneticFieldVector[0] / dd4hep::tesla * Acts::UnitConstants::T,
+                    magneticFieldVector[1] / dd4hep::tesla * Acts::UnitConstants::T,
+                    magneticFieldVector[2] / dd4hep::tesla * Acts::UnitConstants::T));
 
   auto gaudiLogger = makeActsGaudiLogger(this);
 

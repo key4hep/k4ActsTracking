@@ -13,7 +13,8 @@
 
 namespace Acts {
   class TrackingGeometry;
-}
+  class MagneticFieldProvider;
+}  // namespace Acts
 
 namespace dd4hep {
   class Detector;
@@ -21,7 +22,9 @@ namespace dd4hep {
 
 class ActsGeoGen3Svc : public extends<Service, IActsGeoSvc> {
 public:
-  const Acts::TrackingGeometry& trackingGeometry() const override;
+  std::shared_ptr<const Acts::TrackingGeometry> trackingGeometry() const override;
+
+  std::shared_ptr<const Acts::MagneticFieldProvider> magneticField() const override;
 
   ActsGeoGen3Svc(const std::string& name, ISvcLocator* svcLoc);
 
@@ -33,11 +36,16 @@ public:
   Gaudi::Property<std::string> m_layerPattern{this, "LayerPatternExpr", "Layer pattern match expression", "layer"};
 
 private:
-  dd4hep::Detector*                             m_dd4hepGeo{nullptr};
-  SmartIF<IGeoSvc>                              m_geoSvc;
-  std::unique_ptr<const Acts::TrackingGeometry> m_trackingGeo{nullptr};
+  dd4hep::Detector*                                  m_dd4hepGeo{nullptr};
+  SmartIF<IGeoSvc>                                   m_geoSvc;
+  std::shared_ptr<const Acts::TrackingGeometry>      m_trackingGeo{nullptr};
+  std::shared_ptr<const Acts::MagneticFieldProvider> m_magneticField{nullptr};
 };
 
-inline const Acts::TrackingGeometry& ActsGeoGen3Svc::trackingGeometry() const { return *m_trackingGeo; }
+inline std::shared_ptr<const Acts::TrackingGeometry> ActsGeoGen3Svc::trackingGeometry() const { return m_trackingGeo; }
+
+inline std::shared_ptr<const Acts::MagneticFieldProvider> ActsGeoGen3Svc::magneticField() const {
+  return m_magneticField;
+}
 
 #endif  // K4ACTSTRACKING_ACTSGEOGEN3SVC_H
