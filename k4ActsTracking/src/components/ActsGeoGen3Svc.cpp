@@ -77,6 +77,33 @@ StatusCode ActsGeoGen3Svc::initialize() {
   // cylinder contains the beampipe entirely.
   outer.setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
 
+  // TODO: Acts detects some overlaps when stacking this up. Need to figure out
+  // what they are about and how to properly configure the building below. Maybe
+  // there is better matching pattern.
+  //
+  // outer.addCylinderContainer("Vertex", AxisZ, [&](auto& vertex) {
+  //   auto envelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
+
+  //   auto barrel = builder.layerHelper()
+  //                     .barrel()
+  //                     .setAxes("XYZ")
+  //                     .setPattern("layer_\\d")
+  //                     .setContainer("VertexBarrel")
+  //                     .setEnvelope(envelope)
+  //                     .customize([&](const dd4hep::DetElement&, auto& layer) {
+  //                       // Force the Barrel onto the z-axis by not using the
+  //                       // center of gravity for auto-sizing. We do this because
+  //                       // the VertexBarrel has an odd number of modules, which
+  //                       // shifts them off-axis when using CoG
+  //                       layer.setUseCenterOfGravity(false, false, true);
+  //                     })
+  //                     .build();
+
+  //   barrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
+
+  //   vertex.addChild(barrel);
+  // });
+
   outer.addCylinderContainer("InnerTracker", AxisZ, [&](auto& innerTracker) {
     auto envelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
 
@@ -96,7 +123,7 @@ StatusCode ActsGeoGen3Svc::initialize() {
     // This will require dedicated stacking of the cylinders in r and z in the
     // order that doesn't produce overlaps.
     //
-    // auto negEndcap = builder.layerHelper()
+    // auto posEndcap = builder.layerHelper()
     //                      .endcap()
     //                      .setAxes("XZY")
     //                      .setContainer("InnerTrackerEndcap")
@@ -104,10 +131,25 @@ StatusCode ActsGeoGen3Svc::initialize() {
     //                      .setEnvelope(envelope)
     //                      .build();
 
-    // negEndcap->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
+    // posEndcap->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
 
     innerTracker.addChild(barrel);
-    // innerTracker.addChild(negEndcap);
+    // innerTracker.addChild(posEndcap);
+  });
+
+  outer.addCylinderContainer("OuterTracker", AxisZ, [&](auto& outerTracker) {
+    auto envelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
+
+    auto barrel = builder.layerHelper()
+                      .barrel()
+                      .setAxes("XYZ")
+                      .setPattern("layer\\d")
+                      .setContainer("OuterTrackerBarrel")
+                      .setEnvelope(envelope)
+                      .build();
+
+    barrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
+    outerTracker.addChild(barrel);
   });
 
   BlueprintOptions      options;

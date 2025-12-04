@@ -30,7 +30,7 @@ def main():
     hist = df.Graph("step_z", "step_r")
 
     # Create canvas and draw
-    canvas = ROOT.TCanvas("canvas", "Step R vs Z", 800, 600)
+    canvas = ROOT.TCanvas("canvas", "Step R vs Z", 1200, 800)
     # hist.SetMarkerStyle(20)
     # hist.SetMarkerSize(0.5)
     hist.SetTitle("Step R vs Z;step_z;step_r")
@@ -38,7 +38,7 @@ def main():
 
     # Set axis limits
     hist.GetXaxis().SetRangeUser(-2000, 2000)
-    hist.GetYaxis().SetRangeUser(0, 1000)
+    hist.GetYaxis().SetRangeUser(0, 1500)
 
     # Save the plot
     canvas.SaveAs(args.output)
