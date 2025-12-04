@@ -19,15 +19,16 @@ geoSvc.detectors = [args.compactFile]
 actsGeoSvc = ActsGeoGen3Svc("ActsGeoSvc")
 actsGeoSvc.DetElementName = "InnerTrackerBarrel"
 actsGeoSvc.LayerPatternExpr = r"layer\\d"
-actsGeoSvc.OutputLevel = DEBUG
+actsGeoSvc.OutputLevel = VERBOSE
 
 propTest = ActsTestPropagator("TestPropagator")
 propTest.OutputLevel = DEBUG
-propTest.NumTracks = 10000
+propTest.NumTracks = 20000
 
 
 ApplicationMgr(
     TopAlg=[propTest],
+    # TopAlg=[],
     ExtSvc=[geoSvc, actsGeoSvc, EventDataSvc()],
     EvtMax=1,
     EvtSel="NONE",

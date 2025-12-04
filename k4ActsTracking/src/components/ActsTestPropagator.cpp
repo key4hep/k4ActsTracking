@@ -125,6 +125,7 @@ std::vector<podio::UserDataCollection<double>> ActsTestPropagator::operator()() 
   auto&                                          stepsGeoID  = stepOutputs[3].vec();
   auto&                                          stepsLength = stepOutputs[4].vec();
 
+  debug() << fmt::format("Creating {} random tracks", m_numTracks.value()) << endmsg;
   for (int i = 0; i < m_numTracks; ++i) {
     // Generate random start position
     Acts::Vector4 startPos{m_posDist(m_gen), m_posDist(m_gen), m_posDist(m_gen), 0};
