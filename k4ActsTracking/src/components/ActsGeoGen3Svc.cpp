@@ -90,14 +90,31 @@ StatusCode ActsGeoGen3Svc::initialize() {
 
     barrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
 
+    // TODO: This currently doesn't work because the cylinder we get from the
+    // barrel overlaps in z with the cylinder we get from here, because the
+    // first (innermost) endcap layer "sticks" into the envelope of the barrel.
+    // This will require dedicated stacking of the cylinders in r and z in the
+    // order that doesn't produce overlaps.
+    //
+    // auto negEndcap = builder.layerHelper()
+    //                      .endcap()
+    //                      .setAxes("XZY")
+    //                      .setContainer("InnerTrackerEndcap")
+    //                      .setPattern("layer_pos\\d")
+    //                      .setEnvelope(envelope)
+    //                      .build();
+
+    // negEndcap->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
+
     innerTracker.addChild(barrel);
+    // innerTracker.addChild(negEndcap);
   });
 
   BlueprintOptions      options;
   Acts::GeometryContext gctxt{};
 
   debug() << "Constructing tracking geometry" << endmsg;
-  m_trackingGeo = root.construct(options, gctxt);
+  m_trackingGeo = root.construct(options, gctxt, *gaudiLogger->cloneWithSuffix("|Construct"));
 
   debug() << "Creating visualiztion" << endmsg;
   Acts::ObjVisualization3D vis{};
