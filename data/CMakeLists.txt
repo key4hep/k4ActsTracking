@@ -17,6 +17,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ]]
 
+# Download the necessary data files dynamically
+set(DATA_BASE_URL "https://key4hep.web.cern.ch/key4hep/k4ActsTracking/MuColl/data")
+set(FILE_LIST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/file_list.txt")
+set(OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+
+message(STATUS "Running download script for data files...")
+execute_process(
+  COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/download_files.sh" ${FILE_LIST_PATH} ${DATA_BASE_URL} ${OUTPUT_DIR}
+  RESULT_VARIABLE download_result
+  ERROR_VARIABLE download_error
+)
+
+if(download_result EQUAL 0)
+  message(STATUS "Data files download completed successfully")
+else()
+  message(FATAL_ERROR "Failed to download data files:\n${download_error}")
+endif()
+
 # Tracking geometry
 INSTALL(FILES MuColl_v1.root MuSIC_v1.root MuSIC_v2.root MAIA_v0.root
   DESTINATION ${CMAKE_INSTALL_DATADIR}/k4ActsTracking/data)
