@@ -24,6 +24,8 @@
 #include "Acts/EventData/detail/ParameterTraits.hpp"
 #include "Acts/EventData/detail/PrintParameters.hpp"
 
+#include <boost/container/static_vector.hpp>
+
 #include <array>
 #include <variant>
 

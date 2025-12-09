@@ -20,6 +20,7 @@
 
 #include <edm4hep/TrackerHitPlane.h>
 
+#include "Acts/EventData/SourceLink.hpp"
 #include "Acts/Surfaces/Surface.hpp"
 
 #include "k4ActsTracking/GeometryContainers.hxx"
