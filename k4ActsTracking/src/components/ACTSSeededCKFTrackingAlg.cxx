@@ -172,7 +172,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
     localCov(0, 0)                          = std::pow(hitplane.getDu() * Acts::UnitConstants::mm, 2);
     localCov(1, 1)                          = std::pow(hitplane.getDv() * Acts::UnitConstants::mm, 2);
 
-    ACTSTracking::SourceLink  sourceLink(surface->geometryId(), measurements.size(), &hitPair.second);
+    ACTSTracking::SourceLink  sourceLink(surface->geometryId(), measurements.size(), hitPair.second);
     Acts::SourceLink          src_wrap{sourceLink};
     ACTSTracking::Measurement meas =
         ACTSTracking::makeMeasurement(src_wrap, loc, localCov, Acts::eBoundLoc0, Acts::eBoundLoc1);
@@ -467,7 +467,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
       // hits
       for (const ACTSTracking::SeedSpacePoint* sp : seed.sp()) {
         const ACTSTracking::SourceLink& sl = sp->sourceLink();
-        seedTrack.addToTrackerHits(*(sl.edm4hepTHitP()));  //trackHit);
+        seedTrack.addToTrackerHits(sl.edm4hepTHitP());
       }
 
       seedTrack.addToTrackStates(*seedTrackState);
