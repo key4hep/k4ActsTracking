@@ -29,7 +29,7 @@ namespace ACTSTracking {
   class SourceLink final {
   public:
     //! \brief Construct from geometry identifier and hit
-    SourceLink(Acts::GeometryIdentifier gid, std::size_t index, edm4hep::TrackerHitPlane* edmhit)
+    SourceLink(Acts::GeometryIdentifier gid, std::size_t index, const edm4hep::TrackerHitPlane* edmhit)
         : m_geometryId(gid), m_index(index), m_edm4hephit(edmhit) {}
 
     // Construct an invalid source link. Must be default constructible to
@@ -46,12 +46,12 @@ namespace ACTSTracking {
     constexpr std::size_t index() const { return m_index; }
     /// Access the edm4hep TrackerHitPlane
     /// @TODO: We want this to be a TrackerHit to support multiple types of tracking detector. However, TrackerHitPlane is currently not derived from TrackerHit as expected.
-    constexpr edm4hep::TrackerHitPlane* edm4hepTHitP() const { return m_edm4hephit; }
+    constexpr const edm4hep::TrackerHitPlane* edm4hepTHitP() const { return m_edm4hephit; }
 
   private:
-    Acts::GeometryIdentifier  m_geometryId;
-    std::size_t               m_index      = -1;
-    edm4hep::TrackerHitPlane* m_edm4hephit = nullptr;
+    Acts::GeometryIdentifier        m_geometryId;
+    std::size_t                     m_index      = -1;
+    const edm4hep::TrackerHitPlane* m_edm4hephit = nullptr;
 
     friend constexpr bool operator==(const SourceLink& lhs, const SourceLink& rhs) {
       return (lhs.m_geometryId == rhs.m_geometryId) and (lhs.m_index == rhs.m_index) and
