@@ -63,7 +63,7 @@ namespace ACTSTracking {
 
     const SourceLink& sourceLink() const { return m_sourceLink; }
 
-    std::optional<float> t() const { return m_sourceLink.edm4hepTHitP().getTime(); }
+    std::optional<float> t() const { return m_sourceLink.edm4hepHit().getTime(); }
     /// @TODO missing: const std::optional<float> varianceT() const
 
   private:

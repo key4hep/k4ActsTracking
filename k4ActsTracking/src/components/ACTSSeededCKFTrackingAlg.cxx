@@ -467,7 +467,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
       // hits
       for (const ACTSTracking::SeedSpacePoint* sp : seed.sp()) {
         const ACTSTracking::SourceLink& sl = sp->sourceLink();
-        seedTrack.addToTrackerHits(sl.edm4hepTHitP());
+        seedTrack.addToTrackerHits(sl.edm4hepHit());
       }
 
       seedTrack.addToTrackStates(*seedTrackState);

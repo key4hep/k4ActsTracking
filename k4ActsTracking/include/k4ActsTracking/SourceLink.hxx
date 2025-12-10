@@ -47,7 +47,7 @@ namespace ACTSTracking {
     constexpr std::size_t index() const { return m_index; }
     /// Access the edm4hep TrackerHitPlane
     /// @TODO: We want this to be a TrackerHit to support multiple types of tracking detector. However, TrackerHitPlane is currently not derived from TrackerHit as expected.
-    edm4hep::TrackerHit edm4hepTHitP() const { return m_edm4hephit; }
+    edm4hep::TrackerHit edm4hepHit() const { return m_edm4hephit; }
 
   private:
     Acts::GeometryIdentifier m_geometryId;
