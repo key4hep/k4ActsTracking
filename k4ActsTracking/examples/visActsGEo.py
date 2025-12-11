@@ -17,8 +17,8 @@ geoSvc = GeoSvc()
 geoSvc.detectors = [args.compactFile]
 
 actsGeoSvc = ActsGeoGen3Svc("ActsGeoSvc")
-actsGeoSvc.DetElementName = "InnerTrackerBarrel"
-actsGeoSvc.LayerPatternExpr = r"layer\\d"
+actsGeoSvc.DumpVisualization = True
+actsGeoSvc.ObjVisFileName = "full_barrel.obj"
 actsGeoSvc.OutputLevel = VERBOSE
 
 propTest = ActsTestPropagator("TestPropagator")
