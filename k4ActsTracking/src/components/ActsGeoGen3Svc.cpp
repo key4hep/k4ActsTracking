@@ -80,70 +80,115 @@ StatusCode ActsGeoGen3Svc::initialize() {
   // cylinder contains the beampipe entirely.
   outer.setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
 
-  outer.addCylinderContainer("Vertex", AxisZ, [&](auto& vertex) {
-    // NOTE: Need to set rather small padding here for the R-direction, because
-    // the innermost two layers are a double layer for which the cylindrical
-    // volumes are overlapping otherwise
-    auto envelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {0.4_mm, 0.4_mm});
+  // outer.addCylinderContainer("Vertex", AxisZ, [&](auto& vertex) {
+  //   // NOTE: Need to set rather small padding here for the R-direction, because
+  //   // the innermost two layers are a double layer for which the cylindrical
+  //   // volumes are overlapping otherwise
+  //   auto barrelEnvelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {0.4_mm, 0.4_mm});
 
-    auto barrel =
-        builder.layerHelper()
-            .barrel()
-            .setAxes("ZYX")
-            .setPattern("layer_\\d")
-            .setContainer("VertexBarrel")
-            .setEnvelope(envelope)
-            .customize([&](const dd4hep::DetElement&, std::shared_ptr<Acts::Experimental::LayerBlueprintNode> layer) {
-              // Force the Barrel onto the z-axis by not using the
-              // center of gravity for auto-sizing. We do this because
-              // the VertexBarrel has an odd number of modules, which
-              // shifts them off-axis when using CoG
-              layer->setUseCenterOfGravity(false, false, true);
-              return layer;
-            })
-            .build();
+  //   auto barrel =
+  //       builder.layerHelper()
+  //           .barrel()
+  //           .setAxes("ZYX")
+  //           .setPattern("layer_\\d")
+  //           .setContainer("VertexBarrel")
+  //           .setEnvelope(barrelEnvelope)
+  //           .customize([&](const dd4hep::DetElement&, std::shared_ptr<Acts::Experimental::LayerBlueprintNode> layer) {
+  //             // Force the Barrel onto the z-axis by not using the
+  //             // center of gravity for auto-sizing. We do this because
+  //             // the VertexBarrel has an odd number of modules, which
+  //             // shifts them off-axis when using CoG
+  //             layer->setUseCenterOfGravity(false, false, true);
+  //             return layer;
+  //           })
+  //           .build();
+  //   barrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
 
-    barrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
+  //   vertex.addChild(barrel);
 
-    vertex.addChild(barrel);
-  });
+  //   auto endcapEnvelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
+
+  //   // TODO: Endcap. Almost certainly will have to touch the DD4hep constructor
+  //   // for that because it looks like there are no layer DetElements again (similar to what happens in the InnerTrackerEndcap)
+  // });
+
+  // We have to create the inner tracker in several steps, because the inner
+  // most endcap layer protrudes into the envelope that is created by the
+  // outermost barrel layer. That creates an overlap in z while stacking. Hence,
+  // we build it in steps grouping the innermost two layers of the barrel and
+  // the innermost layer of the endcap into an "inner" inner tracker (stacking
+  // them along z), we then stack the last barrel layer along r, before stacking
+  // the remaining endcap layers along z
+  auto envelope         = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
+  auto innerInnerBarrel = builder.layerHelper()
+                              .barrel()
+                              .setAxes("XYZ")
+                              .setPattern("layer[01]")
+                              .setContainer("InnerTrackerBarrel")
+                              .setEnvelope(envelope)
+                              .build();
+  innerInnerBarrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
+  auto outerInnerBarrel = builder.layerHelper()
+                              .barrel()
+                              .setAxes("XYZ")
+                              .setPattern("layer2")
+                              .setContainer("InnerTrackerBarrel")
+                              .setEnvelope(envelope)
+                              .build();
+  outerInnerBarrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
+
+  auto innerPosEndcapInner = builder.layerHelper()
+                                 .endcap()
+                                 .setAxes("YXZ")
+                                 .setContainer("InnerTrackerEndcap")
+                                 .setPattern("layer_pos0")
+                                 .setEnvelope(envelope)
+                                 .build();
+  innerPosEndcapInner->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
+  auto outerPosEndcapInner = builder.layerHelper()
+                                 .endcap()
+                                 .setAxes("YXZ")
+                                 .setContainer("InnerTrackerEndcap")
+                                 .setPattern("layer_pos[1-6]")
+                                 .setEnvelope(envelope)
+                                 .build();
+  outerPosEndcapInner->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
+
+  auto innerNegEndcapInner = builder.layerHelper()
+                                 .endcap()
+                                 .setAxes("YXZ")
+                                 .setContainer("InnerTrackerEndcap")
+                                 .setPattern("layer_neg0")
+                                 .setEnvelope(envelope)
+                                 .build();
+  innerNegEndcapInner->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
+  auto outerNegEndcapInner = builder.layerHelper()
+                                 .endcap()
+                                 .setAxes("YXZ")
+                                 .setContainer("InnerTrackerEndcap")
+                                 .setPattern("layer_neg[1-6]")
+                                 .setEnvelope(envelope)
+                                 .build();
+  outerNegEndcapInner->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
+
+  auto innerInnerTracker =
+      std::make_shared<Acts::Experimental::CylinderContainerBlueprintNode>("InnerInnerTracker", AxisZ);
+  innerInnerTracker->addChild(innerPosEndcapInner);
+  innerInnerTracker->addChild(innerNegEndcapInner);
+  innerInnerTracker->addChild(innerInnerBarrel);
+
+  auto innerTrackerBarrel =
+      std::make_shared<Acts::Experimental::CylinderContainerBlueprintNode>("InnerTrackerBarrel", AxisR);
+  innerTrackerBarrel->addChild(innerInnerTracker);
+  innerTrackerBarrel->addChild(outerInnerBarrel);
 
   outer.addCylinderContainer("InnerTracker", AxisZ, [&](auto& innerTracker) {
-    auto envelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
-
-    auto barrel = builder.layerHelper()
-                      .barrel()
-                      .setAxes("XYZ")
-                      .setPattern(m_layerPattern.value())
-                      .setContainer(m_detElementName.value())
-                      .setEnvelope(envelope)
-                      .build();
-
-    barrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
-
-    // // TODO: This currently doesn't work because the cylinder we get from the
-    // // barrel overlaps in z with the cylinder we get from here, because the
-    // // first (innermost) endcap layer "sticks" into the envelope of the barrel.
-    // // This will require dedicated stacking of the cylinders in r and z in the
-    // // order that doesn't produce overlaps.
-    // //
-    // auto posEndcap = builder.layerHelper()
-    //                      .endcap()
-    //                      .setAxes("XzY")
-    //                      .setContainer("InnerTrackerEndcap")
-    //                      .setPattern("layer_pos\\d")
-    //                      .setEnvelope(envelope)
-    //                      .build();
-
-    // posEndcap->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
-
-    innerTracker.addChild(barrel);
-    // innerTracker.addChild(posEndcap);
+    innerTracker.addChild(innerTrackerBarrel);
+    innerTracker.addChild(outerNegEndcapInner);
+    innerTracker.addChild(outerPosEndcapInner);
   });
 
   outer.addCylinderContainer("OuterTracker", AxisZ, [&](auto& outerTracker) {
-    auto envelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
-
     auto barrel = builder.layerHelper()
                       .barrel()
                       .setAxes("XYZ")
@@ -151,7 +196,6 @@ StatusCode ActsGeoGen3Svc::initialize() {
                       .setContainer("OuterTrackerBarrel")
                       .setEnvelope(envelope)
                       .build();
-
     barrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
     outerTracker.addChild(barrel);
   });
