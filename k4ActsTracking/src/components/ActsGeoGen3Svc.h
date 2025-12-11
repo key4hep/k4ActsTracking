@@ -32,8 +32,10 @@ public:
 
   StatusCode initialize() override;
 
-  Gaudi::Property<std::string> m_detElementName{this, "DetElementName", "InnerTrackerBarrel", "Name of the DetElement"};
-  Gaudi::Property<std::string> m_layerPattern{this, "LayerPatternExpr", "layer", "Layer pattern match expression"};
+  Gaudi::Property<std::string> m_objDumpFileName{this, "ObjVisFileName", "dump_acts_geo.obj",
+                                                 "Name of the 3D visualization file"};
+  Gaudi::Property<bool>        m_dumpVisualization{this, "DumpVisualization", false,
+                                            "Whether or not to create a 3D visualization dump"};
 
 private:
   dd4hep::Detector*                                  m_dd4hepGeo{nullptr};
