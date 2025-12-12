@@ -18,8 +18,11 @@
  */
 #pragma once
 
+#include "k4ActsTracking/SourceLink.hxx"
+
 #include <Acts/Definitions/Algebra.hpp>
 #include <Acts/Definitions/Common.hpp>
+
 #include <cmath>
 #include <vector>
 
@@ -58,9 +61,9 @@ namespace ACTSTracking {
     constexpr float varianceR() const { return m_varianceRho; }
     constexpr float varianceZ() const { return m_varianceZ; }
 
-    constexpr SourceLink sourceLink() const { return m_sourceLink; }
+    const SourceLink& sourceLink() const { return m_sourceLink; }
 
-    const std::optional<float> t() const { return m_sourceLink.edm4hepTHitP()->getTime(); }
+    std::optional<float> t() const { return m_sourceLink.edm4hepHit().getTime(); }
     /// @TODO missing: const std::optional<float> varianceT() const
 
   private:
@@ -85,7 +88,7 @@ namespace ACTSTracking {
  * that the same measurement index always produces the same space point?
  * no need to check r since it is fully defined by x/y
  */
-  constexpr bool operator==(const SeedSpacePoint& lhs, const SeedSpacePoint& rhs) {
+  inline bool operator==(const SeedSpacePoint& lhs, const SeedSpacePoint& rhs) {
     return (lhs.sourceLink() == rhs.sourceLink()) and (lhs.x() == rhs.x()) and (lhs.y() == rhs.y()) and
            (lhs.z() == rhs.z()) and (lhs.varianceR() == rhs.varianceR()) and (lhs.varianceZ() == rhs.varianceZ());
   }

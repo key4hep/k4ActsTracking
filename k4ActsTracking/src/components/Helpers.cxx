@@ -98,7 +98,7 @@ namespace ACTSTracking {
 
       auto sl = trk_state.getUncalibratedSourceLink().get<ACTSTracking::SourceLink>();
 
-      edm4hep::TrackerHit curr_hit(*sl.edm4hepTHitP());
+      const auto curr_hit = sl.edm4hepHit();
 
       hitsOnTrack.push_back(curr_hit);
 
