@@ -80,45 +80,70 @@ StatusCode ActsGeoGen3Svc::initialize() {
   // cylinder contains the beampipe entirely.
   outer.setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
 
-  // outer.addCylinderContainer("Vertex", AxisZ, [&](auto& vertex) {
-  //   // NOTE: Need to set rather small padding here for the R-direction, because
-  //   // the innermost two layers are a double layer for which the cylindrical
-  //   // volumes are overlapping otherwise
-  //   auto barrelEnvelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {0.4_mm, 0.4_mm});
-
-  //   auto barrel =
-  //       builder.layerHelper()
-  //           .barrel()
-  //           .setAxes("ZYX")
-  //           .setPattern("layer_\\d")
-  //           .setContainer("VertexBarrel")
-  //           .setEnvelope(barrelEnvelope)
-  //           .customize([&](const dd4hep::DetElement&, std::shared_ptr<Acts::Experimental::LayerBlueprintNode> layer) {
-  //             // Force the Barrel onto the z-axis by not using the
-  //             // center of gravity for auto-sizing. We do this because
-  //             // the VertexBarrel has an odd number of modules, which
-  //             // shifts them off-axis when using CoG
-  //             layer->setUseCenterOfGravity(false, false, true);
-  //             return layer;
-  //           })
-  //           .build();
-  //   barrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
-
-  //   vertex.addChild(barrel);
-
-  //   auto endcapEnvelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
-
-  //   // TODO: Endcap. Almost certainly will have to touch the DD4hep constructor
-  //   // for that because it looks like there are no layer DetElements again (similar to what happens in the InnerTrackerEndcap)
-  // });
-
   // We have to create the inner tracker in several steps, because the inner
   // most endcap layer protrudes into the envelope that is created by the
   // outermost barrel layer. That creates an overlap in z while stacking. Hence,
   // we build it in steps grouping the innermost two layers of the barrel and
   // the innermost layer of the endcap into an "inner" inner tracker (stacking
   // them along z), we then stack the last barrel layer along r, before stacking
-  // the remaining endcap layers along z
+  // the remaining endcap layers along z. Additionally, we have to first put the
+  // whole vertex detector inside the two innermost InnerTrackerBarrel layers
+  // because the outermost vertex layer extends further in r, than the innermost
+  // border of the InnerTracker endcaps. Hence, we also need to stack them in
+  // the correct order.
+
+  // NOTE: Need to set rather small padding here for the R-direction, because
+  // the innermost two layers are a double layer for which the cylindrical
+  // volumes are overlapping otherwise
+  auto barrelEnvelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {0.4_mm, 0.4_mm});
+  auto vertexBarrel =
+      builder.layerHelper()
+          .barrel()
+          .setAxes("ZYX")
+          .setPattern("layer_\\d")
+          .setContainer("VertexBarrel")
+          .setEnvelope(barrelEnvelope)
+          .customize([&](const dd4hep::DetElement&, std::shared_ptr<Acts::Experimental::LayerBlueprintNode> layer) {
+            // Force the Barrel onto the z-axis by not using the
+            // center of gravity for auto-sizing. We do this because
+            // the VertexBarrel has an odd number of modules, which
+            // shifts them off-axis when using CoG
+            layer->setUseCenterOfGravity(false, false, true);
+            return layer;
+          })
+          .build();
+  vertexBarrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
+
+  // The VertexEncap again suffers from not having a *layer* DetElement
+  auto endcapEnvelope        = Acts::ExtentEnvelope{}.set(AxisZ, {1_mm, 1_mm}).set(AxisR, {5_mm, 5_mm});
+  auto vtxEndcapDetElem      = builder.findDetElementByName("VertexEndcap");
+  auto negVtxEndcapContainer = std::make_shared<Acts::Experimental::CylinderContainerBlueprintNode>(
+      "VertexEndcapNeg", Acts::AxisDirection::AxisZ);
+  negVtxEndcapContainer->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
+  auto posVtxEndcapContainer = std::make_shared<Acts::Experimental::CylinderContainerBlueprintNode>(
+      "VertexEndcapPos", Acts::AxisDirection::AxisZ);
+  posVtxEndcapContainer->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
+
+  for (int i = 0; i < 8; ++i) {
+    auto layerName      = "layer" + std::to_string(i);
+    auto layerPattern   = std::regex{layerName + "_module0_sensor\\d+_neg"};
+    auto sensorElements = builder.findDetElementByNamePattern(vtxEndcapDetElem.value(), layerPattern);
+
+    auto layer = builder.makeLayer(vtxEndcapDetElem.value(), sensorElements, "XZY", layerName + "_neg");
+    layer->setEnvelope(endcapEnvelope);
+    negVtxEndcapContainer->addChild(layer);
+
+    layerPattern   = layerName + "_module0_sensor\\d+_pos";
+    sensorElements = builder.findDetElementByNamePattern(vtxEndcapDetElem.value(), layerPattern);
+    layer          = builder.makeLayer(vtxEndcapDetElem.value(), sensorElements, "XZY", layerName + "_pos");
+    posVtxEndcapContainer->addChild(layer);
+  }
+
+  auto vertex = std::make_shared<Acts::Experimental::CylinderContainerBlueprintNode>("Vertex", AxisZ);
+  vertex->addChild(vertexBarrel);
+  vertex->addChild(negVtxEndcapContainer);
+  vertex->addChild(posVtxEndcapContainer);
+
   auto envelope         = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
   auto innerInnerBarrel = builder.layerHelper()
                               .barrel()
@@ -128,6 +153,8 @@ StatusCode ActsGeoGen3Svc::initialize() {
                               .setEnvelope(envelope)
                               .build();
   innerInnerBarrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
+  innerInnerBarrel->addChild(vertex);
+
   auto outerInnerBarrel = builder.layerHelper()
                               .barrel()
                               .setAxes("XYZ")
