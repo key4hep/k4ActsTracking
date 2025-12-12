@@ -188,6 +188,8 @@ StatusCode ActsGeoGen3Svc::initialize() {
     innerTracker.addChild(outerPosEndcapInner);
   });
 
+  // The OuterTracker is a bit more simple because it has the barrel and endcap
+  // more clearly separated
   outer.addCylinderContainer("OuterTracker", AxisZ, [&](auto& outerTracker) {
     auto barrel = builder.layerHelper()
                       .barrel()
@@ -197,7 +199,28 @@ StatusCode ActsGeoGen3Svc::initialize() {
                       .setEnvelope(envelope)
                       .build();
     barrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
+
+    auto negEndcap = builder.layerHelper()
+                         .endcap()
+                         .setAxes("YXZ")
+                         .setContainer("OuterTrackerEndcap")
+                         .setPattern("layer_neg\\d")
+                         .setEnvelope(envelope)
+                         .build();
+    negEndcap->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
+
+    auto posEndcap = builder.layerHelper()
+                         .endcap()
+                         .setAxes("YXZ")
+                         .setContainer("OuterTrackerEndcap")
+                         .setPattern("layer_pos\\d")
+                         .setEnvelope(envelope)
+                         .build();
+    posEndcap->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
+
     outerTracker.addChild(barrel);
+    outerTracker.addChild(negEndcap);
+    outerTracker.addChild(posEndcap);
   });
 
   BlueprintOptions      options;
