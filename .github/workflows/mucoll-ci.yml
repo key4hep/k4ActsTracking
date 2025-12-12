@@ -40,7 +40,7 @@ jobs:
         run: |
           mkdir -p ~/.cache/ccache
           chmod 777 ~/.cache/ccache
-          docker run -it --name ci_container --privileged -v ${GITHUB_WORKSPACE}:/packages -v ~/.cache/ccache:/home/mucoll/.cache/ccache -d ghcr.io/muoncollidersoft/mucoll-sim-ubuntu24:full_gaudi_acts_next
+          docker run -it --name ci_container --privileged -v ${GITHUB_WORKSPACE}:/packages -v ~/.cache/ccache:/home/mucoll/.cache/ccache -d ghcr.io/muoncollidersoft/mucoll-sim-ubuntu24:latest
       - name: Get Setup Script
         run: |
           SETUP_SCRIPT=$(docker exec ci_container /bin/bash -c "grep setup_mucoll /etc/profile.d/aliases.sh | awk -F '=' '{print \$2}' | sed 's/\"//g'")
