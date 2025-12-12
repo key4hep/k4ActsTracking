@@ -251,3 +251,6 @@ test/gaudi_opts/testConverterConstants.py
 buildsub/
 installsub/
 setup.sh
+
+/data/*.json
+/data/*.root
