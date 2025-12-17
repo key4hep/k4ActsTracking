@@ -10,12 +10,6 @@ This repository contains the necessary tools to use ACTS functionality in Key4he
 
 * DD4hep
 
-* ROOT
-
-* EDM4hep
-
-* Gaudi
-
 * k4FWCore
 
 ## Installation

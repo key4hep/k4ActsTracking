@@ -18,10 +18,6 @@ limitations under the License.
 ]]
 
 set(ACTS_LIBRARY_TARGETS "Acts::Core")
-if (Acts_VERSION VERSION_LESS 43.0.0)
-  set(ACTS_LIBRARY_TARGETS "ActsCore")
-endif()
-
 gaudi_add_library(k4ActsTracking
   SOURCES
     src/ActsGaudiLogger.cpp
@@ -35,11 +31,8 @@ install(TARGETS k4ActsTracking
   LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT shlib
 )
 
-file(GLOB _plugin_sources src/components/*.cpp)
-set(ACTS_PLUGIN_TARGETS "Acts::Core;Acts::PluginDD4hep")
-if (Acts_VERSION VERSION_LESS 43.0.0)
-  set(ACTS_PLUGIN_TARGETS "ActsCore;ActsPluginDD4hep")
-endif()
+file(GLOB _plugin_sources src/components/*.c*)
+set(ACTS_PLUGIN_TARGETS "Acts::Core;Acts::PluginDD4hep;Acts::PluginJson;Acts::PluginRoot")
 
 gaudi_add_module(k4ActsTrackingPlugins
   SOURCES ${_plugin_sources}
