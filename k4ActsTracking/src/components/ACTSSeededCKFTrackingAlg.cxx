@@ -308,13 +308,12 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
   Acts::SeedFilterConfig filterCfg;
   filterCfg.maxSeedsPerSpM = finderCfg.maxSeedsPerSpM;
 
-  finderCfg.seedFilter = std::make_unique<Acts::SeedFilter<SSPoint>>(filterCfg.toInternalUnits());
-  finderCfg            = finderCfg.toInternalUnits().calculateDerivedQuantities();
+  finderCfg.seedFilter = std::make_unique<Acts::SeedFilter<SSPoint>>(filterCfg);
+  finderCfg            = finderCfg.calculateDerivedQuantities();
 
   Acts::SeedFinderOptions finderOpts;
   finderOpts.bFieldInZ = (*magneticField()->getField(zeropos, magCache))[2];
   finderOpts.beamPos   = {0, 0};
-  finderOpts           = finderOpts.toInternalUnits();
   finderOpts           = finderOpts.calculateDerivedQuantities(finderCfg);
 
   Acts::CylindricalSpacePointGridConfig gridCfg;
@@ -356,8 +355,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
   ACTSTracking::SpacePointContainer                                       container(spacePointPtrs);
   Acts::SpacePointContainer<decltype(container), Acts::detail::RefHolder> spContainer(spConfig, spOptions, container);
 
-  SSPointGrid grid = Acts::CylindricalSpacePointGridCreator::createGrid<SSPoint>(gridCfg.toInternalUnits(),
-                                                                                 gridOpts.toInternalUnits());
+  SSPointGrid grid = Acts::CylindricalSpacePointGridCreator::createGrid<SSPoint>(gridCfg, gridOpts);
   Acts::CylindricalSpacePointGridCreator::fillGrid(finderCfg, finderOpts, grid, spContainer);
 
   const Acts::GridBinFinder<3ul> bottomBinFinder(m_phiBottomBinLen.value(), m_zBottomBinLen.value(), 0);
