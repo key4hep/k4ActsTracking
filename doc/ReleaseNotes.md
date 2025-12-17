@@ -1,3 +1,16 @@
+# v00-02
+
+* 2025-12-17 Thomas Madlener ([PR#38](https://github.com/key4hep/k4ActsTracking/pull/38))
+  - Remove calls to removed config methods upstream. These were no-ops since v42 of Acts so functionality should be unchanged.
+
+* 2025-12-17 samf25 ([PR#25](https://github.com/key4hep/k4ActsTracking/pull/25))
+  - First implementation of full set of algorithms needed to do tracking, from porting of https://github.com/MuonColliderSoft/ACTSTracking
+  - Based on ACTS 44.1.0
+  - Still using the "old" TGeo based geometry
+
+* 2025-11-21 Thomas Madlener ([PR#34](https://github.com/key4hep/k4ActsTracking/pull/34))
+  - Switch to Key4hep stack to run pre-commit in CI
+
 # v00-01
 
 * 2025-10-23 Thomas Madlener ([PR#33](https://github.com/key4hep/k4ActsTracking/pull/33))
