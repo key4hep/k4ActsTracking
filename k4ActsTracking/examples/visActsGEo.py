@@ -2,7 +2,7 @@
 
 from Gaudi.Configuration import VERBOSE, DEBUG
 
-from Configurables import ActsGeoGen3Svc, GeoSvc, ActsTestPropagator, EventDataSvc
+from Configurables import ActsGeoSvc, GeoSvc, ActsTestPropagator, EventDataSvc
 from k4FWCore import ApplicationMgr, IOSvc
 from k4FWCore.parseArgs import parser
 
@@ -16,7 +16,7 @@ iosvc.Output = "steps.root"
 geoSvc = GeoSvc()
 geoSvc.detectors = [args.compactFile]
 
-actsGeoSvc = ActsGeoGen3Svc("ActsGeoSvc")
+actsGeoSvc = ActsGeoSvc("ActsGeoSvc")
 actsGeoSvc.DumpVisualization = True
 actsGeoSvc.ObjVisFileName = "full_barrel.obj"
 actsGeoSvc.OutputLevel = VERBOSE
