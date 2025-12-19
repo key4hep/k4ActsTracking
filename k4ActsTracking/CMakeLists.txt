@@ -32,7 +32,6 @@ install(TARGETS k4ActsTracking
 )
 
 file(GLOB _plugin_sources src/components/*.c*)
-set(ACTS_PLUGIN_TARGETS "Acts::Core;Acts::PluginDD4hep;Acts::PluginJson;Acts::PluginRoot")
 
 gaudi_add_module(k4ActsTrackingPlugins
   SOURCES ${_plugin_sources}
@@ -42,7 +41,10 @@ gaudi_add_module(k4ActsTrackingPlugins
   k4FWCore::k4FWCore
   DD4hep::DDCore DD4hep::DDRec
   k4ActsTracking
-  ${ACTS_PLUGIN_TARGETS}
+  Acts::Core
+  Acts::PluginDD4hep
+  Acts::PluginJson
+  Acts::PluginRoot
 )
 target_include_directories(k4ActsTrackingPlugins PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>
