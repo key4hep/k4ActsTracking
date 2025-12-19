@@ -36,7 +36,6 @@ set(_plugin_sources
   src/components/ACTSDuplicateRemoval.cxx
   src/components/ACTSSeededCKFTrackingAlg.cxx
   src/components/ActsGeoSvc.cpp
-  src/components/EmptyAlg.cpp
   src/components/FilterTracksAlg.cxx
   src/components/GeometryIdMappingTool.cxx
   src/components/GeometryIdSelector.cxx
