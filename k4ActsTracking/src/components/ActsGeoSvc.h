@@ -21,14 +21,14 @@
 
 #include "k4ActsTracking/IActsGeoSvc.h"
 
-#include <Gaudi/Property.h>
 #include <k4Interface/IGeoSvc.h>
+
+#include <Gaudi/Property.h>
+#include <GaudiKernel/Service.h>
 
 #include <Parsers/Primitives.h>
 
 #include <ActsPlugins/DD4hep/BlueprintBuilder.hpp>
-
-#include "GaudiKernel/Service.h"
 
 #include <memory>
 #include <string>

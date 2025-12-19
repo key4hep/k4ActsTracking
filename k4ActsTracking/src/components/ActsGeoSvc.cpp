@@ -27,12 +27,15 @@
 #include <Acts/Definitions/Algebra.hpp>
 #include <Acts/Definitions/Units.hpp>
 #include <Acts/Geometry/Blueprint.hpp>
+#include <Acts/Geometry/BlueprintNode.hpp>
 #include <Acts/Geometry/BlueprintOptions.hpp>
+#include <Acts/Geometry/ContainerBlueprintNode.hpp>
 #include <Acts/Geometry/CylinderVolumeBounds.hpp>
 #include <Acts/Geometry/Extent.hpp>
 #include <Acts/Geometry/GeometryContext.hpp>
 #include <Acts/Geometry/GeometryIdentifier.hpp>
 #include <Acts/Geometry/TrackingGeometry.hpp>
+#include <Acts/Geometry/VolumeAttachmentStrategy.hpp>
 #include <Acts/MagneticField/ConstantBField.hpp>
 #include <Acts/Surfaces/Surface.hpp>
 #include <Acts/Utilities/AxisDefinitions.hpp>
