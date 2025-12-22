@@ -55,3 +55,40 @@ add_geometry_load_test($ENV{k4geo_DIR}/FCCee/ILD_FCCee/compact/ILD_FCCee_v01/ILD
 add_geometry_load_test($ENV{k4geo_DIR}/FCCee/ILD_FCCee/compact/ILD_FCCee_v02/ILD_FCCee_v02.xml)
 add_geometry_load_test($ENV{k4geo_DIR}/FCCee/CLD/compact/CLD_o2_v07/CLD_o2_v07.xml)
 add_geometry_load_test($ENV{k4geo_DIR}/FCCee/CLD/compact/CLD_o2_v08/CLD_o2_v08.xml)
+
+add_test(NAME sim_Maia
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  COMMAND ddsim --compactFile=$ENV{k4geo_DIR}/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml
+                --runType=batch -G -N=1
+                --outputFile=particle_gun_MAIA_SIM.edm4hep.root
+                --gun.multiplicity 50
+                --gun.particle "mu-"
+                --gun.distribution uniform
+                --gun.thetaMax 2.8  # rougly 160 degrees
+                --gun.thetaMin -2.8  # rougly -160 degrees
+                --gun.momentumMin 5
+                --gun.momentumMax 500
+)
+
+add_test(NAME reco_MAIA
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  COMMAND k4run ${CMAKE_CURRENT_LIST_DIR}/options/MAIA_CKF_Tracking.py
+          --compactFile=$ENV{k4geo_DIR}/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml
+          --trackingGeoFile=${CMAKE_CURRENT_LIST_DIR}/../data/MAIA_v0.root
+          --geoDescFile=${CMAKE_CURRENT_LIST_DIR}/../data/MAIA_v0.json
+          --materialFile=${CMAKE_CURRENT_LIST_DIR}/../data/MAIA_v0_material.json
+)
+
+
+# Setup test dependencies such that they are run in the right order always
+set_tests_properties(
+  sim_Maia
+  PROPERTIES
+    FIXTURES_SETUP sim_maia_fixture
+)
+
+set_tests_properties(
+  reco_MAIA
+  PROPERTIES
+    FIXTURES_REQUIRED sim_maia_fixture
+)
