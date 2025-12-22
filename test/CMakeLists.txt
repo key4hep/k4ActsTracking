@@ -17,12 +17,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ]]
 
-#--- The genConf directory has been renamed to genConfDir in Gaudi 35r1
-#--- See https://gitlab.cern.ch/gaudi/Gaudi/-/merge_requests/1158
 set(GAUDI_GENCONF_DIR "genConfDir")
-if (${Gaudi_VERSION} VERSION_LESS 35.1)
-  set(GAUDI_GENCONF_DIR "genConf")
-endif()
 
 function(set_test_env _testname)
   #set_property(TEST ${_testname} APPEND PROPERTY ENVIRONMENT "ROOT_INCLUDE_PATH=$<$<TARGET_EXISTS:podio::podio>:$<TARGET_FILE_DIR:podio::podio>/../include>:$<$<TARGET_EXISTS:EDM4HEP::edm4hep>:$<TARGET_FILE_DIR:EDM4HEP::edm4hep>/../include>:$ENV{ROOT_INCLUDE_PATH}")
