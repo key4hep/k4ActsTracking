@@ -30,16 +30,18 @@ function(set_test_env _testname)
   set_property(TEST ${_testname} APPEND PROPERTY ENVIRONMENT "PYTHONPATH=${PROJECT_BINARY_DIR}/${CMAKE_PROJECT_NAME}/${GAUDI_GENCONF_DIR}:$ENV{PYTHONPATH}")
 endfunction()
 
-add_test(NAME LoadODD
-         WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
-         COMMAND k4run options/geosvc.py)
-set_test_env(LoadODD)
+if(DEFINED ENV{OPENDATADETECTOR_DATA})
+  add_test(NAME LoadODD
+           WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+           COMMAND k4run options/geosvc.py)
+  set_test_env(LoadODD)
 
-add_test(NAME CheckODDObjFile
-         WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
-         COMMAND test -s MyObjFile.mtl)
-set_test_env(CheckODDObjFile)
-set_tests_properties(CheckODDObjFile PROPERTIES DEPENDS LoadODD)
+  add_test(NAME CheckODDObjFile
+           WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+           COMMAND test -s MyObjFile.mtl)
+  set_test_env(CheckODDObjFile)
+  set_tests_properties(CheckODDObjFile PROPERTIES DEPENDS LoadODD)
+endif()
 
 
 add_test(NAME sim_Maia
