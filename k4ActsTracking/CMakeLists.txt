@@ -38,6 +38,7 @@ gaudi_add_module(k4ActsTrackingPlugins
   SOURCES ${_plugin_sources}
   LINK
   Gaudi::GaudiKernel
+  EDM4HEP::edm4hep
   k4FWCore::k4FWCore
   DD4hep::DDCore DD4hep::DDRec
   k4ActsTracking
