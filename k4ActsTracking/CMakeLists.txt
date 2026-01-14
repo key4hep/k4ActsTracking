@@ -31,8 +31,17 @@ install(TARGETS k4ActsTracking
   LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT shlib
 )
 
-file(GLOB _plugin_sources src/components/*.c*)
-set(ACTS_PLUGIN_TARGETS "Acts::Core;Acts::PluginDD4hep;Acts::PluginJson;Acts::PluginRoot")
+set(_plugin_sources
+  src/components/ACTSAlgBase.cxx
+  src/components/ACTSDuplicateRemoval.cxx
+  src/components/ACTSSeededCKFTrackingAlg.cxx
+  src/components/ActsGeoSvc.cpp
+  src/components/FilterTracksAlg.cxx
+  src/components/GeometryIdMappingTool.cxx
+  src/components/GeometryIdSelector.cxx
+  src/components/Helpers.cxx
+  src/components/TrackTruthAlg.cxx
+)
 
 gaudi_add_module(k4ActsTrackingPlugins
   SOURCES ${_plugin_sources}
@@ -42,7 +51,10 @@ gaudi_add_module(k4ActsTrackingPlugins
   k4FWCore::k4FWCore
   DD4hep::DDCore DD4hep::DDRec
   k4ActsTracking
-  ${ACTS_PLUGIN_TARGETS}
+  Acts::Core
+  Acts::PluginDD4hep
+  Acts::PluginJson
+  Acts::PluginRoot
 )
 target_include_directories(k4ActsTrackingPlugins PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>
