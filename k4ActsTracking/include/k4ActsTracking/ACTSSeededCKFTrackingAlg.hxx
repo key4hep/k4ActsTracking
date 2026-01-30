@@ -29,6 +29,7 @@
 
 // ACTS
 #include <Acts/Definitions/Units.hpp>
+#include <Acts/EventData/TrackParameters.hpp>
 
 // ROOT
 #include <TH1.h>
@@ -36,6 +37,8 @@
 // ACTSTracking
 #include "k4ActsTracking/ACTSAlgBase.hxx"
 #include "k4ActsTracking/GeometryIdSelector.hxx"
+#include "k4ActsTracking/Measurement.hxx"
+#include "k4ActsTracking/SourceLink.hxx"
 
 // Standard
 #include <string>
@@ -72,6 +75,12 @@ public:
          */
   std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> operator()(
       const edm4hep::TrackerHitPlaneCollection& trackerHitCollection) const;
+
+  StatusCode tracking(const std::vector<Acts::BoundTrackParameters>& paramseeds, 
+    const ACTSTracking::MeasurementContainer& measurements, 
+    const ACTSTracking::SourceLinkContainer& sourceLinks, 
+    Acts::MagneticFieldProvider::Cache& magCache, 
+    edm4hep::TrackCollection& trackCollection) const;
 
 protected:
   /**

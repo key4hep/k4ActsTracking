@@ -224,63 +224,10 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
   Acts::MagneticFieldContext         magFieldContext = Acts::MagneticFieldContext();
   Acts::MagneticFieldProvider::Cache magCache        = magneticField()->makeCache(magFieldContext);
 
-  // Initialize track finder
-  using Stepper    = Acts::EigenStepper<>;
-  using Navigator  = Acts::Navigator;
-  using Propagator = Acts::Propagator<Stepper, Navigator>;
-  using CKF        = Acts::CombinatorialKalmanFilter<Propagator, TrackContainer>;
-
-  // Configurations
-  Navigator::Config navigatorCfg{trackingGeometry()};
-  navigatorCfg.resolvePassive   = false;
-  navigatorCfg.resolveMaterial  = true;
-  navigatorCfg.resolveSensitive = true;
-
-  // construct all components for the fitter
-  Stepper    stepper(magneticField());
-  Navigator  navigator(navigatorCfg);
-  Propagator propagator(std::move(stepper), std::move(navigator));
-  CKF        trackFinder(std::move(propagator));
-
-  // Set the options
-  Acts::MeasurementSelector::Config measurementSelectorCfg = {
-      {Acts::GeometryIdentifier(), {{}, {m_CKF_chi2CutOff}, {(std::size_t)(m_CKF_numMeasurementsCutOff)}}}};
-
-  Acts::PropagatorPlainOptions pOptions{geometryContext(), magneticFieldContext()};
-  pOptions.maxSteps = 10000;
-  if (m_propagateBackward) {
-    pOptions.direction = Acts::Direction::Backward();
-  }
-
-  // Construct a perigee surface as the target surface
-  std::shared_ptr<Acts::PerigeeSurface> perigeeSurface =
-      Acts::Surface::makeShared<Acts::PerigeeSurface>(Acts::Vector3{0., 0., 0.});
-
-  Acts::GainMatrixUpdater kfUpdater;
-
-  Acts::MeasurementSelector           measSel{measurementSelectorCfg};
-  ACTSTracking::MeasurementCalibrator measCal{measurements};
-
-  ACTSTracking::SourceLinkAccessor slAccessor;
-  slAccessor.container = &sourceLinks;
-
-  using TrackStateCreatorType = Acts::TrackStateCreator<ACTSTracking::SourceLinkAccessor::Iterator, TrackContainer>;
-  TrackStateCreatorType trackStateCreator;
-  trackStateCreator.sourceLinkAccessor.template connect<&ACTSTracking::SourceLinkAccessor::range>(&slAccessor);
-  trackStateCreator.calibrator.template connect<&ACTSTracking::MeasurementCalibrator::calibrate>(&measCal);
-  trackStateCreator.measurementSelector
-      .template connect<&Acts::MeasurementSelector::select<Acts::VectorMultiTrajectory>>(&measSel);
-
-  Acts::CombinatorialKalmanFilterExtensions<TrackContainer> extensions;
-  extensions.updater.connect<&Acts::GainMatrixUpdater::operator()<Acts::VectorMultiTrajectory>>(&kfUpdater);
-  extensions.createTrackStates.template connect<&TrackStateCreatorType::createTrackStates>(&trackStateCreator);
 
   // std::unique_ptr<const Acts::Logger>
   // logger=Acts::getDefaultLogger("TrackFitting",
   // Acts::Logging::Level::VERBOSE);
-
-  TrackFinderOptions ckfOptions =
-      TrackFinderOptions(geometryContext(), magneticFieldContext(), calibrationContext(), extensions, pOptions);
 
   // Finder configuration
   static const Acts::Vector3 zeropos(0, 0, 0);
@@ -483,51 +430,8 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
     if (!m_runCKF)
       continue;
 
-    auto           trackContainer      = std::make_shared<Acts::VectorTrackContainer>();
-    auto           trackStateContainer = std::make_shared<Acts::VectorMultiTrajectory>();
-    TrackContainer tracks(trackContainer, trackStateContainer);
-
-    auto trackStart = std::chrono::high_resolution_clock::now();
-
-    for (std::size_t iseed = 0; iseed < paramseeds.size(); ++iseed) {
-      tracks.clear();
-
-      auto result = trackFinder.findTracks(paramseeds.at(iseed), ckfOptions, tracks);
-      if (result.ok()) {
-        const auto& fitOutput = result.value();
-        for (const TrackContainer::TrackProxy& trackItem : fitOutput) {
-          // Track smoothing
-          auto trackTip = tracks.makeTrack();
-          trackTip.copyFrom(trackItem);
-          auto smoothResult = Acts::smoothTrack(geometryContext(), trackTip);
-          if (!smoothResult.ok()) {
-            warning() << "Track smoothing error: " << smoothResult.error() << endmsg;
-            continue;
-          }
-
-          // Helpful debug output
-          debug() << "Trajectory Summary" << endmsg;
-          debug() << "\tchi2Sum       " << trackTip.chi2() << endmsg;
-          debug() << "\tNDF           " << trackTip.nDoF() << endmsg;
-          debug() << "\tnHoles        " << trackTip.nHoles() << endmsg;
-          debug() << "\tnMeasurements " << trackTip.nMeasurements() << endmsg;
-          debug() << "\tnOutliers     " << trackTip.nOutliers() << endmsg;
-          debug() << "\tnStates       " << trackTip.nTrackStates() << endmsg;
-
-          // Make track object
-          edm4hep::MutableTrack* track = ACTSTracking::ACTS2edm4hep_track(trackTip, magneticField(), magCache);
-
-          // Save results
-          trackCollection.push_back(*track);
-        }
-      } else {
-        warning() << "Track fit error: " << result.error() << endmsg;
-      }
-    }
-
-    auto                          trackEnd      = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> trackDuration = trackEnd - trackStart;
-    //m_histTrackBuild->Fill(trackDuration.count());
+    // pass paramseeds, measurements, sourceLinks, magCache; stores tracks in trackCollection
+    tracking(paramseeds, measurements, sourceLinks, magCache, trackCollection);
   }
 
   auto                          entireEnd      = std::chrono::high_resolution_clock::now();
@@ -536,4 +440,111 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
   info() << "Track Collection Size: " << trackCollection.size() << endmsg;
 
   return std::make_tuple(std::move(seedCollection), std::move(trackCollection));
+}
+
+// CKF tracking, 
+StatusCode ACTSSeededCKFTrackingAlg::tracking(const std::vector<Acts::BoundTrackParameters>& paramseeds, const ACTSTracking::MeasurementContainer& measurements, const ACTSTracking::SourceLinkContainer& sourceLinks, Acts::MagneticFieldProvider::Cache& magCache, edm4hep::TrackCollection& trackCollection) const {
+  // Initialize track finder
+  warning() << "Starting CKF track finding with " << paramseeds.size() << " seeds." << endmsg;
+  using Stepper    = Acts::EigenStepper<>;
+  using Navigator  = Acts::Navigator;
+  using Propagator = Acts::Propagator<Stepper, Navigator>;
+  using CKF        = Acts::CombinatorialKalmanFilter<Propagator, TrackContainer>;
+
+  // Configurations
+  Navigator::Config navigatorCfg{trackingGeometry()};
+  navigatorCfg.resolvePassive   = false;
+  navigatorCfg.resolveMaterial  = true;
+  navigatorCfg.resolveSensitive = true;
+
+  // construct all components for the fitter
+  Stepper    stepper(magneticField());
+  Navigator  navigator(navigatorCfg);
+  Propagator propagator(std::move(stepper), std::move(navigator));
+  CKF        trackFinder(std::move(propagator));
+
+  // Set the options
+  Acts::MeasurementSelector::Config measurementSelectorCfg = {
+      {Acts::GeometryIdentifier(), {{}, {m_CKF_chi2CutOff}, {(std::size_t)(m_CKF_numMeasurementsCutOff)}}}};
+
+  Acts::PropagatorPlainOptions pOptions{geometryContext(), magneticFieldContext()};
+  pOptions.maxSteps = 10000;
+  if (m_propagateBackward) {
+    pOptions.direction = Acts::Direction::Backward();
+  }
+
+  // Construct a perigee surface as the target surface
+  std::shared_ptr<Acts::PerigeeSurface> perigeeSurface =
+      Acts::Surface::makeShared<Acts::PerigeeSurface>(Acts::Vector3{0., 0., 0.});
+
+  Acts::GainMatrixUpdater kfUpdater;
+
+  Acts::MeasurementSelector           measSel{measurementSelectorCfg};
+  ACTSTracking::MeasurementCalibrator measCal{measurements};
+
+  ACTSTracking::SourceLinkAccessor slAccessor;
+  slAccessor.container = &sourceLinks;
+
+  using TrackStateCreatorType = Acts::TrackStateCreator<ACTSTracking::SourceLinkAccessor::Iterator, TrackContainer>;
+  TrackStateCreatorType trackStateCreator;
+  trackStateCreator.sourceLinkAccessor.template connect<&ACTSTracking::SourceLinkAccessor::range>(&slAccessor);
+  trackStateCreator.calibrator.template connect<&ACTSTracking::MeasurementCalibrator::calibrate>(&measCal);
+  trackStateCreator.measurementSelector
+      .template connect<&Acts::MeasurementSelector::select<Acts::VectorMultiTrajectory>>(&measSel);
+
+  Acts::CombinatorialKalmanFilterExtensions<TrackContainer> extensions;
+  extensions.updater.connect<&Acts::GainMatrixUpdater::operator()<Acts::VectorMultiTrajectory>>(&kfUpdater);
+  extensions.createTrackStates.template connect<&TrackStateCreatorType::createTrackStates>(&trackStateCreator);
+
+  
+  TrackFinderOptions ckfOptions =
+      TrackFinderOptions(geometryContext(), magneticFieldContext(), calibrationContext(), extensions, pOptions);
+
+  auto           trackContainer      = std::make_shared<Acts::VectorTrackContainer>();
+  auto           trackStateContainer = std::make_shared<Acts::VectorMultiTrajectory>();
+  TrackContainer tracks(trackContainer, trackStateContainer);
+
+  auto trackStart = std::chrono::high_resolution_clock::now();
+
+  for (std::size_t iseed = 0; iseed < paramseeds.size(); ++iseed) {
+    tracks.clear();
+
+    auto result = trackFinder.findTracks(paramseeds.at(iseed), ckfOptions, tracks);
+    if (result.ok()) {
+      const auto& fitOutput = result.value();
+      for (const TrackContainer::TrackProxy& trackItem : fitOutput) {
+        // Track smoothing
+        auto trackTip = tracks.makeTrack();
+        trackTip.copyFrom(trackItem);
+        auto smoothResult = Acts::smoothTrack(geometryContext(), trackTip);
+        if (!smoothResult.ok()) {
+          warning() << "Track smoothing error: " << smoothResult.error() << endmsg;
+          continue;
+        }
+
+        // Helpful debug output
+        debug() << "Trajectory Summary" << endmsg;
+        debug() << "\tchi2Sum       " << trackTip.chi2() << endmsg;
+        debug() << "\tNDF           " << trackTip.nDoF() << endmsg;
+        debug() << "\tnHoles        " << trackTip.nHoles() << endmsg;
+        debug() << "\tnMeasurements " << trackTip.nMeasurements() << endmsg;
+        debug() << "\tnOutliers     " << trackTip.nOutliers() << endmsg;
+        debug() << "\tnStates       " << trackTip.nTrackStates() << endmsg;
+
+        // Make track object
+        edm4hep::MutableTrack* track = ACTSTracking::ACTS2edm4hep_track(trackTip, magneticField(), magCache);
+
+        // Save results
+        trackCollection.push_back(*track);
+      }
+    } else {
+      warning() << "Track fit error: " << result.error() << endmsg;
+    }
+  }
+
+  auto                          trackEnd      = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> trackDuration = trackEnd - trackStart;
+  //m_histTrackBuild->Fill(trackDuration.count());
+
+  return StatusCode::SUCCESS;
 }
