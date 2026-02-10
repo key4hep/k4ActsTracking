@@ -39,7 +39,7 @@ StatusCode ActsGeoGen3PlaneSvc::initialize() {
   m_geoSvc = Gaudi::svcLocator()->service<IGeoSvc>("GeoSvc");
   K4_GAUDI_CHECK(m_geoSvc);
 
-  /*
+  
   std::array<double, 3> magneticFieldVector = {0, 0, 0};
   std::array<double, 3> position            = {0, 0, 0};
   m_geoSvc->getDetector()->field().magneticField(position.data(), magneticFieldVector.data());
@@ -48,7 +48,7 @@ StatusCode ActsGeoGen3PlaneSvc::initialize() {
       Acts::Vector3(magneticFieldVector[0] / dd4hep::tesla * Acts::UnitConstants::T,
                     magneticFieldVector[1] / dd4hep::tesla * Acts::UnitConstants::T,
                     magneticFieldVector[2] / dd4hep::tesla * Acts::UnitConstants::T));
-*/
+
 
 // --- DD4hep sanity check: print layer world transforms before building planes ---
 auto det = m_geoSvc->getDetector();
