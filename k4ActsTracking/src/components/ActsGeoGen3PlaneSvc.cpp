@@ -111,14 +111,8 @@ for (int i = 0; i < 4; ++i) {
   Blueprint root{cfg};
 
 // --------------------------------------
-
 root.addCuboidContainer("LUXE", AxisZ, [&](auto& worldBox) {
-  auto& worldVolume = worldBox.addStaticVolume(
-      Acts::Transform3::Identity(),
-      std::make_unique<Acts::CuboidVolumeBounds>(600_mm, 20_mm, 5000_mm), // half X, half Y, half Z
-      "WorldVolume");
-
-  auto& tracker = worldVolume.addCuboidContainer("OuterBox", AxisZ);
+  auto& tracker = worldBox.addCuboidContainer("OuterBox", AxisZ);
   auto envelope = Acts::ExtentEnvelope{}
                         .set(AxisZ, {0.4_mm, 0.4_mm})
                         .set(AxisX, {0.4_mm, 0.4_mm})
@@ -130,11 +124,10 @@ root.addCuboidContainer("LUXE", AxisZ, [&](auto& worldBox) {
                       .setPattern(m_layerPattern.value())       // e.g. r"layer\d"
                       .setContainer(m_detElementName.value())   // e.g. "Tracker"
                       .setEnvelope(envelope)
-                      .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::Gap)
+                      .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::Gap)   // Gap, Midpoint, First
 		      .build();
     tracker.addChild(planes);
  });
-
 // --------------------------------------
 
   BlueprintOptions options;
