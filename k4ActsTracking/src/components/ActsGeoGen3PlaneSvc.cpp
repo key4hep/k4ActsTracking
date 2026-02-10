@@ -50,13 +50,51 @@ StatusCode ActsGeoGen3PlaneSvc::initialize() {
                     magneticFieldVector[2] / dd4hep::tesla * Acts::UnitConstants::T));
 */
 
+// --- DD4hep sanity check: print layer world transforms before building planes ---
+auto det = m_geoSvc->getDetector();
+auto trackerDE = det->detector("Tracker");  // name in compact <detector name="Tracker">
+
+info() << "DD4hep sanity: Tracker DetElement path/name=" << trackerDE.path()
+       << " / " << trackerDE.name() << endmsg;
+
+// helper lambda to print translation
+auto dumpDE = [&](const dd4hep::DetElement& de) {
+  // Copy the matrix (avoid dangling reference to temporary)
+  auto w = de.nominal().worldTransformation();  // returns TGeoHMatrix in this setup
+
+  const double* tr = w.GetTranslation();        // ROOT public API: returns double[3]
+
+  // Convert dd4hep internal length units to mm explicitly
+  double x_mm = tr[0] / dd4hep::mm;
+  double y_mm = tr[1] / dd4hep::mm;
+  double z_mm = tr[2] / dd4hep::mm;
+
+  info() << fmt::format(
+               "  DE {:<20} path={:<40}  world T [mm] = ({:9.3f}, {:9.3f}, {:9.3f})",
+               de.name(), de.path(), x_mm, y_mm, z_mm)
+         << endmsg;
+};
+
+// In your logs, layers are named layer0..layer3 (not id=1..4). We'll dump those.
+for (int i = 0; i < 4; ++i) {
+  std::string lname = fmt::format("layer{}", i);
+  auto layerDE = trackerDE.child(lname);
+  if (!layerDE.isValid()) {
+    warning() << "DD4hep sanity: cannot find child DetElement '" << lname
+              << "' under Tracker. Available path=" << trackerDE.path() << endmsg;
+    continue;
+  }
+  dumpDE(layerDE);
+}
+//---------sanity check over--------------
+
   auto gaudiLogger = makeActsGaudiLogger(this);
 
-  info() << fmt::format("Acts::cm: {}, dd4hep::mm: {}", Acts::UnitConstants::cm, dd4hep::mm) << endmsg;
+  //info() << fmt::format("Acts::cm: {}, dd4hep::mm: {}", Acts::UnitConstants::cm, dd4hep::mm) << endmsg;
 
   ActsPlugins::DD4hep::BlueprintBuilder builder{{
                                                     .dd4hepDetector = m_geoSvc->getDetector(),
-                                                    .lengthScale    = Acts::UnitConstants::cm / dd4hep::mm,
+                                                    .lengthScale    = Acts::UnitConstants::mm / dd4hep::mm,
                                                 },
                                                 gaudiLogger->cloneWithSuffix("|BlpBld")};
 
@@ -77,23 +115,23 @@ StatusCode ActsGeoGen3PlaneSvc::initialize() {
 root.addCuboidContainer("LUXE", AxisZ, [&](auto& worldBox) {
   auto& worldVolume = worldBox.addStaticVolume(
       Acts::Transform3::Identity(),
-      std::make_unique<Acts::CuboidVolumeBounds>(505_mm, 20_mm, 175_mm), // half X, half Y, half Z
+      std::make_unique<Acts::CuboidVolumeBounds>(600_mm, 20_mm, 5000_mm), // half X, half Y, half Z
       "WorldVolume");
 
-  auto& tracker = worldVolume.addCuboidContainer("Tracker", AxisZ);  
+  auto& tracker = worldVolume.addCuboidContainer("OuterBox", AxisZ);
   auto envelope = Acts::ExtentEnvelope{}
-                        .set(AxisZ, {1_mm, 1_mm})
-                        .set(AxisX, {1_mm, 1_mm})
-                        .set(AxisY, {1_mm, 1_mm});
+                        .set(AxisZ, {0.4_mm, 0.4_mm})
+                        .set(AxisX, {0.4_mm, 0.4_mm})
+                        .set(AxisY, {0.4_mm, 0.4_mm});
 
     auto planes = builder.planeHelper()
                       .setAxes("XYZ")
+		      .setLayerAxes("XYZ")
                       .setPattern(m_layerPattern.value())       // e.g. r"layer\d"
                       .setContainer(m_detElementName.value())   // e.g. "Tracker"
                       .setEnvelope(envelope)
-                      .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+                      .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::Gap)
 		      .build();
-
     tracker.addChild(planes);
  });
 
