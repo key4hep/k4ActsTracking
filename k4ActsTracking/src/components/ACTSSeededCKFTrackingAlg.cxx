@@ -431,7 +431,10 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
       continue;
 
     // pass paramseeds, measurements, sourceLinks, magCache; stores tracks in trackCollection
-    tracking(paramseeds, measurements, sourceLinks, magCache, trackCollection);
+    StatusCode sc_track = tracking(paramseeds, measurements, sourceLinks, magCache, trackCollection);
+    if (!sc_track.isSuccess()) {
+      warning() << "Tracking failed for this event" << endmsg;
+    }
   }
 
   auto                          entireEnd      = std::chrono::high_resolution_clock::now();
