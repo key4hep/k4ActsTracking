@@ -224,7 +224,6 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
   Acts::MagneticFieldContext         magFieldContext = Acts::MagneticFieldContext();
   Acts::MagneticFieldProvider::Cache magCache        = magneticField()->makeCache(magFieldContext);
 
-
   // std::unique_ptr<const Acts::Logger>
   // logger=Acts::getDefaultLogger("TrackFitting",
   // Acts::Logging::Level::VERBOSE);
@@ -445,8 +444,12 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
   return std::make_tuple(std::move(seedCollection), std::move(trackCollection));
 }
 
-// CKF tracking, 
-StatusCode ACTSSeededCKFTrackingAlg::tracking(const std::vector<Acts::BoundTrackParameters>& paramseeds, const ACTSTracking::MeasurementContainer& measurements, const ACTSTracking::SourceLinkContainer& sourceLinks, Acts::MagneticFieldProvider::Cache& magCache, edm4hep::TrackCollection& trackCollection) const {
+// CKF tracking,
+StatusCode ACTSSeededCKFTrackingAlg::tracking(const std::vector<Acts::BoundTrackParameters>& paramseeds,
+                                              const ACTSTracking::MeasurementContainer&      measurements,
+                                              const ACTSTracking::SourceLinkContainer&       sourceLinks,
+                                              Acts::MagneticFieldProvider::Cache&            magCache,
+                                              edm4hep::TrackCollection&                      trackCollection) const {
   // Initialize track finder
   warning() << "Starting CKF track finding with " << paramseeds.size() << " seeds." << endmsg;
   using Stepper    = Acts::EigenStepper<>;
@@ -499,7 +502,6 @@ StatusCode ACTSSeededCKFTrackingAlg::tracking(const std::vector<Acts::BoundTrack
   extensions.updater.connect<&Acts::GainMatrixUpdater::operator()<Acts::VectorMultiTrajectory>>(&kfUpdater);
   extensions.createTrackStates.template connect<&TrackStateCreatorType::createTrackStates>(&trackStateCreator);
 
-  
   TrackFinderOptions ckfOptions =
       TrackFinderOptions(geometryContext(), magneticFieldContext(), calibrationContext(), extensions, pOptions);
 

@@ -76,11 +76,10 @@ public:
   std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> operator()(
       const edm4hep::TrackerHitPlaneCollection& trackerHitCollection) const;
 
-  StatusCode tracking(const std::vector<Acts::BoundTrackParameters>& paramseeds, 
-    const ACTSTracking::MeasurementContainer& measurements, 
-    const ACTSTracking::SourceLinkContainer& sourceLinks, 
-    Acts::MagneticFieldProvider::Cache& magCache, 
-    edm4hep::TrackCollection& trackCollection) const;
+  StatusCode tracking(const std::vector<Acts::BoundTrackParameters>& paramseeds,
+                      const ACTSTracking::MeasurementContainer&      measurements,
+                      const ACTSTracking::SourceLinkContainer&       sourceLinks,
+                      Acts::MagneticFieldProvider::Cache& magCache, edm4hep::TrackCollection& trackCollection) const;
 
 protected:
   /**
