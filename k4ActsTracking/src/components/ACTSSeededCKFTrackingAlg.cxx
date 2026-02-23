@@ -430,8 +430,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
       continue;
 
     // pass paramseeds, measurements, sourceLinks, magCache; stores tracks in trackCollection
-    StatusCode sc_track = tracking(paramseeds, measurements, sourceLinks, magCache, trackCollection);
-    if (!sc_track.isSuccess()) {
+    if (!tracking(paramseeds, measurements, sourceLinks, magCache, trackCollection).isSuccess()) {
       warning() << "Tracking failed for this event" << endmsg;
     }
   }
