@@ -264,7 +264,7 @@ void ACTSAlgBase::buildDetector() {
       ActsPlugins::TGeoLayerBuilder::LayerConfig lConfig;
       lConfig.volumeName  = volume["geo-tgeo-subvolume-names"][subvolumeName];
       lConfig.sensorNames = volume["geo-tgeo-sensitive-names"][subvolumeName];
-      lConfig.localAxes   = volume["geo-tgeo-sensitive-axes"][subvolumeName];
+      lConfig.localAxes   = ActsPlugins::TGeoAxes::parse(std::string(volume["geo-tgeo-sensitive-axes"][subvolumeName]));
       lConfig.envelope    = std::pair<double, double>(0.1 * Acts::UnitConstants::mm, 0.1 * Acts::UnitConstants::mm);
 
       // Fill the parsing restrictions in r
