@@ -169,7 +169,7 @@ namespace ACTSTracking {
     trackState->Z0        = z0;
 
     // Uncertainties (covariance matrix)
-    Acts::ActsMatrix<6, 6> jac = Acts::ActsMatrix<6, 6>::Zero();
+    Acts::Matrix<6, 6> jac = Acts::Matrix<6, 6>::Zero();
 
     jac(0, Acts::eBoundLoc0) = 1;
 
@@ -182,7 +182,7 @@ namespace ACTSTracking {
 
     jac(4, Acts::eBoundTheta) = std::pow(1 / std::cos(lambda), 2);
 
-    Acts::ActsMatrix<6, 6> trcov = (jac * cov * jac.transpose());
+    auto trcov = (jac * cov * jac.transpose());
 
     int count = 0;
     for (int i = 0; i < 6; ++i) {
