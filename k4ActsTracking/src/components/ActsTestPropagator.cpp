@@ -116,7 +116,7 @@ std::vector<podio::UserDataCollection<double>> ActsTestPropagator::operator()() 
   Navigator  navigator(navigatorCfg, m_actsLogger->cloneWithSuffix(":Nav"));
   Propagator propagator(std::move(stepper), std::move(navigator), m_actsLogger->cloneWithSuffix(":Prop"));
 
-  auto options = PropagatorOptions{Acts::GeometryContext{}, Acts::MagneticFieldContext{}};
+  auto options = PropagatorOptions{Acts::GeometryContext::dangerouslyDefaultConstruct(), Acts::MagneticFieldContext{}};
 
   std::vector<podio::UserDataCollection<double>> stepOutputs(5);
   auto&                                          stepsX      = stepOutputs[0].vec();
