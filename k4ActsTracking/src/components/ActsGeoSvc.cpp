@@ -98,7 +98,7 @@ StatusCode ActsGeoSvc::initialize() {
   cfg.envelope[AxisR] = {0_mm, 20_mm};
   Blueprint root{cfg};
 
-  auto& outer = root.addCylinderContainer("MAIA_v0", AxisR);
+  auto& outer = root.addCylinderContainer(detName, AxisR);
   outer.addStaticVolume(Acts::Transform3::Identity(),
                         std::make_unique<Acts::CylinderVolumeBounds>(0_mm, 10_mm, 1000_mm), "Beampipe");
   // We want to pull the next volume in towards the beampipe to map material to
@@ -140,30 +140,23 @@ StatusCode ActsGeoSvc::initialize() {
           .build();
   vertexBarrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
 
-  // The VertexEncap again suffers from not having a *layer* DetElement
-  auto endcapEnvelope        = Acts::ExtentEnvelope{}.set(AxisZ, {1_mm, 1_mm}).set(AxisR, {5_mm, 5_mm});
-  auto vtxEndcapDetElem      = builder.findDetElementByName("VertexEndcap");
-  auto negVtxEndcapContainer = std::make_shared<Acts::Experimental::CylinderContainerBlueprintNode>(
-      "VertexEndcapNeg", Acts::AxisDirection::AxisZ);
-  negVtxEndcapContainer->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
-  auto posVtxEndcapContainer = std::make_shared<Acts::Experimental::CylinderContainerBlueprintNode>(
-      "VertexEndcapPos", Acts::AxisDirection::AxisZ);
-  posVtxEndcapContainer->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
+  // We use an Endcap envelope with smaller z-padding to accomodate for the double layer structure
+  auto vtxEndcapEnvelope     = Acts::ExtentEnvelope{}.set(AxisZ, {1_mm, 1_mm}).set(AxisR, {5_mm, 5_mm});
+  auto posVtxEndcapContainer = builder.layerHelper()
+                                   .endcap()
+                                   .setAxes("XZY")
+                                   .setContainer("VertexEndcap")
+                                   .setPattern("layer_pos\\d+")
+                                   .setEnvelope(vtxEndcapEnvelope)
+                                   .build();
 
-  for (int i = 0; i < 8; ++i) {
-    auto layerName      = "layer" + std::to_string(i);
-    auto layerPattern   = std::regex{layerName + "_module0_sensor\\d+_neg"};
-    auto sensorElements = builder.findDetElementByNamePattern(vtxEndcapDetElem.value(), layerPattern);
-
-    auto layer = builder.makeLayer(vtxEndcapDetElem.value(), sensorElements, "XZY", layerName + "_neg");
-    layer->setEnvelope(endcapEnvelope);
-    negVtxEndcapContainer->addChild(layer);
-
-    layerPattern   = layerName + "_module0_sensor\\d+_pos";
-    sensorElements = builder.findDetElementByNamePattern(vtxEndcapDetElem.value(), layerPattern);
-    layer          = builder.makeLayer(vtxEndcapDetElem.value(), sensorElements, "XZY", layerName + "_pos");
-    posVtxEndcapContainer->addChild(layer);
-  }
+  auto negVtxEndcapContainer = builder.layerHelper()
+                                   .endcap()
+                                   .setAxes("XZY")
+                                   .setContainer("VertexEndcap")
+                                   .setPattern("layer_neg\\d+")
+                                   .setEnvelope(vtxEndcapEnvelope)
+                                   .build();
 
   auto vertex = std::make_shared<Acts::Experimental::CylinderContainerBlueprintNode>("Vertex", AxisZ);
   vertex->addChild(vertexBarrel);
