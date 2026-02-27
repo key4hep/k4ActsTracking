@@ -55,10 +55,11 @@
 
 #include <array>
 
+template <> struct fmt::formatter<Acts::GeometryIdentifier> : fmt::ostream_formatter {};
+
 DECLARE_COMPONENT(ActsGeoSvc)
 
-ActsGeoSvc::ActsGeoSvc(const std::string& name, ISvcLocator* svc)
-    : base_class(name, svc), m_trackingGeoCtx(Acts::GeometryContext::dangerouslyDefaultConstruct()) {}
+ActsGeoSvc::ActsGeoSvc(const std::string& name, ISvcLocator* svcLoc) : base_class(name, svcLoc) {}
 
 StatusCode ActsGeoSvc::initialize() {
   m_geoSvc = Gaudi::svcLocator()->service<IGeoSvc>("GeoSvc");
