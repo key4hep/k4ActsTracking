@@ -77,11 +77,14 @@ StatusCode ActsGeoSvc::initialize() {
 
   info() << fmt::format("Acts::cm: {}, dd4hep::cm: {}", Acts::UnitConstants::cm, dd4hep::cm) << endmsg;
 
-  ActsPlugins::DD4hep::BlueprintBuilder builder{{
-                                                    .dd4hepDetector = m_geoSvc->getDetector(),
-                                                    .lengthScale    = Acts::UnitConstants::cm / dd4hep::cm,
-                                                },
-                                                gaudiLogger->cloneWithSuffix("|BlpBld")};
+  auto gctxt = Acts::GeometryContext::dangerouslyDefaultConstruct();
+
+  ActsPlugins::DD4hep::BlueprintBuilder builder{
+      {.elementFactory = ActsPlugins::DD4hep::BlueprintBuilder::defaultElementFactory,
+       .dd4hepDetector = m_geoSvc->getDetector(),
+       .lengthScale    = Acts::UnitConstants::cm / dd4hep::cm,
+       .gctx           = gctxt},
+      gaudiLogger->cloneWithSuffix("|BlpBld")};
 
   using Acts::Experimental::Blueprint;
   using Acts::Experimental::BlueprintOptions;
@@ -272,8 +275,7 @@ StatusCode ActsGeoSvc::initialize() {
     outerTracker.addChild(posEndcap);
   });
 
-  BlueprintOptions      options;
-  Acts::GeometryContext gctxt{};
+  BlueprintOptions options;
 
   debug() << "Constructing tracking geometry" << endmsg;
   m_trackingGeo = root.construct(options, gctxt, *gaudiLogger->cloneWithSuffix("|Construct"));
@@ -281,9 +283,8 @@ StatusCode ActsGeoSvc::initialize() {
   std::size_t nSurfaces = 0;
   m_trackingGeo->visitSurfaces([&](const Acts::Surface* surface) {
     nSurfaces++;
-    const auto& actsDetElem =
-        dynamic_cast<const ActsPlugins::DD4hepDetectorElement&>(*surface->associatedDetectorElement());
-    const auto& detElem = actsDetElem.sourceElement();
+    const auto& actsDetElem = dynamic_cast<const ActsPlugins::DD4hepDetectorElement&>(*surface->surfacePlacement());
+    const auto& detElem     = actsDetElem.sourceElement();
     verbose() << fmt::format("Adding Acts surface {} pointing to dd4hep DetElement {}", surface->geometryId(),
                              detElem.volumeID())
               << endmsg;
