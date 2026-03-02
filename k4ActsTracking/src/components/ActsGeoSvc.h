@@ -18,7 +18,14 @@ namespace Acts {
   class TrackingGeometry;
   class MagneticFieldProvider;
   class Surface;
+  namespace Experimental {
+    class Blueprint;
+  }
 }  // namespace Acts
+
+namespace ActsPlugins::DD4hep {
+  class BlueprintBuilder;
+}
 
 namespace dd4hep {
   class Detector;
@@ -44,11 +51,15 @@ public:
   const CellIDSurfaceMap& cellIdToSurfaceMap() const override { return m_cellIDToSurface; }
 
 private:
-  dd4hep::Detector*                                        m_dd4hepGeo{nullptr};
-  SmartIF<IGeoSvc>                                         m_geoSvc;
-  std::shared_ptr<const Acts::TrackingGeometry>            m_trackingGeo{nullptr};
-  std::shared_ptr<const Acts::MagneticFieldProvider>       m_magneticField{nullptr};
-  std::unordered_map<dd4hep::CellID, const Acts::Surface*> m_cellIDToSurface{};
+  using BlueprintPopulationFunc = void(const std::string&, Acts::Experimental::Blueprint&,
+                                       ActsPlugins::DD4hep::BlueprintBuilder&);
+
+  dd4hep::Detector*                                         m_dd4hepGeo{nullptr};
+  SmartIF<IGeoSvc>                                          m_geoSvc;
+  std::shared_ptr<const Acts::TrackingGeometry>             m_trackingGeo{nullptr};
+  std::shared_ptr<const Acts::MagneticFieldProvider>        m_magneticField{nullptr};
+  std::unordered_map<dd4hep::CellID, const Acts::Surface*>  m_cellIDToSurface{};
+  std::unordered_map<std::string, BlueprintPopulationFunc*> m_bluePrintPopulationFuncs{};
 };
 
 inline std::shared_ptr<const Acts::TrackingGeometry> ActsGeoSvc::trackingGeometry() const { return m_trackingGeo; }

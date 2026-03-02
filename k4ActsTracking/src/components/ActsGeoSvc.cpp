@@ -59,10 +59,8 @@ template <> struct fmt::formatter<Acts::GeometryIdentifier> : fmt::ostream_forma
 
 DECLARE_COMPONENT(ActsGeoSvc)
 
-ActsGeoSvc::ActsGeoSvc(const std::string& name, ISvcLocator* svcLoc) : base_class(name, svcLoc) {}
-
-void populateBluePrint(const std::string& detName, Acts::Experimental::Blueprint& root,
-                       ActsPlugins::DD4hep::BlueprintBuilder& builder) {
+void populateBluePrintMAIA_v0(const std::string& detName, Acts::Experimental::Blueprint& root,
+                              ActsPlugins::DD4hep::BlueprintBuilder& builder) {
   using namespace Acts::UnitLiterals;
   using enum Acts::AxisDirection;
 
@@ -238,6 +236,10 @@ void populateBluePrint(const std::string& detName, Acts::Experimental::Blueprint
   });
 }
 
+ActsGeoSvc::ActsGeoSvc(const std::string& name, ISvcLocator* svcLoc) : base_class(name, svcLoc) {
+  m_bluePrintPopulationFuncs = {{"MAIA_v0", populateBluePrintMAIA_v0}};
+}
+
 StatusCode ActsGeoSvc::initialize() {
   m_geoSvc = Gaudi::svcLocator()->service<IGeoSvc>("GeoSvc");
   K4_GAUDI_CHECK(m_geoSvc);
@@ -279,7 +281,13 @@ StatusCode ActsGeoSvc::initialize() {
   cfg.envelope[AxisR] = {0_mm, 20_mm};
   Blueprint root{cfg};
 
-  populateBluePrint(detName, root, builder);
+  if (const auto it = m_bluePrintPopulationFuncs.find(detName); it != m_bluePrintPopulationFuncs.end()) {
+    auto bluePrintFunc = it->second;
+    bluePrintFunc(detName, root, builder);
+  } else {
+    error() << fmt::format("Cannot find a Blueprint construction function for detector: {}", detName) << endmsg;
+    return StatusCode::FAILURE;
+  }
 
   BlueprintOptions options;
 
