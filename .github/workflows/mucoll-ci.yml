@@ -59,8 +59,7 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=$(pwd)/install \
             -DCMAKE_CXX_FLAGS=" -fdiagnostics-color=always -Werror "
           cmake --build build
-          # Tests need OpenDataDetector, which is not present in the mucoll image atm
-          # ctest --test-dir build -j$(nproc) --output-on-failure
+          ctest --test-dir build -j$(nproc) --output-on-failure
           cmake --build build --target install
 
           ccache -s
