@@ -61,46 +61,10 @@ DECLARE_COMPONENT(ActsGeoSvc)
 
 ActsGeoSvc::ActsGeoSvc(const std::string& name, ISvcLocator* svcLoc) : base_class(name, svcLoc) {}
 
-StatusCode ActsGeoSvc::initialize() {
-  m_geoSvc = Gaudi::svcLocator()->service<IGeoSvc>("GeoSvc");
-  K4_GAUDI_CHECK(m_geoSvc);
-
-  std::array<double, 3> magneticFieldVector = {0, 0, 0};
-  std::array<double, 3> position            = {0, 0, 0};
-  m_geoSvc->getDetector()->field().magneticField(position.data(), magneticFieldVector.data());
-  debug() << fmt::format("Retrieved magnetic field at position {}: {}", position, magneticFieldVector) << endmsg;
-  m_magneticField = std::make_shared<Acts::ConstantBField>(
-      Acts::Vector3(magneticFieldVector[0] / dd4hep::tesla * Acts::UnitConstants::T,
-                    magneticFieldVector[1] / dd4hep::tesla * Acts::UnitConstants::T,
-                    magneticFieldVector[2] / dd4hep::tesla * Acts::UnitConstants::T));
-
-  auto gaudiLogger = makeActsGaudiLogger(this);
-
-  info() << fmt::format("Acts::cm: {}, dd4hep::cm: {}", Acts::UnitConstants::cm, dd4hep::cm) << endmsg;
-
-  auto gctxt = Acts::GeometryContext::dangerouslyDefaultConstruct();
-
-  const auto* dd4hepDet = m_geoSvc->getDetector();
-  const auto  detName   = dd4hepDet->header().name();
-  info() << fmt::format("Constructing detector with name: {}", dd4hepDet->header().name()) << endmsg;
-
-  ActsPlugins::DD4hep::BlueprintBuilder builder{
-      {.elementFactory = ActsPlugins::DD4hep::BlueprintBuilder::defaultElementFactory,
-       .dd4hepDetector = dd4hepDet,
-       .lengthScale    = Acts::UnitConstants::cm / dd4hep::cm,
-       .gctx           = gctxt},
-      gaudiLogger->cloneWithSuffix("|BlpBld")};
-
-  using Acts::Experimental::Blueprint;
-  using Acts::Experimental::BlueprintOptions;
+void populateBluePrint(const std::string& detName, Acts::Experimental::Blueprint& root,
+                       ActsPlugins::DD4hep::BlueprintBuilder& builder) {
   using namespace Acts::UnitLiterals;
   using enum Acts::AxisDirection;
-
-  Blueprint::Config cfg;
-  // Padding around subvolumes of the world volume
-  cfg.envelope[AxisZ] = {20_mm, 20_mm};
-  cfg.envelope[AxisR] = {0_mm, 20_mm};
-  Blueprint root{cfg};
 
   auto& outer = root.addCylinderContainer(detName, AxisR);
   outer.addStaticVolume(Acts::Transform3::Identity(),
@@ -272,6 +236,50 @@ StatusCode ActsGeoSvc::initialize() {
     outerTracker.addChild(negEndcap);
     outerTracker.addChild(posEndcap);
   });
+}
+
+StatusCode ActsGeoSvc::initialize() {
+  m_geoSvc = Gaudi::svcLocator()->service<IGeoSvc>("GeoSvc");
+  K4_GAUDI_CHECK(m_geoSvc);
+
+  std::array<double, 3> magneticFieldVector = {0, 0, 0};
+  std::array<double, 3> position            = {0, 0, 0};
+  m_geoSvc->getDetector()->field().magneticField(position.data(), magneticFieldVector.data());
+  debug() << fmt::format("Retrieved magnetic field at position {}: {}", position, magneticFieldVector) << endmsg;
+  m_magneticField = std::make_shared<Acts::ConstantBField>(
+      Acts::Vector3(magneticFieldVector[0] / dd4hep::tesla * Acts::UnitConstants::T,
+                    magneticFieldVector[1] / dd4hep::tesla * Acts::UnitConstants::T,
+                    magneticFieldVector[2] / dd4hep::tesla * Acts::UnitConstants::T));
+
+  auto gaudiLogger = makeActsGaudiLogger(this);
+
+  info() << fmt::format("Acts::cm: {}, dd4hep::cm: {}", Acts::UnitConstants::cm, dd4hep::cm) << endmsg;
+
+  auto gctxt = Acts::GeometryContext::dangerouslyDefaultConstruct();
+
+  const auto* dd4hepDet = m_geoSvc->getDetector();
+  const auto  detName   = dd4hepDet->header().name();
+  info() << fmt::format("Constructing detector with name: {}", dd4hepDet->header().name()) << endmsg;
+
+  ActsPlugins::DD4hep::BlueprintBuilder builder{
+      {.elementFactory = ActsPlugins::DD4hep::BlueprintBuilder::defaultElementFactory,
+       .dd4hepDetector = dd4hepDet,
+       .lengthScale    = Acts::UnitConstants::cm / dd4hep::cm,
+       .gctx           = gctxt},
+      gaudiLogger->cloneWithSuffix("|BlpBld")};
+
+  using Acts::Experimental::Blueprint;
+  using Acts::Experimental::BlueprintOptions;
+  using namespace Acts::UnitLiterals;
+  using enum Acts::AxisDirection;
+
+  Blueprint::Config cfg;
+  // Padding around subvolumes of the world volume
+  cfg.envelope[AxisZ] = {20_mm, 20_mm};
+  cfg.envelope[AxisR] = {0_mm, 20_mm};
+  Blueprint root{cfg};
+
+  populateBluePrint(detName, root, builder);
 
   BlueprintOptions options;
 
