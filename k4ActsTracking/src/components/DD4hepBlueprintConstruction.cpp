@@ -214,7 +214,6 @@ namespace FCCee {
       Blueprints::addCylindricalBeampipe(outer);
 
       auto barrelEnvelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {1_mm, 1_mm});
-
       // Vertex Barrel has a double layer gap of only 1 mm. This makes it
       // (almost) impossible to fit them into mutually exclusive cylinder shell
       // volumes. Hence, we make each double layer an Acts layer / volume.
@@ -259,8 +258,69 @@ namespace FCCee {
         layer->setUseCenterOfGravity(false, false, true);
         vtxBarrel->addChild(layer);
       }
+      vtxBarrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
 
-      outer.addChild(vtxBarrel);
+      // We use an Endcap envelope with smaller z-padding to accomodate for the double layer structure
+      auto vtxEndcapEnvelope     = Acts::ExtentEnvelope{}.set(AxisZ, {1_mm, 1_mm}).set(AxisR, {5_mm, 5_mm});
+      auto posVtxEndcapContainer = builder.layers()
+                                       .endcap()
+                                       .setAxes("XZY")
+                                       .setContainer("VertexEndcap")
+                                       .setFilter("layer_pos\\d+")
+                                       .setEnvelope(vtxEndcapEnvelope)
+                                       .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+                                       .build();
+
+      auto negVtxEndcapContainer = builder.layers()
+                                       .endcap()
+                                       .setAxes("XZY")
+                                       .setContainer("VertexEndcap")
+                                       .setFilter("layer_neg\\d+")
+                                       .setEnvelope(vtxEndcapEnvelope)
+                                       .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+                                       .build();
+
+      auto vertex = std::make_shared<Acts::Experimental::CylinderContainerBlueprintNode>("Vertex", AxisZ);
+      vertex->addChild(vtxBarrel);
+      vertex->addChild(negVtxEndcapContainer);
+      vertex->addChild(posVtxEndcapContainer);
+
+      auto envelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
+
+      auto innerTrackerBarrel = builder.layers()
+                                    .barrel()
+                                    .setAxes("XYZ")
+                                    .setContainer("InnerTrackerBarrel")
+                                    .setFilter("layer\\d")
+                                    .setEnvelope(envelope)
+                                    .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+                                    .build();
+      auto innerTrackerPosEndcap = builder.layers()
+                                       .endcap()
+                                       .setAxes("YXZ")
+                                       .setContainer("InnerTrackerEndcap")
+                                       .setFilter("layer_pos\\d")
+                                       .setEnvelope(envelope)
+                                       .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+                                       .build();
+      auto innerTrackerNegEndcap = builder.layers()
+                                       .endcap()
+                                       .setAxes("YXZ")
+                                       .setContainer("InnerTrackerEndcap")
+                                       .setFilter("layer_neg\\d")
+                                       .setEnvelope(envelope)
+                                       .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+                                       .build();
+
+      auto trackerBarrel = std::make_shared<Acts::Experimental::CylinderContainerBlueprintNode>("TrackerBarrel", AxisR);
+      trackerBarrel->addChild(vertex);
+      trackerBarrel->addChild(innerTrackerBarrel);
+
+      outer.addCylinderContainer("InnerTracker", AxisZ, [&](auto& innerTracker) {
+        innerTracker.addChild(trackerBarrel);
+        innerTracker.addChild(innerTrackerNegEndcap);
+        innerTracker.addChild(innerTrackerPosEndcap);
+      });
     }
   }  // namespace ILD_FCCee
 }  // namespace FCCee
