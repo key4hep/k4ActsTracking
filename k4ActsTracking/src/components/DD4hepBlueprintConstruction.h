@@ -2,6 +2,7 @@
 #define K4ACTSTRACKING_DD4HEPBLUEPRINTCONSTRUCTION_H
 
 #include <Acts/Definitions/Units.hpp>
+#include <ActsPlugins/DD4hep/BlueprintBuilder.hpp>
 
 #include <string>
 
@@ -9,10 +10,6 @@ namespace Acts::Experimental {
   class ContainerBlueprintNode;
   class Blueprint;
 }  // namespace Acts::Experimental
-
-namespace ActsPlugins::DD4hep {
-  class BlueprintBuilder;
-}
 
 namespace Blueprints {
   using namespace Acts::UnitLiterals;
