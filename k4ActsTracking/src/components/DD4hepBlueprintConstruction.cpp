@@ -58,6 +58,7 @@ namespace MuColl {
               .setFilter("layer_\\d")
               .setContainer("VertexBarrel")
               .setEnvelope(barrelEnvelope)
+              .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
               .onLayer([&](const dd4hep::DetElement&, std::shared_ptr<Acts::Experimental::LayerBlueprintNode> layer) {
                 // Force the Barrel onto the z-axis by not using the
                 // center of gravity for auto-sizing. We do this because
@@ -67,7 +68,6 @@ namespace MuColl {
                 return layer;
               })
               .build();
-      vertexBarrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
 
       // We use an Endcap envelope with smaller z-padding to accomodate for the double layer structure
       auto vtxEndcapEnvelope     = Acts::ExtentEnvelope{}.set(AxisZ, {1_mm, 1_mm}).set(AxisR, {5_mm, 5_mm});
@@ -99,8 +99,8 @@ namespace MuColl {
                                   .setFilter("layer[01]")
                                   .setContainer("InnerTrackerBarrel")
                                   .setEnvelope(envelope)
+                                  .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
                                   .build();
-      innerInnerBarrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
       innerInnerBarrel->addChild(vertex);
 
       auto outerInnerBarrel = builder.layers()
@@ -109,8 +109,8 @@ namespace MuColl {
                                   .setFilter("layer2")
                                   .setContainer("InnerTrackerBarrel")
                                   .setEnvelope(envelope)
+                                  .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
                                   .build();
-      outerInnerBarrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
 
       auto innerPosEndcapInner = builder.layers()
                                      .endcap()
@@ -118,16 +118,17 @@ namespace MuColl {
                                      .setContainer("InnerTrackerEndcap")
                                      .setFilter("layer_pos0")
                                      .setEnvelope(envelope)
+                                     .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
                                      .build();
-      innerPosEndcapInner->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
+
       auto outerPosEndcapInner = builder.layers()
                                      .endcap()
                                      .setAxes("YXZ")
                                      .setContainer("InnerTrackerEndcap")
                                      .setFilter("layer_pos[1-6]")
                                      .setEnvelope(envelope)
+                                     .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
                                      .build();
-      outerPosEndcapInner->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
 
       auto innerNegEndcapInner = builder.layers()
                                      .endcap()
@@ -135,16 +136,16 @@ namespace MuColl {
                                      .setContainer("InnerTrackerEndcap")
                                      .setFilter("layer_neg0")
                                      .setEnvelope(envelope)
+                                     .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
                                      .build();
-      innerNegEndcapInner->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
       auto outerNegEndcapInner = builder.layers()
                                      .endcap()
                                      .setAxes("YXZ")
                                      .setContainer("InnerTrackerEndcap")
                                      .setFilter("layer_neg[1-6]")
                                      .setEnvelope(envelope)
+                                     .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
                                      .build();
-      outerNegEndcapInner->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
 
       auto innerInnerTracker =
           std::make_shared<Acts::Experimental::CylinderContainerBlueprintNode>("InnerInnerTracker", AxisZ);
@@ -172,8 +173,8 @@ namespace MuColl {
                           .setFilter("layer\\d")
                           .setContainer("OuterTrackerBarrel")
                           .setEnvelope(envelope)
+                          .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
                           .build();
-        barrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
 
         auto negEndcap = builder.layers()
                              .endcap()
@@ -181,8 +182,8 @@ namespace MuColl {
                              .setContainer("OuterTrackerEndcap")
                              .setFilter("layer_neg\\d")
                              .setEnvelope(envelope)
+                             .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
                              .build();
-        negEndcap->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
 
         auto posEndcap = builder.layers()
                              .endcap()
@@ -190,8 +191,8 @@ namespace MuColl {
                              .setContainer("OuterTrackerEndcap")
                              .setFilter("layer_pos\\d")
                              .setEnvelope(envelope)
+                             .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
                              .build();
-        posEndcap->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
 
         outerTracker.addChild(barrel);
         outerTracker.addChild(negEndcap);
