@@ -8,6 +8,8 @@
 
 #include <Parsers/Primitives.h>
 
+#include <ActsPlugins/DD4hep/BlueprintBuilder.hpp>
+
 #include "GaudiKernel/Service.h"
 
 #include <memory>
@@ -22,10 +24,6 @@ namespace Acts {
     class Blueprint;
   }
 }  // namespace Acts
-
-namespace ActsPlugins::DD4hep {
-  class BlueprintBuilder;
-}
 
 namespace dd4hep {
   class Detector;
@@ -51,8 +49,9 @@ public:
   const CellIDSurfaceMap& cellIdToSurfaceMap() const override { return m_cellIDToSurface; }
 
 private:
-  using BlueprintPopulationFunc = void(const std::string&, Acts::Experimental::Blueprint&,
-                                       ActsPlugins::DD4hep::BlueprintBuilder&);
+  using BlueprintBuilder = ActsPlugins::DD4hep::BlueprintBuilder;
+
+  using BlueprintPopulationFunc = void(const std::string&, Acts::Experimental::Blueprint&, BlueprintBuilder&);
 
   dd4hep::Detector*                                         m_dd4hepGeo{nullptr};
   SmartIF<IGeoSvc>                                          m_geoSvc;

@@ -8,6 +8,7 @@
 #include <Acts/Geometry/VolumeAttachmentStrategy.hpp>
 #include <Acts/Utilities/AxisDefinitions.hpp>
 #include <ActsPlugins/DD4hep/BlueprintBuilder.hpp>
+#include <ActsPlugins/Root/TGeoAxes.hpp>
 
 #include <ranges>
 
@@ -79,13 +80,13 @@ namespace MuColl {
       // volumes are overlapping otherwise
       auto barrelEnvelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {0.4_mm, 0.4_mm});
       auto vertexBarrel =
-          builder.layerHelper()
+          builder.layers()
               .barrel()
               .setAxes("ZYX")
-              .setPattern("layer_\\d")
+              .setFilter("layer_\\d")
               .setContainer("VertexBarrel")
               .setEnvelope(barrelEnvelope)
-              .customize([&](const dd4hep::DetElement&, std::shared_ptr<Acts::Experimental::LayerBlueprintNode> layer) {
+              .onLayer([&](const dd4hep::DetElement&, std::shared_ptr<Acts::Experimental::LayerBlueprintNode> layer) {
                 // Force the Barrel onto the z-axis by not using the
                 // center of gravity for auto-sizing. We do this because
                 // the VertexBarrel has an odd number of modules, which
@@ -98,19 +99,19 @@ namespace MuColl {
 
       // We use an Endcap envelope with smaller z-padding to accomodate for the double layer structure
       auto vtxEndcapEnvelope     = Acts::ExtentEnvelope{}.set(AxisZ, {1_mm, 1_mm}).set(AxisR, {5_mm, 5_mm});
-      auto posVtxEndcapContainer = builder.layerHelper()
+      auto posVtxEndcapContainer = builder.layers()
                                        .endcap()
                                        .setAxes("XZY")
                                        .setContainer("VertexEndcap")
-                                       .setPattern("layer_pos\\d+")
+                                       .setFilter("layer_pos\\d+")
                                        .setEnvelope(vtxEndcapEnvelope)
                                        .build();
 
-      auto negVtxEndcapContainer = builder.layerHelper()
+      auto negVtxEndcapContainer = builder.layers()
                                        .endcap()
                                        .setAxes("XZY")
                                        .setContainer("VertexEndcap")
-                                       .setPattern("layer_neg\\d+")
+                                       .setFilter("layer_neg\\d+")
                                        .setEnvelope(vtxEndcapEnvelope)
                                        .build();
 
@@ -120,55 +121,55 @@ namespace MuColl {
       vertex->addChild(posVtxEndcapContainer);
 
       auto envelope         = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
-      auto innerInnerBarrel = builder.layerHelper()
+      auto innerInnerBarrel = builder.layers()
                                   .barrel()
                                   .setAxes("XYZ")
-                                  .setPattern("layer[01]")
+                                  .setFilter("layer[01]")
                                   .setContainer("InnerTrackerBarrel")
                                   .setEnvelope(envelope)
                                   .build();
       innerInnerBarrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
       innerInnerBarrel->addChild(vertex);
 
-      auto outerInnerBarrel = builder.layerHelper()
+      auto outerInnerBarrel = builder.layers()
                                   .barrel()
                                   .setAxes("XYZ")
-                                  .setPattern("layer2")
+                                  .setFilter("layer2")
                                   .setContainer("InnerTrackerBarrel")
                                   .setEnvelope(envelope)
                                   .build();
       outerInnerBarrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
 
-      auto innerPosEndcapInner = builder.layerHelper()
+      auto innerPosEndcapInner = builder.layers()
                                      .endcap()
                                      .setAxes("YXZ")
                                      .setContainer("InnerTrackerEndcap")
-                                     .setPattern("layer_pos0")
+                                     .setFilter("layer_pos0")
                                      .setEnvelope(envelope)
                                      .build();
       innerPosEndcapInner->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
-      auto outerPosEndcapInner = builder.layerHelper()
+      auto outerPosEndcapInner = builder.layers()
                                      .endcap()
                                      .setAxes("YXZ")
                                      .setContainer("InnerTrackerEndcap")
-                                     .setPattern("layer_pos[1-6]")
+                                     .setFilter("layer_pos[1-6]")
                                      .setEnvelope(envelope)
                                      .build();
       outerPosEndcapInner->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
 
-      auto innerNegEndcapInner = builder.layerHelper()
+      auto innerNegEndcapInner = builder.layers()
                                      .endcap()
                                      .setAxes("YXZ")
                                      .setContainer("InnerTrackerEndcap")
-                                     .setPattern("layer_neg0")
+                                     .setFilter("layer_neg0")
                                      .setEnvelope(envelope)
                                      .build();
       innerNegEndcapInner->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
-      auto outerNegEndcapInner = builder.layerHelper()
+      auto outerNegEndcapInner = builder.layers()
                                      .endcap()
                                      .setAxes("YXZ")
                                      .setContainer("InnerTrackerEndcap")
-                                     .setPattern("layer_neg[1-6]")
+                                     .setFilter("layer_neg[1-6]")
                                      .setEnvelope(envelope)
                                      .build();
       outerNegEndcapInner->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
@@ -193,29 +194,29 @@ namespace MuColl {
       // The OuterTracker is a bit more simple because it has the barrel and endcap
       // more clearly separated
       outer.addCylinderContainer("OuterTracker", AxisZ, [&](auto& outerTracker) {
-        auto barrel = builder.layerHelper()
+        auto barrel = builder.layers()
                           .barrel()
                           .setAxes("XYZ")
-                          .setPattern("layer\\d")
+                          .setFilter("layer\\d")
                           .setContainer("OuterTrackerBarrel")
                           .setEnvelope(envelope)
                           .build();
         barrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
 
-        auto negEndcap = builder.layerHelper()
+        auto negEndcap = builder.layers()
                              .endcap()
                              .setAxes("YXZ")
                              .setContainer("OuterTrackerEndcap")
-                             .setPattern("layer_neg\\d")
+                             .setFilter("layer_neg\\d")
                              .setEnvelope(envelope)
                              .build();
         negEndcap->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
 
-        auto posEndcap = builder.layerHelper()
+        auto posEndcap = builder.layers()
                              .endcap()
                              .setAxes("YXZ")
                              .setContainer("OuterTrackerEndcap")
-                             .setPattern("layer_pos\\d")
+                             .setFilter("layer_pos\\d")
                              .setEnvelope(envelope)
                              .build();
         posEndcap->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
@@ -254,10 +255,14 @@ namespace FCCee {
 
       int layerNum = 0;
       for (const auto layerElems : vtxBarrelLayers | polyfill::chunk(2)) {
-        auto layerName = "doubleLayer_" + std::to_string(layerNum++);
+        const auto layerSpec =
+            ActsPlugins::DD4hep::DD4hepBackend::LayerSpec{.axes      = ActsPlugins::TGeoAxes("XYZ"),
+                                                          .layerAxes = std::nullopt,
+                                                          .layerName = "doubleLayer_" + std::to_string(layerNum++)};
+
         // TODO: Extract all the sensitive elements from the layers here (or do
         // that a step further up)
-        auto layer = builder.makeLayer(vtxBarrelDetElem.value(), layerElems, "XYZ", layerName);
+        auto layer = builder.makeLayer(vtxBarrelDetElem.value(), layerElems, layerSpec);
         layer->setEnvelope(barrelEnvelope);
         // Force the Barrel onto the z-axis by not using the
         // center of gravity for auto-sizing. We do this because
@@ -268,10 +273,10 @@ namespace FCCee {
       }
 
       // auto vertexBarrel =
-      //     builder.layerHelper()
+      //     builder.layers()
       //         .barrel()
       //         .setAxes("ZYX")
-      //         .setPattern("layer_\\d")
+      //         .setFilter("layer_\\d")
       //         .setContainer("VertexBarrel")
       //         .setEnvelope(barrelEnvelope)
       //         .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
