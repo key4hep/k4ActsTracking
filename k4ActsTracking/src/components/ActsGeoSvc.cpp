@@ -18,7 +18,7 @@
  */
 
 #include "ActsGeoSvc.h"
-#include <Acts/Geometry/GeometryContext.hpp>
+#include "DD4hepBlueprintConstruction.h"
 
 #include "k4ActsTracking/ActsGaudiLogger.h"
 
@@ -27,15 +27,12 @@
 #include <Acts/Definitions/Algebra.hpp>
 #include <Acts/Definitions/Units.hpp>
 #include <Acts/Geometry/Blueprint.hpp>
-#include <Acts/Geometry/BlueprintNode.hpp>
 #include <Acts/Geometry/BlueprintOptions.hpp>
-#include <Acts/Geometry/ContainerBlueprintNode.hpp>
 #include <Acts/Geometry/CylinderVolumeBounds.hpp>
 #include <Acts/Geometry/Extent.hpp>
 #include <Acts/Geometry/GeometryContext.hpp>
 #include <Acts/Geometry/GeometryIdentifier.hpp>
 #include <Acts/Geometry/TrackingGeometry.hpp>
-#include <Acts/Geometry/VolumeAttachmentStrategy.hpp>
 #include <Acts/MagneticField/ConstantBField.hpp>
 #include <Acts/Surfaces/Surface.hpp>
 #include <Acts/Utilities/AxisDefinitions.hpp>
@@ -59,185 +56,9 @@ template <> struct fmt::formatter<Acts::GeometryIdentifier> : fmt::ostream_forma
 
 DECLARE_COMPONENT(ActsGeoSvc)
 
-void populateBluePrintMAIA_v0(const std::string& detName, Acts::Experimental::Blueprint& root,
-                              ActsPlugins::DD4hep::BlueprintBuilder& builder) {
-  using namespace Acts::UnitLiterals;
-  using enum Acts::AxisDirection;
-
-  auto& outer = root.addCylinderContainer(detName, AxisR);
-  outer.addStaticVolume(Acts::Transform3::Identity(),
-                        std::make_unique<Acts::CylinderVolumeBounds>(0_mm, 10_mm, 1000_mm), "Beampipe");
-  // We want to pull the next volume in towards the beampipe to map material to
-  // the correct places in the end. We need to ensure that the enclosing
-  // cylinder contains the beampipe entirely.
-  outer.setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
-
-  // We have to create the inner tracker in several steps, because the inner
-  // most endcap layer protrudes into the envelope that is created by the
-  // outermost barrel layer. That creates an overlap in z while stacking. Hence,
-  // we build it in steps grouping the innermost two layers of the barrel and
-  // the innermost layer of the endcap into an "inner" inner tracker (stacking
-  // them along z), we then stack the last barrel layer along r, before stacking
-  // the remaining endcap layers along z. Additionally, we have to first put the
-  // whole vertex detector inside the two innermost InnerTrackerBarrel layers
-  // because the outermost vertex layer extends further in r, than the innermost
-  // border of the InnerTracker endcaps. Hence, we also need to stack them in
-  // the correct order.
-
-  // NOTE: Need to set rather small padding here for the R-direction, because
-  // the innermost two layers are a double layer for which the cylindrical
-  // volumes are overlapping otherwise
-  auto barrelEnvelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {0.4_mm, 0.4_mm});
-  auto vertexBarrel =
-      builder.layerHelper()
-          .barrel()
-          .setAxes("ZYX")
-          .setPattern("layer_\\d")
-          .setContainer("VertexBarrel")
-          .setEnvelope(barrelEnvelope)
-          .customize([&](const dd4hep::DetElement&, std::shared_ptr<Acts::Experimental::LayerBlueprintNode> layer) {
-            // Force the Barrel onto the z-axis by not using the
-            // center of gravity for auto-sizing. We do this because
-            // the VertexBarrel has an odd number of modules, which
-            // shifts them off-axis when using CoG
-            layer->setUseCenterOfGravity(false, false, true);
-            return layer;
-          })
-          .build();
-  vertexBarrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
-
-  // We use an Endcap envelope with smaller z-padding to accomodate for the double layer structure
-  auto vtxEndcapEnvelope     = Acts::ExtentEnvelope{}.set(AxisZ, {1_mm, 1_mm}).set(AxisR, {5_mm, 5_mm});
-  auto posVtxEndcapContainer = builder.layerHelper()
-                                   .endcap()
-                                   .setAxes("XZY")
-                                   .setContainer("VertexEndcap")
-                                   .setPattern("layer_pos\\d+")
-                                   .setEnvelope(vtxEndcapEnvelope)
-                                   .build();
-
-  auto negVtxEndcapContainer = builder.layerHelper()
-                                   .endcap()
-                                   .setAxes("XZY")
-                                   .setContainer("VertexEndcap")
-                                   .setPattern("layer_neg\\d+")
-                                   .setEnvelope(vtxEndcapEnvelope)
-                                   .build();
-
-  auto vertex = std::make_shared<Acts::Experimental::CylinderContainerBlueprintNode>("Vertex", AxisZ);
-  vertex->addChild(vertexBarrel);
-  vertex->addChild(negVtxEndcapContainer);
-  vertex->addChild(posVtxEndcapContainer);
-
-  auto envelope         = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
-  auto innerInnerBarrel = builder.layerHelper()
-                              .barrel()
-                              .setAxes("XYZ")
-                              .setPattern("layer[01]")
-                              .setContainer("InnerTrackerBarrel")
-                              .setEnvelope(envelope)
-                              .build();
-  innerInnerBarrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
-  innerInnerBarrel->addChild(vertex);
-
-  auto outerInnerBarrel = builder.layerHelper()
-                              .barrel()
-                              .setAxes("XYZ")
-                              .setPattern("layer2")
-                              .setContainer("InnerTrackerBarrel")
-                              .setEnvelope(envelope)
-                              .build();
-  outerInnerBarrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
-
-  auto innerPosEndcapInner = builder.layerHelper()
-                                 .endcap()
-                                 .setAxes("YXZ")
-                                 .setContainer("InnerTrackerEndcap")
-                                 .setPattern("layer_pos0")
-                                 .setEnvelope(envelope)
-                                 .build();
-  innerPosEndcapInner->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
-  auto outerPosEndcapInner = builder.layerHelper()
-                                 .endcap()
-                                 .setAxes("YXZ")
-                                 .setContainer("InnerTrackerEndcap")
-                                 .setPattern("layer_pos[1-6]")
-                                 .setEnvelope(envelope)
-                                 .build();
-  outerPosEndcapInner->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
-
-  auto innerNegEndcapInner = builder.layerHelper()
-                                 .endcap()
-                                 .setAxes("YXZ")
-                                 .setContainer("InnerTrackerEndcap")
-                                 .setPattern("layer_neg0")
-                                 .setEnvelope(envelope)
-                                 .build();
-  innerNegEndcapInner->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
-  auto outerNegEndcapInner = builder.layerHelper()
-                                 .endcap()
-                                 .setAxes("YXZ")
-                                 .setContainer("InnerTrackerEndcap")
-                                 .setPattern("layer_neg[1-6]")
-                                 .setEnvelope(envelope)
-                                 .build();
-  outerNegEndcapInner->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
-
-  auto innerInnerTracker =
-      std::make_shared<Acts::Experimental::CylinderContainerBlueprintNode>("InnerInnerTracker", AxisZ);
-  innerInnerTracker->addChild(innerPosEndcapInner);
-  innerInnerTracker->addChild(innerNegEndcapInner);
-  innerInnerTracker->addChild(innerInnerBarrel);
-
-  auto innerTrackerBarrel =
-      std::make_shared<Acts::Experimental::CylinderContainerBlueprintNode>("InnerTrackerBarrel", AxisR);
-  innerTrackerBarrel->addChild(innerInnerTracker);
-  innerTrackerBarrel->addChild(outerInnerBarrel);
-
-  outer.addCylinderContainer("InnerTracker", AxisZ, [&](auto& innerTracker) {
-    innerTracker.addChild(innerTrackerBarrel);
-    innerTracker.addChild(outerNegEndcapInner);
-    innerTracker.addChild(outerPosEndcapInner);
-  });
-
-  // The OuterTracker is a bit more simple because it has the barrel and endcap
-  // more clearly separated
-  outer.addCylinderContainer("OuterTracker", AxisZ, [&](auto& outerTracker) {
-    auto barrel = builder.layerHelper()
-                      .barrel()
-                      .setAxes("XYZ")
-                      .setPattern("layer\\d")
-                      .setContainer("OuterTrackerBarrel")
-                      .setEnvelope(envelope)
-                      .build();
-    barrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
-
-    auto negEndcap = builder.layerHelper()
-                         .endcap()
-                         .setAxes("YXZ")
-                         .setContainer("OuterTrackerEndcap")
-                         .setPattern("layer_neg\\d")
-                         .setEnvelope(envelope)
-                         .build();
-    negEndcap->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
-
-    auto posEndcap = builder.layerHelper()
-                         .endcap()
-                         .setAxes("YXZ")
-                         .setContainer("OuterTrackerEndcap")
-                         .setPattern("layer_pos\\d")
-                         .setEnvelope(envelope)
-                         .build();
-    posEndcap->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
-
-    outerTracker.addChild(barrel);
-    outerTracker.addChild(negEndcap);
-    outerTracker.addChild(posEndcap);
-  });
-}
-
 ActsGeoSvc::ActsGeoSvc(const std::string& name, ISvcLocator* svcLoc) : base_class(name, svcLoc) {
-  m_bluePrintPopulationFuncs = {{"MAIA_v0", populateBluePrintMAIA_v0}};
+  m_bluePrintPopulationFuncs = {{"MAIA_v0", MuColl::MAIA_v0::populateBlueprint},
+                                {"ILD_FCCee_v01", FCCee::ILD_FCCee::populateBlueprint}};
 }
 
 StatusCode ActsGeoSvc::initialize() {
@@ -281,6 +102,7 @@ StatusCode ActsGeoSvc::initialize() {
   cfg.envelope[AxisR] = {0_mm, 20_mm};
   Blueprint root{cfg};
 
+  debug() << fmt::format("Getting Blueprint construction function for detector: {}", detName) << endmsg;
   if (const auto it = m_bluePrintPopulationFuncs.find(detName); it != m_bluePrintPopulationFuncs.end()) {
     auto bluePrintFunc = it->second;
     bluePrintFunc(detName, root, builder);

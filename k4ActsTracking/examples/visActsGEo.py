@@ -18,8 +18,8 @@ geoSvc.detectors = [args.compactFile]
 
 actsGeoSvc = ActsGeoSvc("ActsGeoSvc")
 actsGeoSvc.DumpVisualization = True
-actsGeoSvc.ObjVisFileName = "full_barrel.obj"
-actsGeoSvc.OutputLevel = VERBOSE
+actsGeoSvc.ObjVisFileName = "full_mucoll_old_vertex_endcap.obj"
+actsGeoSvc.OutputLevel = DEBUG
 
 propTest = ActsTestPropagator("TestPropagator")
 propTest.OutputLevel = DEBUG
@@ -27,7 +27,7 @@ propTest.NumTracks = 20000
 
 
 ApplicationMgr(
-    TopAlg=[propTest],
+    TopAlg=[],
     # TopAlg=[],
     ExtSvc=[geoSvc, actsGeoSvc, EventDataSvc()],
     EvtMax=1,
