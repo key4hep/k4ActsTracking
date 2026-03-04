@@ -10,37 +10,9 @@
 #include <ActsPlugins/DD4hep/BlueprintBuilder.hpp>
 #include <ActsPlugins/Root/TGeoAxes.hpp>
 
+#include <algorithm>
 #include <ranges>
-
-namespace polyfill {
-#if defined(__cpp_lib_ranges_chunk)
-  inline constexpr chunk = std::views::chunk;
-#else
-  namespace detail {
-    struct chunk_fn {
-      std::size_t n;
-
-      template <std::ranges::contiguous_range R> auto operator()(R&& r) const {
-        const std::size_t size = std::ranges::size(r);
-        auto*             data = std::ranges::data(r);
-
-        return std::views::iota(std::size_t{0}, size / n) |
-               std::views::transform([data, n = n](std::size_t i) { return std::span(data + i * n, n); });
-      }
-
-      // Support pipeline syntax: v | compat::views::chunk(2)
-      template <std::ranges::contiguous_range R> friend auto operator|(R&& r, const chunk_fn& fn) {
-        return fn(std::forward<R>(r));
-      }
-    };
-
-    struct chunk_adaptor {
-      auto operator()(std::size_t n) const { return chunk_fn{n}; }
-    };
-  }  // namespace detail
-  inline constexpr detail::chunk_adaptor chunk;
-#endif
-}  // namespace polyfill
+#include <regex>
 
 namespace Blueprints {
   void addCylindricalBeampipe(Acts::Experimental::ContainerBlueprintNode& node, double rMax, double halfZ) {
@@ -246,24 +218,40 @@ namespace FCCee {
       // Vertex Barrel has a double layer gap of only 1 mm. This makes it
       // (almost) impossible to fit them into mutually exclusive cylinder shell
       // volumes. Hence, we make each double layer an Acts layer / volume.
-      const auto vtxBarrelDetElem = builder.findDetElementByName("VertexBarrel");
-      const auto vtxBarrelLayers =
-          builder.findDetElementByNamePattern(vtxBarrelDetElem.value(), std::regex{"layer_\\d"});
+      const auto vtxBarrelDetElem    = builder.findDetElementByName("VertexBarrel");
+      const auto vtxBarrelLayerRgx   = std::regex{"VertexBarrel_layer(\\d)_ladder\\d+"};
+      const auto vtxBarrelLayerElems = builder.findDetElementByNamePattern(vtxBarrelDetElem.value(), vtxBarrelLayerRgx);
+
+      const auto doubleLayerGrouper = [&](const std::span<const dd4hep::DetElement> elements) {
+        const auto layerElements = elements | std::views::transform([&](const auto e) {
+                                     std::smatch       match;
+                                     const std::string elemName = e.name();
+                                     std::regex_match(elemName, match, vtxBarrelLayerRgx);
+                                     const auto layer = std::stoi(match[1].str());
+                                     return std::make_pair(layer, e);
+                                   });
+        const auto nLayers = std::ranges::max(layerElements, std::less{}, [](const auto p) { return p.first; }).first;
+        std::vector<std::vector<dd4hep::DetElement>> layers((nLayers + 1) / 2);
+
+        for (const auto& [layer, elem] : layerElements) {
+          layers[layer / 2].emplace_back(elem);
+        }
+
+        return layers;
+      };
 
       auto vtxBarrel = std::make_shared<Acts::Experimental::CylinderContainerBlueprintNode>("VertexBarrel",
                                                                                             Acts::AxisDirection::AxisR);
 
       int layerNum = 0;
-      for (const auto layerElems : vtxBarrelLayers | polyfill::chunk(2)) {
+      for (const auto& layerElems : doubleLayerGrouper(vtxBarrelLayerElems)) {
         const auto layerSpec =
-            ActsPlugins::DD4hep::DD4hepBackend::LayerSpec{.axes      = ActsPlugins::TGeoAxes("XYZ"),
+            ActsPlugins::DD4hep::DD4hepBackend::LayerSpec{.axes      = ActsPlugins::TGeoAxes("ZYX"),
                                                           .layerAxes = std::nullopt,
                                                           .layerName = "doubleLayer_" + std::to_string(layerNum++)};
-
-        // TODO: Extract all the sensitive elements from the layers here (or do
-        // that a step further up)
         auto layer = builder.makeLayer(vtxBarrelDetElem.value(), layerElems, layerSpec);
         layer->setEnvelope(barrelEnvelope);
+
         // Force the Barrel onto the z-axis by not using the
         // center of gravity for auto-sizing. We do this because
         // the VertexBarrel has an odd number of modules, which
@@ -271,24 +259,6 @@ namespace FCCee {
         layer->setUseCenterOfGravity(false, false, true);
         vtxBarrel->addChild(layer);
       }
-
-      // auto vertexBarrel =
-      //     builder.layers()
-      //         .barrel()
-      //         .setAxes("ZYX")
-      //         .setFilter("layer_\\d")
-      //         .setContainer("VertexBarrel")
-      //         .setEnvelope(barrelEnvelope)
-      //         .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-      //         .customize([&](const dd4hep::DetElement&, std::shared_ptr<Acts::Experimental::LayerBlueprintNode> layer) {
-      //           // Force the Barrel onto the z-axis by not using the
-      //           // center of gravity for auto-sizing. We do this because
-      //           // the VertexBarrel has an odd number of modules, which
-      //           // shifts them off-axis when using CoG
-      //           layer->setUseCenterOfGravity(false, false, true);
-      //           return layer;
-      //         })
-      //         .build();
 
       outer.addChild(vtxBarrel);
     }
