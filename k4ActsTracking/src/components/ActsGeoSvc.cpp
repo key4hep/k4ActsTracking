@@ -84,11 +84,8 @@ StatusCode ActsGeoSvc::initialize() {
   const auto  detName   = dd4hepDet->header().name();
   info() << fmt::format("Constructing detector with name: {}", dd4hepDet->header().name()) << endmsg;
 
-  ActsPlugins::DD4hep::BlueprintBuilder builder{
-      {.elementFactory = ActsPlugins::DD4hep::BlueprintBuilder::defaultElementFactory,
-       .dd4hepDetector = dd4hepDet,
-       .lengthScale    = Acts::UnitConstants::cm / dd4hep::cm,
-       .gctx           = gctxt},
+  BlueprintBuilder builder{
+      {.dd4hepDetector = dd4hepDet, .lengthScale = Acts::UnitConstants::cm / dd4hep::cm, .gctx = gctxt},
       gaudiLogger->cloneWithSuffix("|BlpBld")};
 
   using Acts::Experimental::Blueprint;
