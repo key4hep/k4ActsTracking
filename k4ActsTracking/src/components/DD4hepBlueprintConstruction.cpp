@@ -150,20 +150,7 @@ namespace MuColl {
     void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
                            ActsPlugins::DD4hep::BlueprintBuilder& builder) {
       auto& outer = root.addCylinderContainer(detName, AxisR);
-
       Blueprints::addCylindricalBeampipe(outer);
-
-      // We have to create the inner tracker in several steps, because the inner
-      // most endcap layer protrudes into the envelope that is created by the
-      // outermost barrel layer. That creates an overlap in z while stacking. Hence,
-      // we build it in steps grouping the innermost two layers of the barrel and
-      // the innermost layer of the endcap into an "inner" inner tracker (stacking
-      // them along z), we then stack the last barrel layer along r, before stacking
-      // the remaining endcap layers along z. Additionally, we have to first put the
-      // whole vertex detector inside the two innermost InnerTrackerBarrel layers
-      // because the outermost vertex layer extends further in r, than the innermost
-      // border of the InnerTracker endcaps. Hence, we also need to stack them in
-      // the correct order.
 
       // NOTE: Need to set rather small padding here for the R-direction, because
       // the innermost two layers are a double layer for which the cylindrical
@@ -185,9 +172,19 @@ namespace MuColl {
                                 return layer;
                               })
                               .build();
-
       auto vertex = Blueprints::completeVertexWithEndcaps(builder, std::move(vertexBarrel));
 
+      // We have to create the inner tracker in several steps, because the inner
+      // most endcap layer protrudes into the envelope that is created by the
+      // outermost barrel layer. That creates an overlap in z while stacking. Hence,
+      // we build it in steps grouping the innermost two layers of the barrel and
+      // the innermost layer of the endcap into an "inner" inner tracker (stacking
+      // them along z), we then stack the last barrel layer along r, before stacking
+      // the remaining endcap layers along z. Additionally, we have to first put the
+      // whole vertex detector inside the two innermost InnerTrackerBarrel layers
+      // because the outermost vertex layer extends further in r, than the innermost
+      // border of the InnerTracker endcaps. Hence, we also need to stack them in
+      // the correct order.
       auto envelope         = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
       auto innerInnerBarrel = builder.layers()
                                   .barrel()
@@ -199,65 +196,56 @@ namespace MuColl {
                                   .build();
       innerInnerBarrel->addChild(vertex);
 
-      auto outerInnerBarrel = builder.layers()
-                                  .barrel()
-                                  .setSensorAxes("XYZ")
-                                  .setLayerFilter("layer2")
-                                  .setContainer("InnerTrackerBarrel")
-                                  .setEnvelope(envelope)
-                                  .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-                                  .build();
-
-      auto innerPosEndcapInner = builder.layers()
-                                     .endcap()
-                                     .setSensorAxes("YXZ")
-                                     .setContainer("InnerTrackerEndcap")
-                                     .setLayerFilter("layer_pos0")
-                                     .setEnvelope(envelope)
-                                     .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-                                     .build();
-
-      auto outerPosEndcapInner = builder.layers()
-                                     .endcap()
-                                     .setSensorAxes("YXZ")
-                                     .setContainer("InnerTrackerEndcap")
-                                     .setLayerFilter("layer_pos[1-6]")
-                                     .setEnvelope(envelope)
-                                     .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-                                     .build();
-
-      auto innerNegEndcapInner = builder.layers()
-                                     .endcap()
-                                     .setSensorAxes("YXZ")
-                                     .setContainer("InnerTrackerEndcap")
-                                     .setLayerFilter("layer_neg0")
-                                     .setEnvelope(envelope)
-                                     .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-                                     .build();
-      auto outerNegEndcapInner = builder.layers()
-                                     .endcap()
-                                     .setSensorAxes("YXZ")
-                                     .setContainer("InnerTrackerEndcap")
-                                     .setLayerFilter("layer_neg[1-6]")
-                                     .setEnvelope(envelope)
-                                     .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-                                     .build();
-
       auto innerInnerTracker =
           std::make_shared<Acts::Experimental::CylinderContainerBlueprintNode>("InnerInnerTracker", AxisZ);
-      innerInnerTracker->addChild(innerPosEndcapInner);
-      innerInnerTracker->addChild(innerNegEndcapInner);
       innerInnerTracker->addChild(innerInnerBarrel);
-
-      auto innerTrackerBarrel =
-          std::make_shared<Acts::Experimental::CylinderContainerBlueprintNode>("InnerTrackerBarrel", AxisR);
-      innerTrackerBarrel->addChild(innerInnerTracker);
-      innerTrackerBarrel->addChild(outerInnerBarrel);
+      builder.layers()
+          .endcap()
+          .setSensorAxes("YXZ")
+          .setContainer("InnerTrackerEndcap")
+          .setLayerFilter("layer_pos0")
+          .setEnvelope(envelope)
+          .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+          .addTo(*innerInnerTracker);
+      builder.layers()
+          .endcap()
+          .setSensorAxes("YXZ")
+          .setContainer("InnerTrackerEndcap")
+          .setLayerFilter("layer_neg0")
+          .setEnvelope(envelope)
+          .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+          .addTo(*innerInnerTracker);
 
       outer.addCylinderContainer("InnerTracker", AxisZ, [&](auto& innerTracker) {
-        innerTracker.addChild(innerTrackerBarrel);
-        innerTracker.addChild(outerNegEndcapInner);
-        innerTracker.addChild(outerPosEndcapInner);
+        // First build up everything so far and the rest of the IT barrel
+        innerTracker.addCylinderContainer("InnerTrackerBarrel", AxisR, [&](auto& innerBarrel) {
+          innerBarrel.addChild(innerInnerTracker);
+          builder.layers()
+              .barrel()
+              .setSensorAxes("XYZ")
+              .setLayerFilter("layer2")
+              .setContainer("InnerTrackerBarrel")
+              .setEnvelope(envelope)
+              .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+              .addTo(innerBarrel);
+        });
+        // Then add the (rest of the) two endcaps
+        builder.layers()
+            .endcap()
+            .setSensorAxes("YXZ")
+            .setContainer("InnerTrackerEndcap")
+            .setLayerFilter("layer_pos[1-6]")
+            .setEnvelope(envelope)
+            .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+            .addTo(innerTracker);
+        builder.layers()
+            .endcap()
+            .setSensorAxes("YXZ")
+            .setContainer("InnerTrackerEndcap")
+            .setLayerFilter("layer_neg[1-6]")
+            .setEnvelope(envelope)
+            .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+            .addTo(innerTracker);
       });
 
       // The OuterTracker is a bit more simple because it has the barrel and endcap
@@ -271,7 +259,6 @@ namespace MuColl {
             .setEnvelope(envelope)
             .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
             .addTo(outerTracker);
-
         builder.layers()
             .endcap()
             .setSensorAxes("YXZ")
@@ -280,7 +267,6 @@ namespace MuColl {
             .setEnvelope(envelope)
             .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
             .addTo(outerTracker);
-
         builder.layers()
             .endcap()
             .setSensorAxes("YXZ")
