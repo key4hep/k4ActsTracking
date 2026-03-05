@@ -11,12 +11,6 @@ namespace Acts::Experimental {
   class Blueprint;
 }  // namespace Acts::Experimental
 
-namespace Blueprints {
-  using namespace Acts::UnitLiterals;
-  void addCylindricalBeampipe(Acts::Experimental::ContainerBlueprintNode& root, double rMax = 10_mm,
-                              double halfZ = 1000_mm);
-}  // namespace Blueprints
-
 namespace MuColl {
   namespace MAIA_v0 {
     void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
@@ -25,11 +19,15 @@ namespace MuColl {
 }  // namespace MuColl
 
 namespace FCCee {
-  namespace ILD_FCCee {
+  namespace ILD_FCCee_v01 {
     void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
                            ActsPlugins::DD4hep::BlueprintBuilder& builder);
   }
-  // namespace FCCee
+
+  namespace ILD_FCCee_v02 {
+    void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
+                           ActsPlugins::DD4hep::BlueprintBuilder& builder);
+  }
 }  // namespace FCCee
 
 #endif  // K4ACTSTRACKING_DD4HEPBLUEPRINTCONSTRUCTION_H
