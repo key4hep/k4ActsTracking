@@ -136,18 +136,18 @@ namespace Blueprints {
     auto vtxEndcapEnvelope     = Acts::ExtentEnvelope{}.set(AxisZ, {1_mm, 1_mm}).set(AxisR, {5_mm, 5_mm});
     auto posVtxEndcapContainer = builder.layers()
                                      .endcap()
-                                     .setAxes("XZY")
+                                     .setSensorAxes("XZY")
                                      .setContainer(containerName)
-                                     .setFilter(posLayerPattern)
+                                     .setLayerFilter(posLayerPattern)
                                      .setEnvelope(vtxEndcapEnvelope)
                                      .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
                                      .build();
 
     auto negVtxEndcapContainer = builder.layers()
                                      .endcap()
-                                     .setAxes("XZY")
+                                     .setSensorAxes("XZY")
                                      .setContainer(containerName)
-                                     .setFilter(negLayerPattern)
+                                     .setLayerFilter(negLayerPattern)
                                      .setEnvelope(vtxEndcapEnvelope)
                                      .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
                                      .build();
@@ -185,31 +185,30 @@ namespace MuColl {
       // the innermost two layers are a double layer for which the cylindrical
       // volumes are overlapping otherwise
       auto barrelEnvelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {0.4_mm, 0.4_mm});
-      auto vertexBarrel =
-          builder.layers()
-              .barrel()
-              .setAxes("ZYX")
-              .setFilter("layer_\\d")
-              .setContainer("VertexBarrel")
-              .setEnvelope(barrelEnvelope)
-              .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-              .onLayer([&](const dd4hep::DetElement&, std::shared_ptr<Acts::Experimental::LayerBlueprintNode> layer) {
-                // Force the Barrel onto the z-axis by not using the
-                // center of gravity for auto-sizing. We do this because
-                // the VertexBarrel has an odd number of modules, which
-                // shifts them off-axis when using CoG
-                layer->setUseCenterOfGravity(false, false, true);
-                return layer;
-              })
-              .build();
+      auto vertexBarrel   = builder.layers()
+                              .barrel()
+                              .setSensorAxes("ZYX")
+                              .setLayerFilter("layer_\\d")
+                              .setContainer("VertexBarrel")
+                              .setEnvelope(barrelEnvelope)
+                              .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+                              .onLayer([&](const auto&, std::shared_ptr<Acts::Experimental::LayerBlueprintNode> layer) {
+                                // Force the Barrel onto the z-axis by not using the
+                                // center of gravity for auto-sizing. We do this because
+                                // the VertexBarrel has an odd number of modules, which
+                                // shifts them off-axis when using CoG
+                                layer->setUseCenterOfGravity(false, false, true);
+                                return layer;
+                              })
+                              .build();
 
       auto vertex = Blueprints::completeVertexWithEndcaps(builder, std::move(vertexBarrel));
 
       auto envelope         = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
       auto innerInnerBarrel = builder.layers()
                                   .barrel()
-                                  .setAxes("XYZ")
-                                  .setFilter("layer[01]")
+                                  .setSensorAxes("XYZ")
+                                  .setLayerFilter("layer[01]")
                                   .setContainer("InnerTrackerBarrel")
                                   .setEnvelope(envelope)
                                   .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
@@ -218,8 +217,8 @@ namespace MuColl {
 
       auto outerInnerBarrel = builder.layers()
                                   .barrel()
-                                  .setAxes("XYZ")
-                                  .setFilter("layer2")
+                                  .setSensorAxes("XYZ")
+                                  .setLayerFilter("layer2")
                                   .setContainer("InnerTrackerBarrel")
                                   .setEnvelope(envelope)
                                   .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
@@ -227,35 +226,35 @@ namespace MuColl {
 
       auto innerPosEndcapInner = builder.layers()
                                      .endcap()
-                                     .setAxes("YXZ")
+                                     .setSensorAxes("YXZ")
                                      .setContainer("InnerTrackerEndcap")
-                                     .setFilter("layer_pos0")
+                                     .setLayerFilter("layer_pos0")
                                      .setEnvelope(envelope)
                                      .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
                                      .build();
 
       auto outerPosEndcapInner = builder.layers()
                                      .endcap()
-                                     .setAxes("YXZ")
+                                     .setSensorAxes("YXZ")
                                      .setContainer("InnerTrackerEndcap")
-                                     .setFilter("layer_pos[1-6]")
+                                     .setLayerFilter("layer_pos[1-6]")
                                      .setEnvelope(envelope)
                                      .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
                                      .build();
 
       auto innerNegEndcapInner = builder.layers()
                                      .endcap()
-                                     .setAxes("YXZ")
+                                     .setSensorAxes("YXZ")
                                      .setContainer("InnerTrackerEndcap")
-                                     .setFilter("layer_neg0")
+                                     .setLayerFilter("layer_neg0")
                                      .setEnvelope(envelope)
                                      .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
                                      .build();
       auto outerNegEndcapInner = builder.layers()
                                      .endcap()
-                                     .setAxes("YXZ")
+                                     .setSensorAxes("YXZ")
                                      .setContainer("InnerTrackerEndcap")
-                                     .setFilter("layer_neg[1-6]")
+                                     .setLayerFilter("layer_neg[1-6]")
                                      .setEnvelope(envelope)
                                      .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
                                      .build();
@@ -282,8 +281,8 @@ namespace MuColl {
       outer.addCylinderContainer("OuterTracker", AxisZ, [&](auto& outerTracker) {
         auto barrel = builder.layers()
                           .barrel()
-                          .setAxes("XYZ")
-                          .setFilter("layer\\d")
+                          .setSensorAxes("XYZ")
+                          .setLayerFilter("layer\\d")
                           .setContainer("OuterTrackerBarrel")
                           .setEnvelope(envelope)
                           .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
@@ -291,18 +290,18 @@ namespace MuColl {
 
         auto negEndcap = builder.layers()
                              .endcap()
-                             .setAxes("YXZ")
+                             .setSensorAxes("YXZ")
                              .setContainer("OuterTrackerEndcap")
-                             .setFilter("layer_neg\\d")
+                             .setLayerFilter("layer_neg\\d")
                              .setEnvelope(envelope)
                              .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
                              .build();
 
         auto posEndcap = builder.layers()
                              .endcap()
-                             .setAxes("YXZ")
+                             .setSensorAxes("YXZ")
                              .setContainer("OuterTrackerEndcap")
-                             .setFilter("layer_pos\\d")
+                             .setLayerFilter("layer_pos\\d")
                              .setEnvelope(envelope)
                              .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
                              .build();
@@ -330,25 +329,25 @@ namespace FCCee {
       auto envelope           = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
       auto innerTrackerBarrel = builder.layers()
                                     .barrel()
-                                    .setAxes("XYZ")
+                                    .setSensorAxes("XYZ")
                                     .setContainer("InnerTrackerBarrel")
-                                    .setFilter("layer\\d")
+                                    .setLayerFilter("layer\\d")
                                     .setEnvelope(envelope)
                                     .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
                                     .build();
       auto innerTrackerPosEndcap = builder.layers()
                                        .endcap()
-                                       .setAxes("YXZ")
+                                       .setSensorAxes("YXZ")
                                        .setContainer("InnerTrackerEndcap")
-                                       .setFilter("layer_pos\\d")
+                                       .setLayerFilter("layer_pos\\d")
                                        .setEnvelope(envelope)
                                        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
                                        .build();
       auto innerTrackerNegEndcap = builder.layers()
                                        .endcap()
-                                       .setAxes("YXZ")
+                                       .setSensorAxes("YXZ")
                                        .setContainer("InnerTrackerEndcap")
-                                       .setFilter("layer_neg\\d")
+                                       .setLayerFilter("layer_neg\\d")
                                        .setEnvelope(envelope)
                                        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
                                        .build();
