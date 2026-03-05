@@ -263,39 +263,34 @@ namespace MuColl {
       // The OuterTracker is a bit more simple because it has the barrel and endcap
       // more clearly separated
       outer.addCylinderContainer("OuterTracker", AxisZ, [&](auto& outerTracker) {
-        auto barrel = builder.layers()
-                          .barrel()
-                          .setSensorAxes("XYZ")
-                          .setLayerFilter("layer\\d")
-                          .setContainer("OuterTrackerBarrel")
-                          .setEnvelope(envelope)
-                          .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-                          .build();
+        builder.layers()
+            .barrel()
+            .setSensorAxes("XYZ")
+            .setLayerFilter("layer\\d")
+            .setContainer("OuterTrackerBarrel")
+            .setEnvelope(envelope)
+            .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+            .addTo(outerTracker);
 
-        auto negEndcap = builder.layers()
-                             .endcap()
-                             .setSensorAxes("YXZ")
-                             .setContainer("OuterTrackerEndcap")
-                             .setLayerFilter("layer_neg\\d")
-                             .setEnvelope(envelope)
-                             .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-                             .build();
+        builder.layers()
+            .endcap()
+            .setSensorAxes("YXZ")
+            .setContainer("OuterTrackerEndcap")
+            .setLayerFilter("layer_neg\\d")
+            .setEnvelope(envelope)
+            .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+            .addTo(outerTracker);
 
-        auto posEndcap = builder.layers()
-                             .endcap()
-                             .setSensorAxes("YXZ")
-                             .setContainer("OuterTrackerEndcap")
-                             .setLayerFilter("layer_pos\\d")
-                             .setEnvelope(envelope)
-                             .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-                             .build();
-
-        outerTracker.addChild(barrel);
-        outerTracker.addChild(negEndcap);
-        outerTracker.addChild(posEndcap);
+        builder.layers()
+            .endcap()
+            .setSensorAxes("YXZ")
+            .setContainer("OuterTrackerEndcap")
+            .setLayerFilter("layer_pos\\d")
+            .setEnvelope(envelope)
+            .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+            .addTo(outerTracker);
       });
     }
-
   }  // namespace MAIA_v0
 }  // namespace MuColl
 
