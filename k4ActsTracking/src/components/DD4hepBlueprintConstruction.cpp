@@ -310,40 +310,37 @@ namespace FCCee {
       auto vtxBarrel = Blueprints::makeDoubleLayerVertexBarrel(builder);
       auto vertex    = Blueprints::completeVertexWithEndcaps(builder, std::move(vtxBarrel));
 
-      auto envelope           = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
-      auto innerTrackerBarrel = builder.layers()
-                                    .barrel()
-                                    .setSensorAxes("XYZ")
-                                    .setContainer("InnerTrackerBarrel")
-                                    .setLayerFilter("layer\\d")
-                                    .setEnvelope(envelope)
-                                    .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-                                    .build();
-      auto innerTrackerPosEndcap = builder.layers()
-                                       .endcap()
-                                       .setSensorAxes("YXZ")
-                                       .setContainer("InnerTrackerEndcap")
-                                       .setLayerFilter("layer_pos\\d")
-                                       .setEnvelope(envelope)
-                                       .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-                                       .build();
-      auto innerTrackerNegEndcap = builder.layers()
-                                       .endcap()
-                                       .setSensorAxes("YXZ")
-                                       .setContainer("InnerTrackerEndcap")
-                                       .setLayerFilter("layer_neg\\d")
-                                       .setEnvelope(envelope)
-                                       .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-                                       .build();
-
-      auto trackerBarrel = std::make_shared<Acts::Experimental::CylinderContainerBlueprintNode>("TrackerBarrel", AxisR);
-      trackerBarrel->addChild(vertex);
-      trackerBarrel->addChild(innerTrackerBarrel);
-
+      auto envelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
       outer.addCylinderContainer("InnerTracker", AxisZ, [&](auto& innerTracker) {
-        innerTracker.addChild(trackerBarrel);
-        innerTracker.addChild(innerTrackerNegEndcap);
-        innerTracker.addChild(innerTrackerPosEndcap);
+        // First stack the full vertex and the IT Barrel in R
+        innerTracker.addCylinderContainer("InnerTrackerBarrel", AxisR, [&](auto& innerBarrel) {
+          innerBarrel.addChild(vertex);
+          builder.layers()
+              .barrel()
+              .setSensorAxes("XYZ")
+              .setContainer("InnerTrackerBarrel")
+              .setLayerFilter("layer\\d")
+              .setEnvelope(envelope)
+              .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+              .addTo(innerBarrel);
+        });
+        // Then stack the two endcaps in Z
+        builder.layers()
+            .endcap()
+            .setSensorAxes("YXZ")
+            .setContainer("InnerTrackerEndcap")
+            .setLayerFilter("layer_pos\\d")
+            .setEnvelope(envelope)
+            .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+            .addTo(innerTracker);
+        builder.layers()
+            .endcap()
+            .setSensorAxes("YXZ")
+            .setContainer("InnerTrackerEndcap")
+            .setLayerFilter("layer_neg\\d")
+            .setEnvelope(envelope)
+            .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+            .addTo(innerTracker);
       });
     }
   }  // namespace ILD_FCCee_v01
