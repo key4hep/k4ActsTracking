@@ -117,30 +117,29 @@ namespace Blueprints {
       const std::string& containerName   = "VertexEndcap",
       const std::regex&  posLayerPattern = std::regex{"layer_pos\\d+"},
       const std::regex&  negLayerPattern = std::regex{"layer_neg\\d+"}) {
-    // We use an Endcap envelope with smaller z-padding to accomodate for the double layer structure
-    auto vtxEndcapEnvelope     = Acts::ExtentEnvelope{}.set(AxisZ, {1_mm, 1_mm}).set(AxisR, {5_mm, 5_mm});
-    auto posVtxEndcapContainer = builder.layers()
-                                     .endcap()
-                                     .setSensorAxes("XZY")
-                                     .setContainer(containerName)
-                                     .setLayerFilter(posLayerPattern)
-                                     .setEnvelope(vtxEndcapEnvelope)
-                                     .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-                                     .build();
-
-    auto negVtxEndcapContainer = builder.layers()
-                                     .endcap()
-                                     .setSensorAxes("XZY")
-                                     .setContainer(containerName)
-                                     .setLayerFilter(negLayerPattern)
-                                     .setEnvelope(vtxEndcapEnvelope)
-                                     .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-                                     .build();
-
     auto vertex = std::make_shared<Acts::Experimental::CylinderContainerBlueprintNode>("Vertex", AxisZ);
     vertex->addChild(vtxBarrel);
-    vertex->addChild(negVtxEndcapContainer);
-    vertex->addChild(posVtxEndcapContainer);
+
+    // We use an Endcap envelope with smaller z-padding to accomodate for the double layer structure
+    auto vtxEndcapEnvelope = Acts::ExtentEnvelope{}.set(AxisZ, {1_mm, 1_mm}).set(AxisR, {5_mm, 5_mm});
+    builder.layers()
+        .endcap()
+        .setSensorAxes("XZY")
+        .setContainer(containerName)
+        .setLayerFilter(posLayerPattern)
+        .setEnvelope(vtxEndcapEnvelope)
+        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+        .addTo(*vertex);
+
+    builder.layers()
+        .endcap()
+        .setSensorAxes("XZY")
+        .setContainer(containerName)
+        .setLayerFilter(negLayerPattern)
+        .setEnvelope(vtxEndcapEnvelope)
+        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+        .addTo(*vertex);
+
     return vertex;
   }
 
