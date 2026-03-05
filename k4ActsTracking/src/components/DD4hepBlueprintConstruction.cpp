@@ -10,6 +10,8 @@
 #include <ActsPlugins/DD4hep/BlueprintBuilder.hpp>
 #include <ActsPlugins/Root/TGeoAxes.hpp>
 
+#include <fmt/core.h>
+
 #include <algorithm>
 #include <ranges>
 #include <regex>
@@ -67,47 +69,30 @@ namespace Blueprints {
     const auto vtxBarrelDetElem    = builder.findDetElementByName(containerName);
     const auto vtxBarrelLayerElems = builder.findDetElementByNamePattern(vtxBarrelDetElem.value(), layerRgx);
 
-    const auto doubleLayerGrouper = [&](const std::span<const dd4hep::DetElement> elements) {
-      const auto layerElements = elements | std::views::transform([&](const auto e) {
-                                   std::smatch       match;
-                                   const std::string elemName = e.name();
-                                   std::regex_match(elemName, match, layerRgx);
-                                   const auto layer = std::stoi(match[1].str());
-                                   return std::make_pair(layer, e);
-                                 });
-      const auto nLayers = std::ranges::max(layerElements, std::less{}, [](const auto p) { return p.first; }).first;
-      std::vector<std::vector<dd4hep::DetElement>> layers((nLayers + 1) / 2);
-
-      for (const auto& [layer, elem] : layerElements) {
-        layers[layer / 2].emplace_back(elem);
-      }
-
-      return layers;
+    const auto doubleLayerName = [&](const auto& e) {
+      std::smatch       match;
+      const std::string elemName = e.name();
+      std::regex_match(elemName, match, layerRgx);
+      const auto layer = std::stoi(match[1].str());
+      // We divide the layer number by 2 and let integer division automatially
+      // sort that into the correct double layer
+      return fmt::format("doubleLayer_{}", layer / 2);
     };
 
-    auto vtxBarrel      = std::make_shared<Acts::Experimental::CylinderContainerBlueprintNode>("VertexBarrel",
-                                                                                               Acts::AxisDirection::AxisR);
     auto barrelEnvelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {1_mm, 1_mm});
-
-    int layerNum = 0;
-    for (const auto& layerElems : doubleLayerGrouper(vtxBarrelLayerElems)) {
-      const auto layerSpec =
-          ActsPlugins::DD4hep::DD4hepBackend::LayerSpec{.axes      = ActsPlugins::TGeoAxes("ZYX"),
-                                                        .layerAxes = std::nullopt,
-                                                        .layerName = "doubleLayer_" + std::to_string(layerNum++)};
-      auto layer = builder.makeLayer(vtxBarrelDetElem.value(), layerElems, layerSpec);
-      layer->setEnvelope(barrelEnvelope);
-
-      // Force the Barrel onto the z-axis by not using the
-      // center of gravity for auto-sizing. We do this because
-      // the VertexBarrel has an odd number of modules, which
-      // shifts them off-axis when using CoG
-      layer->setUseCenterOfGravity(false, false, true);
-      vtxBarrel->addChild(layer);
-    }
-    vtxBarrel->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
-
-    return vtxBarrel;
+    return builder.layersFromSensors()
+        .barrel()
+        .setEnvelope(barrelEnvelope)
+        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+        .setSensorAxes("ZYX")
+        .setSensors(std::move(vtxBarrelLayerElems))
+        .groupBy(doubleLayerName)
+        .setContainerName(containerName)
+        .onLayer([&](const auto&, std::shared_ptr<Acts::Experimental::LayerBlueprintNode> layer) {
+          layer->setUseCenterOfGravity(false, false, true);
+          return layer;
+        })
+        .build();
   }
 
   /// Attach the Endcaps to the VertexBarrel after constructing them to create
