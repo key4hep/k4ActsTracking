@@ -58,7 +58,8 @@ DECLARE_COMPONENT(ActsGeoSvc)
 
 ActsGeoSvc::ActsGeoSvc(const std::string& name, ISvcLocator* svcLoc) : base_class(name, svcLoc) {
   m_bluePrintPopulationFuncs = {{"MAIA_v0", MuColl::MAIA_v0::populateBlueprint},
-                                {"ILD_FCCee_v01", FCCee::ILD_FCCee::populateBlueprint}};
+                                {"ILD_FCCee_v01", FCCee::ILD_FCCee_v01::populateBlueprint},
+                                {"ILD_FCCee_v02", FCCee::ILD_FCCee_v02::populateBlueprint}};
 }
 
 StatusCode ActsGeoSvc::initialize() {
