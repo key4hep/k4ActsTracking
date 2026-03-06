@@ -28,6 +28,12 @@ namespace FCCee {
     void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
                            ActsPlugins::DD4hep::BlueprintBuilder& builder);
   }
+
+  namespace CLD_o2_v07 {
+    void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
+                           ActsPlugins::DD4hep::BlueprintBuilder& builder);
+  }
+
 }  // namespace FCCee
 
 #endif  // K4ACTSTRACKING_DD4HEPBLUEPRINTCONSTRUCTION_H
