@@ -16,76 +16,71 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-#ifndef ACTSGEOSVC_H
-#define ACTSGEOSVC_H
+#ifndef K4ACTSTRACKING_ACTSGEOSVC_H
+#define K4ACTSTRACKING_ACTSGEOSVC_H
 
 #include "k4ActsTracking/IActsGeoSvc.h"
 
-#include <Acts/Material/IMaterialDecorator.hpp>
-#include "Acts/Definitions/Common.hpp"
-#include "Acts/Definitions/Units.hpp"
-#include "Acts/Geometry/GeometryContext.hpp"
-#include "Acts/Geometry/TrackingGeometry.hpp"
-#include "Acts/Surfaces/Surface.hpp"
-#include "Acts/Utilities/Logger.hpp"
+#include <Gaudi/Property.h>
+#include <k4Interface/IGeoSvc.h>
 
-#include "DD4hep/DD4hepUnits.h"
-#include "DD4hep/Detector.h"
-#include "DDRec/Surface.h"
-#include "DDRec/SurfaceManager.h"
+#include <Parsers/Primitives.h>
 
-#include "GaudiKernel/MsgStream.h"
+#include <ActsPlugins/DD4hep/BlueprintBuilder.hpp>
+
 #include "GaudiKernel/Service.h"
-#include "GaudiKernel/ServiceHandle.h"
+
+#include <memory>
+#include <string>
+#include <unordered_map>
+
+namespace Acts {
+  class TrackingGeometry;
+  class MagneticFieldProvider;
+  class Surface;
+  namespace Experimental {
+    class Blueprint;
+  }
+}  // namespace Acts
+
+namespace dd4hep {
+  class Detector;
+}
 
 class ActsGeoSvc : public extends<Service, IActsGeoSvc> {
 public:
-  using VolumeSurfaceMap = std::unordered_map<uint64_t, const Acts::Surface*>;
+  std::shared_ptr<const Acts::TrackingGeometry> trackingGeometry() const override;
+
+  std::shared_ptr<const Acts::MagneticFieldProvider> magneticField() const override;
+
+  ActsGeoSvc(const std::string& name, ISvcLocator* svcLoc);
+
+  ~ActsGeoSvc() = default;
+
+  StatusCode initialize() override;
+
+  Gaudi::Property<std::string> m_objDumpFileName{this, "ObjVisFileName", "dump_acts_geo.obj",
+                                                 "Name of the 3D visualization file"};
+  Gaudi::Property<bool>        m_dumpVisualization{this, "DumpVisualization", false,
+                                            "Whether or not to create a 3D visualization dump"};
+
+  const CellIDSurfaceMap& cellIdToSurfaceMap() const override { return m_cellIDToSurface; }
 
 private:
-  dd4hep::Detector* m_dd4hepGeo = nullptr;
+  using BlueprintBuilder = ActsPlugins::DD4hep::BlueprintBuilder;
 
-  /// DD4hep surface map
-  std::map<int64_t, dd4hep::rec::Surface*> m_surfaceMap;
+  using BlueprintPopulationFunc = void(const std::string&, Acts::Experimental::Blueprint&, BlueprintBuilder&);
 
-  /// ACTS Logging Level
-  Acts::Logging::Level m_actsLoggingLevel = Acts::Logging::INFO;
-
-  /// ACTS Tracking Geometry Context
-  Acts::GeometryContext m_trackingGeoCtx;
-
-  /// ACTS Tracking Geometry
-  std::unique_ptr<const Acts::TrackingGeometry> m_trackingGeo{nullptr};
-
-  /// ACTS Material Decorator
-  std::shared_ptr<const Acts::IMaterialDecorator> m_materialDeco{nullptr};
-
-  /// ACTS surface lookup container for hit surfaces that generate smeared hits
-  VolumeSurfaceMap m_surfaces;
-
-  Gaudi::Property<std::string> m_geoSvcName{this, "GeoSvcName", "GeoSvc", "The name of the GeoSvc instance"};
-
-  /// Option for the Debug Geometry
-  Gaudi::Property<bool> m_debugGeometry{this, "debugGeometry", false, "Option for geometry debugging"};
-  /// Output file name
-  Gaudi::Property<std::string> m_outputFileName{this, "outputFileName", "", "Output file name"};
-
-public:
-  ActsGeoSvc(const std::string& name, ISvcLocator* svc);
-
-  virtual ~ActsGeoSvc() = default;
-
-  virtual StatusCode initialize() final;
-
-  virtual StatusCode execute() final;
-
-  virtual StatusCode finalize() final;
-
-  StatusCode createGeoObj();
-
-  virtual const Acts::TrackingGeometry& trackingGeometry() const;
+  dd4hep::Detector*                                         m_dd4hepGeo{nullptr};
+  SmartIF<IGeoSvc>                                          m_geoSvc;
+  std::shared_ptr<const Acts::TrackingGeometry>             m_trackingGeo{nullptr};
+  std::shared_ptr<const Acts::MagneticFieldProvider>        m_magneticField{nullptr};
+  std::unordered_map<dd4hep::CellID, const Acts::Surface*>  m_cellIDToSurface{};
+  std::unordered_map<std::string, BlueprintPopulationFunc*> m_bluePrintPopulationFuncs{};
 };
 
-inline const Acts::TrackingGeometry& ActsGeoSvc::trackingGeometry() const { return *m_trackingGeo; }
-#endif
+inline std::shared_ptr<const Acts::TrackingGeometry> ActsGeoSvc::trackingGeometry() const { return m_trackingGeo; }
+
+inline std::shared_ptr<const Acts::MagneticFieldProvider> ActsGeoSvc::magneticField() const { return m_magneticField; }
+
+#endif  // K4ACTSTRACKING_ACTSGEOSVC_H

@@ -196,17 +196,17 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
       //             = 2 * {x,y} / r
       //       dz/dz = 1 (duuh!)
 
-      double                 x            = globalPos[Acts::ePos0];
-      double                 y            = globalPos[Acts::ePos1];
-      double                 scale        = 2 / std::hypot(x, y);
-      Acts::ActsMatrix<2, 3> jacXyzToRhoZ = Acts::ActsMatrix<2, 3>::Zero();
-      jacXyzToRhoZ(0, Acts::ePos0)        = scale * x;
-      jacXyzToRhoZ(0, Acts::ePos1)        = scale * y;
-      jacXyzToRhoZ(1, Acts::ePos2)        = 1;
+      double             x            = globalPos[Acts::ePos0];
+      double             y            = globalPos[Acts::ePos1];
+      double             scale        = 2 / std::hypot(x, y);
+      Acts::Matrix<2, 3> jacXyzToRhoZ = Acts::Matrix<2, 3>::Zero();
+      jacXyzToRhoZ(0, Acts::ePos0)    = scale * x;
+      jacXyzToRhoZ(0, Acts::ePos1)    = scale * y;
+      jacXyzToRhoZ(1, Acts::ePos2)    = 1;
       // compute Jacobian from local coordinates to rho/z
-      Acts::ActsMatrix<2, 2> jac = jacXyzToRhoZ * rotLocalToGlobal.block<3, 2>(Acts::ePos0, Acts::ePos0);
+      const auto jac = jacXyzToRhoZ * rotLocalToGlobal.block<3, 2>(Acts::ePos0, Acts::ePos0);
       // compute rho/z variance
-      Acts::ActsVector<2> var = (jac * localCov * jac.transpose()).diagonal();
+      const auto var = (jac * localCov * jac.transpose()).diagonal();
 
       // Save spacepoint
       spacePoints.push_back(ACTSTracking::SeedSpacePoint(globalPos, var[0], var[1], sourceLink));
@@ -381,7 +381,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
       float p = std::abs(1 / params[Acts::eBoundQOverP]);
 
       // build the track covariance matrix using the smearing sigmas
-      Acts::BoundSquareMatrix cov                 = Acts::BoundSquareMatrix::Zero();
+      Acts::BoundMatrix cov                       = Acts::BoundMatrix::Zero();
       cov(Acts::eBoundLoc0, Acts::eBoundLoc0)     = std::pow(m_initialTrackError_pos, 2);
       cov(Acts::eBoundLoc1, Acts::eBoundLoc1)     = std::pow(m_initialTrackError_pos, 2);
       cov(Acts::eBoundTime, Acts::eBoundTime)     = std::pow(m_initialTrackError_time, 2);
