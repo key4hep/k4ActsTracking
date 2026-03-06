@@ -5,6 +5,7 @@
 #include <Acts/Geometry/BlueprintNode.hpp>
 #include <Acts/Geometry/ContainerBlueprintNode.hpp>
 #include <Acts/Geometry/Extent.hpp>
+#include <Acts/Geometry/LayerBlueprintNode.hpp>
 #include <Acts/Geometry/VolumeAttachmentStrategy.hpp>
 #include <Acts/Utilities/AxisDefinitions.hpp>
 #include <ActsPlugins/DD4hep/BlueprintBuilder.hpp>
@@ -12,12 +13,12 @@
 
 #include <fmt/core.h>
 
-#include <algorithm>
-#include <ranges>
+#include <memory>
 #include <regex>
 
 using Acts::Experimental::ContainerBlueprintNode;
 using Acts::Experimental::CylinderContainerBlueprintNode;
+using Acts::Experimental::LayerBlueprintNode;
 
 using namespace Acts::UnitLiterals;
 using enum Acts::AxisDirection;
@@ -39,6 +40,16 @@ namespace Blueprints {
     // the correct places in the end. We need to ensure that the enclosing
     // cylinder contains the beampipe entirely.
     node.setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
+  }
+
+  /// Layer customizer function to force the Barrel onto the z-axis by not using
+  /// the center of gravity for auto-sizing. This is useful for cases where the
+  /// detectors have has an odd number of modules, which shifts them off the
+  /// z-axis with the default sizing
+  std::shared_ptr<LayerBlueprintNode> unsetXYCoG(const std::optional<dd4hep::DetElement>&,
+                                                 std::shared_ptr<LayerBlueprintNode> layer) {
+    layer->setUseCenterOfGravity(false, false, true);
+    return layer;
   }
 
   /// Make the Acts volumes for a VertexBarrel detector where the layers are
@@ -88,10 +99,7 @@ namespace Blueprints {
         .setSensors(std::move(vtxBarrelLayerElems))
         .groupBy(doubleLayerName)
         .setContainerName(containerName)
-        .onLayer([&](const auto&, std::shared_ptr<Acts::Experimental::LayerBlueprintNode> layer) {
-          layer->setUseCenterOfGravity(false, false, true);
-          return layer;
-        })
+        .onLayer(unsetXYCoG)
         .build();
   }
 
@@ -163,14 +171,7 @@ namespace MuColl {
                               .setContainer("VertexBarrel")
                               .setEnvelope(barrelEnvelope)
                               .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-                              .onLayer([&](const auto&, std::shared_ptr<Acts::Experimental::LayerBlueprintNode> layer) {
-                                // Force the Barrel onto the z-axis by not using the
-                                // center of gravity for auto-sizing. We do this because
-                                // the VertexBarrel has an odd number of modules, which
-                                // shifts them off-axis when using CoG
-                                layer->setUseCenterOfGravity(false, false, true);
-                                return layer;
-                              })
+                              .onLayer(Blueprints::unsetXYCoG)
                               .build();
       auto vertex = Blueprints::completeVertexWithEndcaps(builder, std::move(vertexBarrel));
 
@@ -338,7 +339,69 @@ namespace FCCee {
       auto vtxBarrel = Blueprints::makeDoubleLayerVertexBarrel(builder);
       auto vertex    = Blueprints::completeVertexWithEndcaps(builder, std::move(vtxBarrel));
 
-      outer.addCylinderContainer("Vertex", AxisR, [&](auto& innerTracker) { innerTracker.addChild(vertex); });
+      auto envelope         = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
+      auto innerInnerBarrel = builder.layers()
+                                  .barrel()
+                                  .setSensorAxes("XYZ")
+                                  .setLayerFilter("layer[01]")
+                                  .setContainer("InnerTrackerBarrel")
+                                  .setEnvelope(envelope)
+                                  .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+                                  .onLayer(Blueprints::unsetXYCoG)
+                                  .build();
+      innerInnerBarrel->addChild(vertex);
+
+      auto innerInnerTracker = std::make_shared<CylinderContainerBlueprintNode>("InnerInnerTracker", AxisZ);
+      innerInnerTracker->addChild(innerInnerBarrel);
+      builder.layers()
+          .endcap()
+          .setSensorAxes("YXZ")
+          .setContainer("InnerTrackerEndcap")
+          .setLayerFilter("layer_pos0")
+          .setEnvelope(envelope)
+          .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+          .addTo(*innerInnerTracker);
+      builder.layers()
+          .endcap()
+          .setSensorAxes("YXZ")
+          .setContainer("InnerTrackerEndcap")
+          .setLayerFilter("layer_neg0")
+          .setEnvelope(envelope)
+          .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+          .addTo(*innerInnerTracker);
+
+      outer.addCylinderContainer("InnerTracker", AxisZ, [&](auto& innerTracker) {
+        innerTracker.addCylinderContainer("InnerTrackerBarrel", AxisR, [&](auto& innerBarrel) {
+          innerBarrel.addChild(innerInnerTracker);
+          builder.layers()
+              .barrel()
+              .setSensorAxes("XYZ")
+              .setContainer("InnerTrackerBarrel")
+              .setLayerFilter("layer2")
+              .setEnvelope(envelope)
+              .onLayer(Blueprints::unsetXYCoG)
+              .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+              .addTo(innerBarrel);
+        });
+        // Then add the (rest of the) two endcaps
+        builder.layers()
+            .endcap()
+            .setSensorAxes("YXZ")
+            .setContainer("InnerTrackerEndcap")
+            .setLayerFilter("layer_pos[1-5]")
+            .setEnvelope(envelope)
+            .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+            .addTo(innerTracker);
+        builder.layers()
+            .endcap()
+            .setSensorAxes("YXZ")
+            .setContainer("InnerTrackerEndcap")
+            .setLayerFilter("layer_neg[1-5]")
+            .setEnvelope(envelope)
+            .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+            .addTo(innerTracker);
+      });
     }
+
   }  // namespace ILD_FCCee_v02
 }  // namespace FCCee
