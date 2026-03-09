@@ -289,8 +289,8 @@ std::vector<Acts::BoundTrackParameters> ACTSSeededCKFTrackingAlg::findSeeds(
       throw std::runtime_error("Field lookup error: " + std::to_string(hitField.error().value()));
     }
 
-    edm4hep::TrackState* seedTrackState = ACTSTracking::ACTS2edm4hep_trackState(
-        edm4hep::TrackState::AtFirstHit, paramseed, (*hitField)[2] / Acts::UnitConstants::T);
+    auto seedTrackState = ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtFirstHit, paramseed,
+                                                                (*hitField)[2] / Acts::UnitConstants::T);
 
     // Add seed to collection, all building of seed under the lock
     {
@@ -299,7 +299,7 @@ std::vector<Acts::BoundTrackParameters> ACTSSeededCKFTrackingAlg::findSeeds(
       for (const ACTSTracking::SeedSpacePoint* sp : seed.sp()) {
         seedTrack.addToTrackerHits(sp->sourceLink().edm4hepHit());
       }
-      seedTrack.addToTrackStates(*seedTrackState);
+      seedTrack.addToTrackStates(seedTrackState);
     }
 
     debug() << "Seed Paramemeters" << std::endl << paramseed << endmsg;

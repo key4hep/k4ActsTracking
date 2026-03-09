@@ -434,12 +434,12 @@ StatusCode ACTSSeededCKFTrackingAlg::tracking(const std::vector<Acts::BoundTrack
         debug() << "\tnStates       " << trackTip.nTrackStates() << endmsg;
 
         // Make track object
-        edm4hep::MutableTrack* track = ACTSTracking::ACTS2edm4hep_track(trackTip, magneticField(), magCache);
+        auto track = ACTSTracking::ACTS2edm4hep_track(trackTip, magneticField(), magCache);
 
         // Save results
         {
           std::lock_guard lock{m_trackMutex};
-          trackCollection.push_back(*track);
+          trackCollection.push_back(track);
         }
       }
     } else {
