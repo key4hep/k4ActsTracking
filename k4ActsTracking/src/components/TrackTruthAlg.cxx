@@ -22,6 +22,11 @@
 // ACTSTracking
 #include "k4ActsTracking/Helpers.hxx"
 
+// TBB
+#include <tbb/blocked_range.h>
+#include <tbb/combinable.h>
+#include <tbb/parallel_for.h>
+
 // edm4hep
 #include <edm4hep/MCParticle.h>
 #include <edm4hep/SimTrackerHit.h>
@@ -42,63 +47,97 @@ TrackTruthAlg::TrackTruthAlg(const std::string& name, ISvcLocator* svcLoc)
 std::tuple<edm4hep::TrackMCParticleLinkCollection> TrackTruthAlg::operator()(
     const edm4hep::TrackCollection&                       tracks,
     const edm4hep::TrackerHitSimTrackerHitLinkCollection& trackerHitRelations) const {
-  MsgStream log(msgSvc(), name());
-  log << MSG::DEBUG << trackerHitRelations.size() << endmsg;
-
   // Map TrackerHits to SimTrackerHits
   std::map<edm4hep::TrackerHit, edm4hep::SimTrackerHit> trackerHit2SimHit;
   for (const auto& hitRel : trackerHitRelations) {
-    edm4hep::TrackerHit    trackerHit    = hitRel.getFrom();
-    edm4hep::SimTrackerHit simTrackerHit = hitRel.getTo();
-    log << MSG::DEBUG << "Hit:\n" << trackerHit << endmsg;
-    log << MSG::DEBUG << "Sim:\n" << simTrackerHit << endmsg;
-    trackerHit2SimHit[trackerHit] = simTrackerHit;
+    trackerHit2SimHit.emplace(hitRel.getFrom(), hitRel.getTo());
   }
 
-  log << MSG::DEBUG << "Map size: " << trackerHit2SimHit.size() << endmsg;
-  // Map best matches MCP to Track
-  std::map<edm4hep::MCParticle, edm4hep::Track> mcBestMatchTrack;
-  std::map<edm4hep::MCParticle, float>          mcBestMatchFrac;
+  debug() << "Map size: " << trackerHit2SimHit.size() << endmsg;
 
-  for (const auto& track : tracks) {
-    //Get Track
+  // Best match ifo for each MCParticle
+  struct MatchInfo {
+    edm4hep::Track track;
+    float          frac = 0.f;
+  };
+
+  // Thread-local best maps
+  tbb::combinable<std::map<edm4hep::MCParticle, MatchInfo>> tlsBestMaps;
+  auto parallelTrackSearching = [&](const tbb::blocked_range<size_t>& r) {
+    // Each TBB worker has its own best map
+    auto& localBest = tlsBestMaps.local();
+    // Count hits per MCParticle for this track
     std::map<edm4hep::MCParticle, uint32_t> trackHit2Mc;
-    for (auto& hit : track.getTrackerHits()) {
-      //Search for SimHit
-      const edm4hep::SimTrackerHit* simHit = nullptr;
-      log << MSG::DEBUG << "hit:\n" << hit << endmsg;
-      /// @TODO: I am not happy with this. Again an edm4hep problem
-      for (const auto& pair : trackerHit2SimHit) {
-        log << MSG::DEBUG << "sim:\n" << pair.first << endmsg;
-        if (pair.first == hit) {
-          simHit = (&pair.second);
-          break;
+
+    for (std::size_t iTrack = r.begin(); iTrack != r.end(); ++iTrack) {
+      const auto& track      = tracks[iTrack];
+      const auto& trackHits  = track.getTrackerHits();
+      const auto& nTrackHits = trackHits.size();
+
+      if (nTrackHits == 0) {
+        continue;
+      }
+
+      // Clear the per-track hit counter
+      trackHit2Mc.clear();
+
+      for (const auto& hit : trackHits) {
+        auto it = trackerHit2SimHit.find(hit);
+        if (it == trackerHit2SimHit.end()) {
+          continue;  // No sim hit found for this tracker hit
+        }
+
+        const auto& simHit   = it->second;
+        auto        particle = simHit.getParticle();
+        if (particle.isAvailable()) {
+          ++trackHit2Mc[particle];  //Increment MC Particle counter
         }
       }
-      if (simHit && simHit->getParticle().isAvailable()) {
-        trackHit2Mc[simHit->getParticle()]++;  //Increment MC Particle counter
-      }
-    }
 
-    // Update Best Matches
-    for (const auto& [mcParticle, hitCount] : trackHit2Mc) {
-      float frac   = static_cast<float>(hitCount) / track.trackerHits_size();
-      bool  better = mcBestMatchTrack.count(mcParticle) == 0 ||  // no best matches exist
-                    mcBestMatchFrac[mcParticle] < frac;          // this match is better (more hits on track)
+      // Update Best Matches
+      for (const auto& [mcParticle, hitCount] : trackHit2Mc) {
+        const float frac = static_cast<float>(hitCount) / static_cast<float>(nTrackHits);
+
+        auto       matchIt = localBest.find(mcParticle);
+        const bool better  = (matchIt == localBest.end()) ||  // no best matches exist
+                            ((matchIt->second).frac < frac);  // this match is better (more hits on track)
+        if (better) {
+          auto& matchInfo = (matchIt == localBest.end()) ? localBest[mcParticle] : matchIt->second;
+          matchInfo.track = track;
+          matchInfo.frac  = frac;
+        }
+      }
+    }  // for each track
+  };  // parallelTrackSearching
+
+  // Run in parallel if more than one thread is requested
+  if (m_numThreads > 1) {
+    tbb::task_arena arena(m_numThreads.value());
+    arena.execute([&] { tbb::parallel_for(tbb::blocked_range<size_t>(0, tracks.size()), parallelTrackSearching); });
+  } else {  // Serial execution
+    parallelTrackSearching(tbb::blocked_range<size_t>(0, tracks.size()));
+  }
+
+  // Combine the thread-local best maps
+  std::map<edm4hep::MCParticle, MatchInfo> mcBestMatch;
+  tlsBestMaps.combine_each([&](const std::map<edm4hep::MCParticle, MatchInfo>& localBest) {
+    for (const auto& [mcParticle, matchInfo] : localBest) {
+      auto       matchIt = mcBestMatch.find(mcParticle);
+      const bool better  = (matchIt == mcBestMatch.end()) ||          // no best matches exist
+                          ((matchIt->second).frac < matchInfo.frac);  // this match is better (more hits on track)
       if (better) {
-        mcBestMatchTrack[mcParticle] = track;
-        mcBestMatchFrac[mcParticle]  = frac;
+        mcBestMatch[mcParticle] = matchInfo;
       }
     }
-  }
+  });
 
   // Save the best matches
   edm4hep::TrackMCParticleLinkCollection outColMC2T;
-  for (const auto& [mcParticle, track] : mcBestMatchTrack) {
+  for (const auto& [mcParticle, matchInfo] : mcBestMatch) {
     edm4hep::MutableTrackMCParticleLink link = outColMC2T.create();
-    link.setFrom(track);
+    link.setFrom(matchInfo.track);
     link.setTo(mcParticle);
-    link.setWeight(mcBestMatchFrac[mcParticle]);
+    link.setWeight(matchInfo.frac);
   }
 
   return std::make_tuple(std::move(outColMC2T));

@@ -65,6 +65,14 @@ public:
   std::tuple<edm4hep::TrackMCParticleLinkCollection> operator()(
       const edm4hep::TrackCollection&                       tracks,
       const edm4hep::TrackerHitSimTrackerHitLinkCollection& trackerHitRelations) const;
+
+protected:
+  /**
+   * @brief Multithreading configuration
+   */
+  ///@{
+  Gaudi::Property<int> m_numThreads{this, "NumThreads", 1, "Number of threads to use for internal multithreading."};
+  ///@}
 };
 
 #endif

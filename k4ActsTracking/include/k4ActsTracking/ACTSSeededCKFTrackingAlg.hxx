@@ -126,17 +126,16 @@ protected:
 	 * @brief Track fit parameters
 	 */
   ///@{
-  Gaudi::Property<double> m_initialTrackError_pos{this, "InitialTrackError_Pos", 10_um,
+  Gaudi::Property<double>  m_initialTrackError_pos{this, "InitialTrackError_Pos", 10_um,
                                                   "Track error estimate, local position (mm)."};
-  Gaudi::Property<double> m_initialTrackError_phi{this, "InitialTrackError_Phi", 1_degree,
+  Gaudi::Property<double>  m_initialTrackError_phi{this, "InitialTrackError_Phi", 1_degree,
                                                   "Track error estimate, phi (radians)."};
-  Gaudi::Property<double> m_initialTrackError_relP{this, "InitialTrackError_RelP", 0.25,
+  Gaudi::Property<double>  m_initialTrackError_relP{this, "InitialTrackError_RelP", 0.25,
                                                    "Track error estimate, momentum component (relative)."};
-  Gaudi::Property<double> m_initialTrackError_lambda{this, "InitialTrackError_Lambda", 1_degree,
+  Gaudi::Property<double>  m_initialTrackError_lambda{this, "InitialTrackError_Lambda", 1_degree,
                                                      "Track error estimate, lambda (radians)."};
-  Gaudi::Property<double> m_initialTrackError_time{this, "InitialTrackError_Time", 100 * Acts::UnitConstants::ns,
+  Gaudi::Property<double>  m_initialTrackError_time{this, "InitialTrackError_Time", 100 * Acts::UnitConstants::ns,
                                                    "Track error estimate, time (sec)."};
-
   Gaudi::Property<double>  m_CKF_chi2CutOff{this, "CKF_Chi2CutOff", 15, "Maximum local chi2 contribution."};
   Gaudi::Property<int32_t> m_CKF_numMeasurementsCutOff{
       this, "CKF_NumMeasurementsCutOff", 10, "Maximum number of associated measurements on a single surface."};
@@ -152,15 +151,14 @@ protected:
   ///@}
 
   /**
- 	 * @brief Timing Histograms
- 	 */
+   * @brief Multithreading configuration
+   */
   ///@{
-  TH1* m_histHitSetUp;
-  TH1* m_histEntireReco;
-  TH1* m_histSeedFinding;
-  TH1* m_histTrackBuild;
+  Gaudi::Property<int> m_numThreads{this, "NumThreads", 1, "Number of threads to use for internal multithreading."};
   ///@}
-  //uint32_t m_fitFails; // Counting fails across events is not parallization friendly :(
+
+  // Thread-safe counter
+  // mutable Gaudi::Accumulators::Counter<> m_fitFails{this, "FitFails"};
 };
 
 #endif

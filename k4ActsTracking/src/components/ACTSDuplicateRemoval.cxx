@@ -40,8 +40,7 @@ namespace ACTSTracking {
     uint32_t hitOlap = 0;
     // Loop through each track hit and see if it overlaps with the second track
     for (size_t itrackHit = 0; itrackHit < trk1.trackerHits_size(); ++itrackHit) {
-      auto it = std::find_if(trk2.trackerHits_begin(), trk2.trackerHits_end(),
-                             [&](const auto& hit2) { return hitEqual(trk1.getTrackerHits(itrackHit), hit2); });
+      auto it = std::find(trk2.trackerHits_begin(), trk2.trackerHits_end(), trk1.getTrackerHits(itrackHit));
       if (it != trk2.trackerHits_end()) {
         hitOlap++;  // If it does overlap, increment hitOlap
       }
@@ -50,19 +49,6 @@ namespace ACTSTracking {
     // Smaller track count
     uint32_t size = std::min(trk1.trackerHits_size(), trk2.trackerHits_size());
     return 2 * hitOlap > size;  // half of smaller track belong to larger track
-  }
-
-  /**
- * @brief Workaround function to get around comparision issue
- * @TODO: This is to get around an issue in edm4hep
- * @param hit1 A hit
- * @param hits A hit
- */
-  bool hitEqual(const edm4hep::TrackerHit& hit1, const edm4hep::TrackerHit& hit2) {
-    return hit1.getCellID() == hit2.getCellID() && hit1.getType() == hit2.getType() &&
-           hit1.getQuality() == hit2.getQuality() && hit1.getTime() == hit2.getTime() &&
-           hit1.getEDep() == hit2.getEDep() && hit1.getEDepError() == hit2.getEDepError() &&
-           hit1.getPosition() == hit2.getPosition();
   }
 
   /**
@@ -101,28 +87,23 @@ ACTSDuplicateRemoval::ACTSDuplicateRemoval(const std::string& name, ISvcLocator*
                   KeyValues("OutputTrackCollectionName", {"DedupedTruthTracks"})) {}
 
 edm4hep::TrackCollection ACTSDuplicateRemoval::operator()(const edm4hep::TrackCollection& trackCollection) const {
-  MsgStream log(msgSvc(), name());
-
   // Make output collection
   edm4hep::TrackCollection outputTracks;
   outputTracks.setSubsetCollection();
 
   // Insertion sort input tracks
   std::vector<edm4hep::Track> sortedInput;
+  sortedInput.reserve(trackCollection.size());
   for (const auto& track : trackCollection) {
-    auto insertion_point =
-        std::upper_bound(sortedInput.begin(), sortedInput.end(), track, ACTSTracking::track_duplicate_compare);
-    sortedInput.insert(insertion_point, track);
+    sortedInput.push_back(track);
   }
 
-  int total = 0;
-  int dupes = 0;
-  int added = 0;
+  std::stable_sort(sortedInput.begin(), sortedInput.end(), ACTSTracking::track_duplicate_compare);
+
   // Loop through all inputs and search for nearby equals
   // Remove if they are too similar
   std::vector<edm4hep::Track> finalTracks;
   for (const edm4hep::Track& track : sortedInput) {
-    total++;
     bool   foundAnEqual = false;
     size_t startIdx     = (finalTracks.size() >= 10) ? finalTracks.size() - 10 : 0;
     for (size_t i = startIdx; i < finalTracks.size(); ++i) {
@@ -131,14 +112,12 @@ edm4hep::TrackCollection ACTSDuplicateRemoval::operator()(const edm4hep::TrackCo
       if (!ACTSTracking::tracks_equal(track, otherTrack))
         continue;
       foundAnEqual = true;
-      dupes++;
       if (ACTSTracking::track_quality_compare(track, otherTrack)) {
         finalTracks[i] = track;
         break;
       }
     }
     if (!foundAnEqual) {
-      added++;
       finalTracks.push_back(track);
     }
   }

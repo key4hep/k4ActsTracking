@@ -98,7 +98,7 @@ edm4hep::TrackCollection FilterTracksAlg::operator()(const edm4hep::TrackCollect
     // add tracks that pass all tests
     outputTracks.push_back(trk);
   }
-  MsgStream log(msgSvc(), name());
-  log << MSG::DEBUG << "Collection Size: " << outputTracks.size() << endmsg;
+  debug() << "Collection Size: " << outputTracks.size() << endmsg;
+
   return outputTracks;
 }
