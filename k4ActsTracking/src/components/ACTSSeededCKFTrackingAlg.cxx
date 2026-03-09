@@ -404,8 +404,8 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
         throw std::runtime_error("Field lookup error: " + std::to_string(hitField.error().value()));
       }
 
-      edm4hep::TrackState* seedTrackState = ACTSTracking::ACTS2edm4hep_trackState(
-          edm4hep::TrackState::AtFirstHit, paramseed, (*hitField)[2] / Acts::UnitConstants::T);
+      auto seedTrackState = ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtFirstHit, paramseed,
+                                                                  (*hitField)[2] / Acts::UnitConstants::T);
       ;
 
       // hits
@@ -414,7 +414,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
         seedTrack.addToTrackerHits(sl.edm4hepHit());
       }
 
-      seedTrack.addToTrackStates(*seedTrackState);
+      seedTrack.addToTrackStates(seedTrackState);
 
       debug() << "Seed Paramemeters" << std::endl << paramseed << endmsg;
     }
@@ -536,10 +536,10 @@ StatusCode ACTSSeededCKFTrackingAlg::tracking(const std::vector<Acts::BoundTrack
         debug() << "\tnStates       " << trackTip.nTrackStates() << endmsg;
 
         // Make track object
-        edm4hep::MutableTrack* track = ACTSTracking::ACTS2edm4hep_track(trackTip, magneticField(), magCache);
+        auto track = ACTSTracking::ACTS2edm4hep_track(trackTip, magneticField(), magCache);
 
         // Save results
-        trackCollection.push_back(*track);
+        trackCollection.push_back(track);
       }
     } else {
       warning() << "Track fit error: " << result.error() << endmsg;

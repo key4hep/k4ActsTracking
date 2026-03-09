@@ -62,16 +62,16 @@ namespace ACTSTracking {
     return inpath;
   }
 
-  edm4hep::MutableTrack* ACTS2edm4hep_track(const TrackResult&                           fitter_res,
-                                            std::shared_ptr<Acts::MagneticFieldProvider> magneticField,
-                                            Acts::MagneticFieldProvider::Cache&          magCache) {
+  edm4hep::MutableTrack ACTS2edm4hep_track(const TrackResult&                           fitter_res,
+                                           std::shared_ptr<Acts::MagneticFieldProvider> magneticField,
+                                           Acts::MagneticFieldProvider::Cache&          magCache) {
     // Create new object
-    edm4hep::MutableTrack* track = new edm4hep::MutableTrack();
+    edm4hep::MutableTrack track{};
 
     // Basic properties
-    track->setChi2(fitter_res.chi2());
-    track->setNdf(fitter_res.nDoF());
-    track->setNholes(fitter_res.nHoles());
+    track.setChi2(fitter_res.chi2());
+    track.setNdf(fitter_res.nDoF());
+    track.setNholes(fitter_res.nHoles());
 
     // ACTS magnetic field
     const Acts::Vector3         zeroPos(0, 0, 0);
@@ -82,11 +82,11 @@ namespace ACTSTracking {
     Acts::Vector3 field = *fieldRes;
 
     // Covarienc and states
-    const Acts::BoundVector& params         = fitter_res.parameters();
-    const Acts::BoundMatrix& covariance     = fitter_res.covariance();
-    edm4hep::TrackState*     trackStateAtIP = ACTSTracking::ACTS2edm4hep_trackState(
-        edm4hep::TrackState::AtIP, params, covariance, field[2] / Acts::UnitConstants::T);
-    track->addToTrackStates(*trackStateAtIP);
+    const Acts::BoundVector& params     = fitter_res.parameters();
+    const Acts::BoundMatrix& covariance = fitter_res.covariance();
+    auto trackStateAtIP = ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtIP, params, covariance,
+                                                                field[2] / Acts::UnitConstants::T);
+    track.addToTrackStates(trackStateAtIP);
 
     std::vector<edm4hep::TrackerHit> hitsOnTrack;
     std::vector<edm4hep::TrackState> statesOnTrack;
@@ -110,10 +110,10 @@ namespace ACTSTracking {
       }
       field = *fieldRes;
 
-      edm4hep::TrackState* trackState =
+      auto trackState =
           ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtOther, trk_state.parameters(),
                                                 trk_state.covariance(), field[2] / Acts::UnitConstants::T);
-      statesOnTrack.push_back(*trackState);
+      statesOnTrack.push_back(trackState);
     }
 
     std::reverse(hitsOnTrack.begin(), hitsOnTrack.end());
@@ -121,7 +121,7 @@ namespace ACTSTracking {
 
     // Add Track Hits
     for (const auto& hit : hitsOnTrack) {
-      track->addToTrackerHits(hit);
+      track.addToTrackerHits(hit);
     }
 
     if (!statesOnTrack.empty()) {
@@ -131,23 +131,23 @@ namespace ACTSTracking {
 
     // Add Track States
     for (const auto& state : statesOnTrack) {
-      track->addToTrackStates(state);
+      track.addToTrackStates(state);
     }
 
     return track;
   }
 
-  edm4hep::TrackState* ACTS2edm4hep_trackState(int location, const Acts::BoundTrackParameters& params, double Bz) {
+  edm4hep::TrackState ACTS2edm4hep_trackState(int location, const Acts::BoundTrackParameters& params, double Bz) {
     return ACTS2edm4hep_trackState(location, params.parameters(), params.covariance().value(), Bz);
   }
 
-  edm4hep::TrackState* ACTS2edm4hep_trackState(int location, const Acts::BoundVector& value,
-                                               const Acts::BoundMatrix& cov, double Bz) {
+  edm4hep::TrackState ACTS2edm4hep_trackState(int location, const Acts::BoundVector& value,
+                                              const Acts::BoundMatrix& cov, double Bz) {
     // Create new object
-    edm4hep::TrackState* trackState = new edm4hep::TrackState();
+    edm4hep::TrackState trackState{};
 
     // Basic properties
-    trackState->location = location;
+    trackState.location = location;
 
     // Trajectory parameters
     // Central values
@@ -162,11 +162,11 @@ namespace ACTSTracking {
     double lambda    = M_PI / 2 - theta;
     double tanlambda = std::tan(lambda);
 
-    trackState->phi       = phi;
-    trackState->tanLambda = tanlambda;
-    trackState->omega     = omega;
-    trackState->D0        = d0;
-    trackState->Z0        = z0;
+    trackState.phi       = phi;
+    trackState.tanLambda = tanlambda;
+    trackState.omega     = omega;
+    trackState.D0        = d0;
+    trackState.Z0        = z0;
 
     // Uncertainties (covariance matrix)
     Acts::ActsMatrix<6, 6> jac = Acts::ActsMatrix<6, 6>::Zero();
@@ -187,7 +187,7 @@ namespace ACTSTracking {
     int count = 0;
     for (int i = 0; i < 6; ++i) {
       for (int j = 0; j < i; ++j) {
-        trackState->covMatrix[count] = trcov(j, i);
+        trackState.covMatrix[count] = trcov(j, i);
         count++;
       }
     }

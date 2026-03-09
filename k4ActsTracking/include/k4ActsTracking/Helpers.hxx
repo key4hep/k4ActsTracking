@@ -80,9 +80,9 @@ namespace ACTSTracking {
  *
  * \return Track with equivalent parameters of the ACTS track
  */
-  edm4hep::MutableTrack* ACTS2edm4hep_track(const TrackResult&                           fitter_res,
-                                            std::shared_ptr<Acts::MagneticFieldProvider> magneticField,
-                                            Acts::MagneticFieldProvider::Cache&          magCache);
+  edm4hep::MutableTrack ACTS2edm4hep_track(const TrackResult&                           fitter_res,
+                                           std::shared_ptr<Acts::MagneticFieldProvider> magneticField,
+                                           Acts::MagneticFieldProvider::Cache&          magCache);
 
   //! Convert ACTS track state class to edm4hep class
   /**
@@ -92,10 +92,10 @@ namespace ACTSTracking {
  *
  * \return Track state with equivalent parameters of the ACTS track
  */
-  edm4hep::TrackState* ACTS2edm4hep_trackState(int location, const Acts::BoundTrackParameters& params, double Bz);
+  edm4hep::TrackState ACTS2edm4hep_trackState(int location, const Acts::BoundTrackParameters& params, double Bz);
   //! Helper Method for ACTS2edm4hep_trackState
-  edm4hep::TrackState* ACTS2edm4hep_trackState(int location, const Acts::BoundVector& value,
-                                               const Acts::BoundMatrix& cov, double Bz);
+  edm4hep::TrackState ACTS2edm4hep_trackState(int location, const Acts::BoundVector& value,
+                                              const Acts::BoundMatrix& cov, double Bz);
 
   //! Get particle hypothesis in ACTS format
   /**
