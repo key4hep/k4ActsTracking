@@ -34,6 +34,9 @@
 #include <Acts/EventData/TrackParameters.hpp>
 #include <Acts/EventData/VectorMultiTrajectory.hpp>
 #include <Acts/EventData/VectorTrackContainer.hpp>
+#include <Acts/Propagator/EigenStepper.hpp>
+#include <Acts/Propagator/Navigator.hpp>
+#include <Acts/Propagator/Propagator.hpp>
 #include <Acts/Seeding/detail/CylindricalSpacePointGrid.hpp>
 #include <Acts/TrackFinding/CombinatorialKalmanFilter.hpp>
 
@@ -79,6 +82,11 @@ struct ACTSSeededCKFTrackingAlg final : ACTSAlgBase {
 
   using SSPointGrid = Acts::CylindricalSpacePointGrid<SSPoint>;
 
+  using Stepper    = Acts::EigenStepper<>;
+  using Navigator  = Acts::Navigator;
+  using Propagator = Acts::Propagator<Stepper, Navigator>;
+  using CKF        = Acts::CombinatorialKalmanFilter<Propagator, TrackContainer>;
+
 public:
   /**
          * @brief Constructor for ACTSSeededCKFTracking
@@ -107,10 +115,9 @@ public:
                                                     edm4hep::TrackCollection&           seedCollection,
                                                     Acts::MagneticFieldProvider::Cache& magCache) const;
 
-  StatusCode tracking(const std::vector<Acts::BoundTrackParameters>& paramseeds,
-                      const ACTSTracking::MeasurementContainer&      measurements,
-                      const ACTSTracking::SourceLinkContainer&       sourceLinks,
-                      Acts::MagneticFieldProvider::Cache& magCache, edm4hep::TrackCollection& trackCollection) const;
+  StatusCode tracking(const std::vector<Acts::BoundTrackParameters>& paramseeds, const CKF& trackFinder,
+                      const TrackFinderOptions& ckfOptions, Acts::MagneticFieldProvider::Cache& magCache,
+                      edm4hep::TrackCollection& trackCollection) const;
 
 protected:
   /**
