@@ -91,9 +91,10 @@ namespace Blueprints {
   ///                      double layers
   ///
   /// @returns The vertex barrel blueprint node
-  std::shared_ptr<CylinderContainerBlueprintNode> makeDoubleLayerVertexBarrel(
-      ActsPlugins::DD4hep::BlueprintBuilder& builder, const std::string& containerName = "VertexBarrel",
-      const std::regex& layerRgx = std::regex{"VertexBarrel_layer(\\d)_ladder\\d+"}) {
+  std::shared_ptr<ContainerBlueprintNode> makeDoubleLayerVertexBarrel(ActsPlugins::DD4hep::BlueprintBuilder& builder,
+                                                                      const std::string& containerName = "VertexBarrel",
+                                                                      const std::regex&  layerRgx      = std::regex{
+                                                                          "VertexBarrel_layer(\\d)_ladder\\d+"}) {
     // Vertex Barrel has a double layer gap of only 1 mm. This makes it
     // (almost) impossible to fit them into mutually exclusive cylinder shell
     // volumes. Hence, we make each double layer an Acts layer / volume.
@@ -141,7 +142,7 @@ namespace Blueprints {
   ///                      DetElement with the @containerName name for the
   ///                      negative endcap
   std::shared_ptr<CylinderContainerBlueprintNode> completeVertexWithEndcaps(
-      ActsPlugins::DD4hep::BlueprintBuilder& builder, std::shared_ptr<CylinderContainerBlueprintNode>&& vtxBarrel,
+      ActsPlugins::DD4hep::BlueprintBuilder& builder, std::shared_ptr<ContainerBlueprintNode>&& vtxBarrel,
       const std::string& containerName   = "VertexEndcap",
       const std::regex&  posLayerPattern = std::regex{"layer_pos\\d+"},
       const std::regex&  negLayerPattern = std::regex{"layer_neg\\d+"}) {
