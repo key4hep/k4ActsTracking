@@ -400,7 +400,7 @@ StatusCode ACTSSeededCKFTrackingAlg::tracking(const std::vector<Acts::BoundTrack
                                               Acts::MagneticFieldProvider::Cache& magCache,
                                               edm4hep::TrackCollection&           trackCollection) const {
   // Initialize track finder
-  warning() << "Starting CKF track finding with " << paramseeds.size() << " seeds." << endmsg;
+  debug() << "Starting CKF track finding with " << paramseeds.size() << " seeds." << endmsg;
 
   auto           trackContainer      = std::make_shared<Acts::VectorTrackContainer>();
   auto           trackStateContainer = std::make_shared<Acts::VectorMultiTrajectory>();
