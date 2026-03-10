@@ -29,7 +29,16 @@
 
 // ACTS
 #include <Acts/Definitions/Units.hpp>
+#include <Acts/EventData/SpacePointContainer.hpp>
+#include <Acts/EventData/TrackContainer.hpp>
 #include <Acts/EventData/TrackParameters.hpp>
+#include <Acts/EventData/VectorMultiTrajectory.hpp>
+#include <Acts/EventData/VectorTrackContainer.hpp>
+#include <Acts/Propagator/EigenStepper.hpp>
+#include <Acts/Propagator/Navigator.hpp>
+#include <Acts/Propagator/Propagator.hpp>
+#include <Acts/Seeding/detail/CylindricalSpacePointGrid.hpp>
+#include <Acts/TrackFinding/CombinatorialKalmanFilter.hpp>
 
 // ROOT
 #include <TH1.h>
@@ -38,13 +47,20 @@
 #include "k4ActsTracking/ACTSAlgBase.hxx"
 #include "k4ActsTracking/GeometryIdSelector.hxx"
 #include "k4ActsTracking/Measurement.hxx"
+#include "k4ActsTracking/SeedSpacePoint.hxx"
 #include "k4ActsTracking/SourceLink.hxx"
+#include "k4ActsTracking/SpacePointContainer.hxx"
 
 // Standard
+#include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
-using namespace Acts::UnitLiterals;
+namespace Acts {
+  template <typename T, typename G, typename P> class SeedFinder;
+  class SeedFinderOptions;
+}  // namespace Acts
 
 /**
  * @brief Reconstruction algorithm for ACTSTracking
@@ -56,6 +72,21 @@ using namespace Acts::UnitLiterals;
  * @author Samuel Ferraro
  */
 struct ACTSSeededCKFTrackingAlg final : ACTSAlgBase {
+  // Track fitting definitions
+  using TrackContainer = Acts::TrackContainer<Acts::VectorTrackContainer, Acts::VectorMultiTrajectory, std::shared_ptr>;
+  using TrackFinderOptions = Acts::CombinatorialKalmanFilterOptions<TrackContainer>;
+
+  using SSPoint = typename Acts::SpacePointContainer<
+      ACTSTracking::SpacePointContainer<std::vector<const ACTSTracking::SeedSpacePoint*>>,
+      Acts::detail::RefHolder>::SpacePointProxyType;
+
+  using SSPointGrid = Acts::CylindricalSpacePointGrid<SSPoint>;
+
+  using Stepper    = Acts::EigenStepper<>;
+  using Navigator  = Acts::Navigator;
+  using Propagator = Acts::Propagator<Stepper, Navigator>;
+  using CKF        = Acts::CombinatorialKalmanFilter<Propagator, TrackContainer>;
+
 public:
   /**
          * @brief Constructor for ACTSSeededCKFTracking
@@ -76,10 +107,17 @@ public:
   std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> operator()(
       const edm4hep::TrackerHitPlaneCollection& trackerHitCollection) const;
 
-  StatusCode tracking(const std::vector<Acts::BoundTrackParameters>& paramseeds,
-                      const ACTSTracking::MeasurementContainer&      measurements,
-                      const ACTSTracking::SourceLinkContainer&       sourceLinks,
-                      Acts::MagneticFieldProvider::Cache& magCache, edm4hep::TrackCollection& trackCollection) const;
+  std::vector<Acts::BoundTrackParameters> findSeeds(const Acts::SeedFinder<SSPoint, SSPointGrid, void*>& finder,
+                                                    const Acts::SeedFinderOptions&                       finderOpts,
+                                                    const auto& spacePointGroup, const SSPointGrid& grid,
+                                                    const Acts::Range1D<float>          middleSpRange,
+                                                    const size_t                        mutSpDataSize,
+                                                    edm4hep::TrackCollection&           seedCollection,
+                                                    Acts::MagneticFieldProvider::Cache& magCache) const;
+
+  StatusCode tracking(const std::vector<Acts::BoundTrackParameters>& paramseeds, const CKF& trackFinder,
+                      const TrackFinderOptions& ckfOptions, Acts::MagneticFieldProvider::Cache& magCache,
+                      edm4hep::TrackCollection& trackCollection) const;
 
 protected:
   /**
@@ -134,17 +172,16 @@ protected:
 	 * @brief Track fit parameters
 	 */
   ///@{
-  Gaudi::Property<double> m_initialTrackError_pos{this, "InitialTrackError_Pos", 10_um,
+  Gaudi::Property<double>  m_initialTrackError_pos{this, "InitialTrackError_Pos", 10 * Acts::UnitConstants::um,
                                                   "Track error estimate, local position (mm)."};
-  Gaudi::Property<double> m_initialTrackError_phi{this, "InitialTrackError_Phi", 1_degree,
+  Gaudi::Property<double>  m_initialTrackError_phi{this, "InitialTrackError_Phi", 1 * Acts::UnitConstants::degree,
                                                   "Track error estimate, phi (radians)."};
-  Gaudi::Property<double> m_initialTrackError_relP{this, "InitialTrackError_RelP", 0.25,
+  Gaudi::Property<double>  m_initialTrackError_relP{this, "InitialTrackError_RelP", 0.25,
                                                    "Track error estimate, momentum component (relative)."};
-  Gaudi::Property<double> m_initialTrackError_lambda{this, "InitialTrackError_Lambda", 1_degree,
+  Gaudi::Property<double>  m_initialTrackError_lambda{this, "InitialTrackError_Lambda", 1 * Acts::UnitConstants::degree,
                                                      "Track error estimate, lambda (radians)."};
-  Gaudi::Property<double> m_initialTrackError_time{this, "InitialTrackError_Time", 100 * Acts::UnitConstants::ns,
+  Gaudi::Property<double>  m_initialTrackError_time{this, "InitialTrackError_Time", 100 * Acts::UnitConstants::ns,
                                                    "Track error estimate, time (sec)."};
-
   Gaudi::Property<double>  m_CKF_chi2CutOff{this, "CKF_Chi2CutOff", 15, "Maximum local chi2 contribution."};
   Gaudi::Property<int32_t> m_CKF_numMeasurementsCutOff{
       this, "CKF_NumMeasurementsCutOff", 10, "Maximum number of associated measurements on a single surface."};
@@ -160,15 +197,117 @@ protected:
   ///@}
 
   /**
- 	 * @brief Timing Histograms
- 	 */
+   * @brief Multithreading configuration
+   */
   ///@{
-  TH1* m_histHitSetUp;
-  TH1* m_histEntireReco;
-  TH1* m_histSeedFinding;
-  TH1* m_histTrackBuild;
+  Gaudi::Property<int> m_numThreads{this, "NumThreads", 1, "Number of threads to use for internal multithreading."};
   ///@}
-  //uint32_t m_fitFails; // Counting fails across events is not parallization friendly :(
+
+  // Thread-safe counter
+  // mutable Gaudi::Accumulators::Counter<> m_fitFails{this, "FitFails"};
+
+private:
+  // Mutexes for threadsafe container filling of seeds and tracks
+  mutable std::mutex m_seedMutex{};
+  mutable std::mutex m_trackMutex{};
 };
+
+#include "k4ActsTracking/Helpers.hxx"
+
+#include <Acts/Seeding/EstimateTrackParamsFromSeed.hpp>
+#include <Acts/Seeding/SeedFinder.hpp>
+
+// TODO: Proper typing
+std::vector<Acts::BoundTrackParameters> ACTSSeededCKFTrackingAlg::findSeeds(
+    const Acts::SeedFinder<SSPoint, SSPointGrid>& finder, const Acts::SeedFinderOptions& finderOpts,
+    const auto& spacePointGroup, const SSPointGrid& grid, const Acts::Range1D<float> middleSpRange,
+    const size_t mutSpDataSize, edm4hep::TrackCollection& seedCollection,
+    Acts::MagneticFieldProvider::Cache& magCache) const {
+  const auto& [bottom, middle, top] = spacePointGroup;
+  std::vector<Acts::Seed<SSPoint>>                     seeds;
+  std::vector<Acts::BoundTrackParameters>              paramseeds;
+  Acts::SeedFinder<SSPoint, SSPointGrid>::SeedingState state;
+  state.spacePointMutableData.resize(mutSpDataSize);
+
+  finder.createSeedsForGroup(finderOpts, state, grid, seeds, bottom, middle, top, middleSpRange);
+
+  // Loop over seeds and get track parameters
+  std::vector<Acts::Seed<ACTSTracking::SeedSpacePoint>> f_seeds;
+  f_seeds.reserve(seeds.size());
+  for (const Acts::Seed<SSPoint>& seed : seeds) {
+    const auto& sps = seed.sp();
+    f_seeds.emplace_back(*sps[0]->externalSpacePoint(), *sps[1]->externalSpacePoint(), *sps[2]->externalSpacePoint());
+  }
+
+  for (const auto& seed : f_seeds) {
+    const ACTSTracking::SeedSpacePoint* bottomSP = seed.sp().front();
+
+    const auto&                     sourceLink = bottomSP->sourceLink();
+    const Acts::GeometryIdentifier& geoId      = sourceLink.geometryId();
+    const Acts::Surface*            surface    = trackingGeometry()->findSurface(geoId);
+    if (surface == nullptr) {
+      warning() << "surface with geoID " << geoId << " is not found in the tracking gemetry" << endmsg;
+      continue;
+    }
+
+    // Get the magnetic field at the bottom space point
+    const Acts::Vector3         seedPos(bottomSP->x(), bottomSP->y(), bottomSP->z());
+    Acts::Result<Acts::Vector3> seedField = magneticField()->getField(seedPos, magCache);
+    if (!seedField.ok()) {
+      throw std::runtime_error("Field lookup error: " + std::to_string(seedField.error().value()));
+    }
+
+    Acts::Result<Acts::BoundVector> optParams =
+        Acts::estimateTrackParamsFromSeed(geometryContext(), seed.sp(), *surface, *seedField);
+    if (!optParams.ok()) {
+      debug() << "Failed estimation of track parameters for seed." << endmsg;
+      continue;
+    }
+
+    const Acts::BoundVector& params = *optParams;
+
+    float p = std::abs(1 / params[Acts::eBoundQOverP]);
+
+    // build the track covariance matrix using the smearing sigmas
+    Acts::BoundSquareMatrix cov                 = Acts::BoundSquareMatrix::Zero();
+    cov(Acts::eBoundLoc0, Acts::eBoundLoc0)     = std::pow(m_initialTrackError_pos, 2);
+    cov(Acts::eBoundLoc1, Acts::eBoundLoc1)     = std::pow(m_initialTrackError_pos, 2);
+    cov(Acts::eBoundTime, Acts::eBoundTime)     = std::pow(m_initialTrackError_time, 2);
+    cov(Acts::eBoundPhi, Acts::eBoundPhi)       = std::pow(m_initialTrackError_phi, 2);
+    cov(Acts::eBoundTheta, Acts::eBoundTheta)   = std::pow(m_initialTrackError_lambda, 2);
+    cov(Acts::eBoundQOverP, Acts::eBoundQOverP) = std::pow(m_initialTrackError_relP * p / (p * p), 2);
+
+    Acts::BoundTrackParameters paramseed(surface->getSharedPtr(), params, cov, Acts::ParticleHypothesis::pion());
+    paramseeds.push_back(paramseed);
+
+    // Compute seed state before acquiring the lock
+    Acts::Vector3 globalPos =
+        surface->localToGlobal(geometryContext(), {params[Acts::eBoundLoc0], params[Acts::eBoundLoc1]}, {0, 0, 0});
+
+    Acts::Result<Acts::Vector3> hitField = magneticField()->getField(globalPos, magCache);
+    if (!hitField.ok()) {
+      throw std::runtime_error("Field lookup error: " + std::to_string(hitField.error().value()));
+    }
+
+    auto seedTrackState = ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtFirstHit, paramseed,
+                                                                (*hitField)[2] / Acts::UnitConstants::T);
+
+    // Add seed to collection, all building of seed under the lock
+    {
+      std::lock_guard<std::mutex> lock(m_seedMutex);
+      auto                        seedTrack = seedCollection.create();
+      for (const ACTSTracking::SeedSpacePoint* sp : seed.sp()) {
+        seedTrack.addToTrackerHits(sp->sourceLink().edm4hepHit());
+      }
+      seedTrack.addToTrackStates(seedTrackState);
+    }
+
+    debug() << "Seed Paramemeters" << std::endl << paramseed << endmsg;
+  }
+
+  debug() << "Seeds found: " << std::endl << paramseeds.size() << endmsg;
+
+  return paramseeds;
+}
 
 #endif
