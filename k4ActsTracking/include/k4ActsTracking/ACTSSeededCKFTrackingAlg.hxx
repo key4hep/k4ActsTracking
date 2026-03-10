@@ -269,7 +269,7 @@ std::vector<Acts::BoundTrackParameters> ACTSSeededCKFTrackingAlg::findSeeds(
     float p = std::abs(1 / params[Acts::eBoundQOverP]);
 
     // build the track covariance matrix using the smearing sigmas
-    Acts::BoundSquareMatrix cov                 = Acts::BoundSquareMatrix::Zero();
+    Acts::BoundMatrix cov                       = Acts::BoundMatrix::Zero();
     cov(Acts::eBoundLoc0, Acts::eBoundLoc0)     = std::pow(m_initialTrackError_pos, 2);
     cov(Acts::eBoundLoc1, Acts::eBoundLoc1)     = std::pow(m_initialTrackError_pos, 2);
     cov(Acts::eBoundTime, Acts::eBoundTime)     = std::pow(m_initialTrackError_time, 2);
