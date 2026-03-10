@@ -43,10 +43,6 @@ set(_plugin_sources
   src/components/TrackTruthAlg.cxx
   src/components/ActsTestPropagator.cpp
   src/components/DD4hepBlueprintConstruction.cpp
-  # src/components/ActsGeoGen3PlaneSvc.cpp
-  # src/components/TrackerMappingSvc.cpp
-  # src/components/DumpSimTrackerHitCellIDAlg.cpp
-  # src/components/PropagateToHitSurfaceAlg.cpp
 )
 
 gaudi_add_module(k4ActsTrackingPlugins
