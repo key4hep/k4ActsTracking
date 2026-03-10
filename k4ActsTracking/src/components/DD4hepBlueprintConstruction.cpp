@@ -472,3 +472,23 @@ namespace FCCee {
     }
   }  // namespace CLD_o2_v07
 }  // namespace FCCee
+
+namespace LUXE {
+  namespace LUXE_v0 {
+    void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
+                           ActsPlugins::DD4hep::BlueprintBuilder& builder) {
+      auto& tracker = root.addCuboidContainer(detName, AxisZ);
+      auto  envelope =
+          Acts::ExtentEnvelope{}.set(AxisZ, {0.4_mm, 0.4_mm}).set(AxisX, {0.4_mm, 0.4_mm}).set(AxisY, {0.4_mm, 0.4_mm});
+
+      builder.layers()
+          .planar()
+          .setSensorAxes("XYZ")
+          .setLayerFilter("layer\\d")
+          .setContainer("Tracker")
+          .setEnvelope(envelope)
+          .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::Gap)
+          .addTo(tracker);
+    }
+  }  // namespace LUXE_v0
+}  // namespace LUXE

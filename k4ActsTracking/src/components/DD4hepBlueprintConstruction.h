@@ -54,4 +54,11 @@ namespace FCCee {
 
 }  // namespace FCCee
 
+namespace LUXE {
+  namespace LUXE_v0 {
+    void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
+                           ActsPlugins::DD4hep::BlueprintBuilder& builder);
+  }
+}  // namespace LUXE
+
 #endif  // K4ACTSTRACKING_DD4HEPBLUEPRINTCONSTRUCTION_H
