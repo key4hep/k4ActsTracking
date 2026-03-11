@@ -28,10 +28,6 @@
 #include <edm4hep/TrackState.h>
 #include <edm4hep/TrackerHitPlane.h>
 
-// Gaudi
-#include <GaudiKernel/ITHistSvc.h>
-#include <GaudiKernel/MsgStream.h>
-
 // ACTS
 #include <Acts/Seeding/SpacePointGrid.hpp>
 #include <Acts/Surfaces/PerigeeSurface.hpp>
@@ -60,10 +56,6 @@ ACTSSeededCKFTrackingAlg::ACTSSeededCKFTrackingAlg(const std::string& name, ISvc
 StatusCode ACTSSeededCKFTrackingAlg::initialize() {
   // Initialize the base
   StatusCode init = ACTSAlgBase::initialize();
-
-  // Initialize timing histograms
-  SmartIF<ITHistSvc> histSvc;
-  histSvc = serviceLocator()->service("THistSvc");
 
   // Initialize seeding layers
   std::vector<std::string> seedingLayers;
