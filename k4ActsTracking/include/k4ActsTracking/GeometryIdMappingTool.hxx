@@ -64,14 +64,14 @@ namespace ACTSTracking {
  	* @param hit A Sim Tracker Hit
  	* @return decoded Cell ID ready to be passed to ACTS
 	*/
-    Acts::GeometryIdentifier getGeometryID(const edm4hep::SimTrackerHit& hit);
+    Acts::GeometryIdentifier getGeometryID(const edm4hep::SimTrackerHit& hit) const;
     /**
         * @brief Decode Tracker Hit Cell ID
 	* @TODO: This method and the one for TrackerHitPlanes only exist separately due to the current inheritance issues in edm4hep
         * @param hit A Tracker Hit
         * @return decoded Cell ID ready to be passed to ACTS
         */
-    Acts::GeometryIdentifier getGeometryID(const edm4hep::TrackerHit& hit);
+    Acts::GeometryIdentifier getGeometryID(const edm4hep::TrackerHit& hit) const;
     /**
         * @brief Decode Tracker Hit Plane Cell ID
         * @TODO: This method and the one for TrackerHitPlanes only exist separately due to the current inheritance issues in ed
@@ -79,14 +79,14 @@ m4hep
         * @param hit A Tracker Hit Plane
         * @return decoded Cell ID ready to be passed to ACTS
         */
-    Acts::GeometryIdentifier getGeometryID(const edm4hep::TrackerHitPlane& hit);
+    Acts::GeometryIdentifier getGeometryID(const edm4hep::TrackerHitPlane& hit) const;
     /**
 	 * @brief A helper method to decode cell IDs
 	 * @TODO: Once inhertance issue is fixed, this can be combined into the Tracker Hit (Plane) method
 	 * @param cellID from Tracker Hit or Tracker Hit Plane
 	 * @return decoded Cell ID ready to be passed to ACTS
 	 */
-    Acts::GeometryIdentifier getGeometryIDTrack(uint64_t cellID);
+    Acts::GeometryIdentifier getGeometryIDTrack(uint64_t cellID) const;
 
     /**
 	 * @brief Takes decoded Cell ID and turns it into ACTS format
@@ -94,11 +94,17 @@ m4hep
 	 * @return Cell ID ready to be passed to ACTS
 	 */
     Acts::GeometryIdentifier getGeometryID(uint32_t systemID, uint32_t layerID, int32_t sideID, uint32_t ladderID,
-                                           uint32_t moduleID);
+                                           uint32_t moduleID) const;
 
   private:
     /// Tool used to decode Cell IDs with encoder string
     dd4hep::DDSegmentation::BitFieldCoder m_decoder;
+    // The field indices in the decoder, cached for quicker lookups
+    size_t m_systemIdx{};
+    size_t m_sideIdx{};
+    size_t m_layerIdx{};
+    size_t m_moduleIdx{};
+    size_t m_sensorIdx{};
 
     const DetSchema det_type;
 

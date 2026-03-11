@@ -112,33 +112,41 @@ const std::unordered_map<int32_t, uint32_t> GeometryIdMappingTool::VolumeMap = {
 };
 
 GeometryIdMappingTool::GeometryIdMappingTool(const std::string& encoderString, DetSchema dType)
-    : m_decoder(encoderString), det_type(dType) {}
+    : m_decoder(encoderString), det_type(dType) {
+  m_systemIdx = m_decoder.index("system");
+  m_sideIdx   = m_decoder.index("side");
+  m_layerIdx  = m_decoder.index("layer");
+  m_moduleIdx = m_decoder.index("module");
+  m_sensorIdx = m_decoder.index("sensor");
+}
 
-Acts::GeometryIdentifier GeometryIdMappingTool::getGeometryID(const edm4hep::SimTrackerHit& hit) {
+Acts::GeometryIdentifier GeometryIdMappingTool::getGeometryID(const edm4hep::SimTrackerHit& hit) const {
   // Decode Cell ID
   uint64_t cellID = hit.getCellID();
 
   // Encode ACTS ID
-  return getGeometryID(m_decoder.get(cellID, "system"), m_decoder.get(cellID, "layer"), m_decoder.get(cellID, "side"),
-                       m_decoder.get(cellID, "module"), m_decoder.get(cellID, "sensor"));
+  return getGeometryID(m_decoder.get(cellID, m_systemIdx), m_decoder.get(cellID, m_layerIdx),
+                       m_decoder.get(cellID, m_sideIdx), m_decoder.get(cellID, m_moduleIdx),
+                       m_decoder.get(cellID, m_sensorIdx));
 }
 
-Acts::GeometryIdentifier GeometryIdMappingTool::getGeometryID(const edm4hep::TrackerHitPlane& hit) {
+Acts::GeometryIdentifier GeometryIdMappingTool::getGeometryID(const edm4hep::TrackerHitPlane& hit) const {
   return GeometryIdMappingTool::getGeometryIDTrack(hit.getCellID());
 }
 
-Acts::GeometryIdentifier GeometryIdMappingTool::getGeometryID(const edm4hep::TrackerHit& hit) {
+Acts::GeometryIdentifier GeometryIdMappingTool::getGeometryID(const edm4hep::TrackerHit& hit) const {
   return GeometryIdMappingTool::getGeometryIDTrack(hit.getCellID());
 }
 
-Acts::GeometryIdentifier GeometryIdMappingTool::getGeometryIDTrack(uint64_t cellID) {
+Acts::GeometryIdentifier GeometryIdMappingTool::getGeometryIDTrack(uint64_t cellID) const {
   // Encode ACTS ID
-  return getGeometryID(m_decoder.get(cellID, "system"), m_decoder.get(cellID, "layer"), m_decoder.get(cellID, "side"),
-                       m_decoder.get(cellID, "module"), m_decoder.get(cellID, "sensor"));
+  return getGeometryID(m_decoder.get(cellID, m_systemIdx), m_decoder.get(cellID, m_layerIdx),
+                       m_decoder.get(cellID, m_sideIdx), m_decoder.get(cellID, m_moduleIdx),
+                       m_decoder.get(cellID, m_sensorIdx));
 }
 
 Acts::GeometryIdentifier GeometryIdMappingTool::getGeometryID(uint32_t systemID, uint32_t layerID, int32_t sideID,
-                                                              uint32_t ladderID, uint32_t moduleID) {
+                                                              uint32_t ladderID, uint32_t moduleID) const {
   // Initialize geometry ID
   uint64_t geometry_id = 0;
 
