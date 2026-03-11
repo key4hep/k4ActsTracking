@@ -54,8 +54,8 @@ namespace ACTSTracking {
     using EffectiveCovarianceMatrixMap                        = Eigen::Map<EffectiveCovarianceMatrix>;
     using ConstEffectiveCovarianceMatrixMap                   = Eigen::Map<const EffectiveCovarianceMatrix>;
 
-    using FullParametersVector = Acts::ActsVector<kFullSize>;
-    using FullCovarianceMatrix = Acts::ActsSquareMatrix<kFullSize>;
+    using FullParametersVector = Acts::Vector<kFullSize>;
+    using FullCovarianceMatrix = Acts::SquareMatrix<kFullSize>;
 
     using ProjectionMatrix = Eigen::Matrix<Scalar, Eigen::Dynamic, kFullSize>;
     using ExpansionMatrix  = Eigen::Matrix<Scalar, kFullSize, Eigen::Dynamic>;
