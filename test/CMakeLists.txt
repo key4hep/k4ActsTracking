@@ -88,8 +88,23 @@ set_tests_properties(
     FIXTURES_SETUP sim_maia_fixture
 )
 
+# Gen3 geometry path: CKFTrackingAlg driven by ActsGeoSvc
+add_test(NAME reco_MAIA_Gen3
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  COMMAND k4run ${CMAKE_CURRENT_LIST_DIR}/options/MAIA_CKFTrackingAlg.py
+          --compactFile=$ENV{k4geo_DIR}/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml
+)
+set_test_env(reco_MAIA_Gen3)
+
+set_tests_properties(
+  sim_MAIA
+  PROPERTIES
+    FIXTURES_SETUP sim_maia_fixture
+)
 set_tests_properties(
   reco_MAIA
+  reco_MAIA_Gen3
+
   PROPERTIES
     FIXTURES_REQUIRED sim_maia_fixture
 )
