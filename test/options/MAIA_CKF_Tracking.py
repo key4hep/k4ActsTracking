@@ -110,20 +110,20 @@ algList.append(
     )
 )
 
-# algList.append(
-#     CollectionMerger(
-#         "MergeHitsRelations",
-#         InputCollections=[
-#             "VertexBarrelHitsRelations",
-#             "VertexEndcapHitsRelations",
-#             "InnerTrackerBarrelHitsRelations",
-#             "InnerTrackerEndcapHitsRelations",
-#             "OuterTrackerBarrelHitsRelations",
-#             "OuterTrackerEndcapHitsRelations",
-#         ],
-#         OutputCollection=["MergedTrackerHitsRelations"],
-#     )
-# )
+algList.append(
+    CollectionMerger(
+        "MergeHitsRelations",
+        InputCollections=[
+            "VertexBarrelHitsRelations",
+            "VertexEndcapHitsRelations",
+            "InnerTrackerBarrelHitsRelations",
+            "InnerTrackerEndcapHitsRelations",
+            "OuterTrackerBarrelHitsRelations",
+            "OuterTrackerEndcapHitsRelations",
+        ],
+        OutputCollection=["MergedTrackerHitsRelations"],
+    )
+)
 
 ckf_tracking = ACTSSeededCKFTrackingAlg(
     "CKFTracking",
@@ -175,6 +175,7 @@ ckf_tracking = ACTSSeededCKFTrackingAlg(
     OutputTrackCollectionName=["AllTracks"],
     OutputSeedCollectionName=["SeedTracks"],
     InputTrackerHitCollectionName=["MergedTrackerHits"],
+    InputTrackerHitRelationCollectionName=["MergedTrackerHitsRelations"],
     OutputLevel=VERBOSE,
 )
 algList.append(ckf_tracking)

@@ -87,8 +87,8 @@ set_tests_properties(
     FIXTURES_SETUP sim_maia_fixture
 )
 
-set_tests_properties(
-  reco_MAIA
-  PROPERTIES
-    FIXTURES_REQUIRED sim_maia_fixture
-)
+# set_tests_properties(
+#   reco_MAIA
+#   PROPERTIES
+#     FIXTURES_REQUIRED sim_maia_fixture
+# )

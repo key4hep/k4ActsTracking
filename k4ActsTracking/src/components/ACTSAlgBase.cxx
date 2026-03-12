@@ -53,7 +53,9 @@ using namespace ACTSTracking;
 
 ACTSAlgBase::ACTSAlgBase(const std::string& name, ISvcLocator* svcLoc)
     : MultiTransformer(
-          name, svcLoc, {KeyValues("InputTrackerHitCollectionName", {"TrackerHits"})},
+          name, svcLoc,
+          {KeyValues("InputTrackerHitCollectionName", {"TrackerHits"}),
+           KeyValues("InputTrackerHitRelationCollectionName", {"TrackerHitRelations"})},
           {KeyValues("OutputSeedCollectionName", {"SeedTracks"}), KeyValues("OutputTrackCollectionName", {"Tracks"})}),
       m_geometryContext(Acts::GeometryContext::dangerouslyDefaultConstruct()) {
   m_geoSvc = serviceLocator()->service("GeoSvc");  // important to initialize m_geoSvc
