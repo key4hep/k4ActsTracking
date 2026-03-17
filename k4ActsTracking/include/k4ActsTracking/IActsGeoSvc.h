@@ -24,6 +24,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <unordered_map>
 
 namespace dd4hep {
@@ -45,9 +46,10 @@ public:
 public:
   DeclareInterfaceID(IActsGeoSvc, 1, 0);
 
-  virtual std::shared_ptr<const Acts::TrackingGeometry>      trackingGeometry() const   = 0;
-  virtual std::shared_ptr<const Acts::MagneticFieldProvider> magneticField() const      = 0;
-  virtual const CellIDSurfaceMap&                            cellIdToSurfaceMap() const = 0;
+  virtual std::shared_ptr<const Acts::TrackingGeometry>      trackingGeometry() const      = 0;
+  virtual std::shared_ptr<const Acts::MagneticFieldProvider> magneticField() const         = 0;
+  virtual const CellIDSurfaceMap&                            cellIdToSurfaceMap() const    = 0;
+  virtual std::string                                        cellIDEncodingString() const  = 0;
 
   virtual ~IActsGeoSvc() = default;
 };

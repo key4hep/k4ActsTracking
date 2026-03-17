@@ -21,9 +21,8 @@
 #include "k4ActsTracking/CKFTracking.hxx"
 #include "k4ActsTracking/Helpers.hxx"
 #include "k4ActsTracking/IActsGeoSvc.h"
-#include "k4ActsTracking/MeasurementCalibrator.hxx"
 #include "k4ActsTracking/Measurement.hxx"
-#include "k4ActsTracking/GeometryIdSelector.hxx"
+#include "k4ActsTracking/MeasurementCalibrator.hxx"
 #include "k4ActsTracking/SeedSpacePoint.hxx"
 #include "k4ActsTracking/SourceLink.hxx"
 #include "k4ActsTracking/SpacePointContainer.hxx"
@@ -33,16 +32,16 @@
 #include <k4FWCore/Transformer.h>
 
 // edm4hep
-#include <edm4hep/MutableTrack.h>
 #include <edm4hep/TrackCollection.h>
-#include <edm4hep/TrackState.h>
-#include <edm4hep/TrackerHitPlane.h>
 #include <edm4hep/TrackerHitPlaneCollection.h>
 #include <edm4hep/TrackerHitSimTrackerHitLinkCollection.h>
 
 // Gaudi
 #include <Gaudi/Property.h>
 #include <GaudiKernel/SmartIF.h>
+
+// DD4hep
+#include <DDSegmentation/BitFieldCoder.h>
 
 // ACTS
 #include <Acts/Definitions/Units.hpp>
@@ -76,38 +75,14 @@
 
 // Standard
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 using namespace Acts::UnitLiterals;
-
-// ---------------------------------------------------------------------------
-// Local type aliases
-// ---------------------------------------------------------------------------
-namespace {
-
-using TrackContainer    = Acts::TrackContainer<Acts::VectorTrackContainer, Acts::VectorMultiTrajectory,
-                                               std::shared_ptr>;
-using TrackFinderOptions = Acts::CombinatorialKalmanFilterOptions<TrackContainer>;
-
-using SSPoint = typename Acts::SpacePointContainer<
-    ACTSTracking::SpacePointContainer<std::vector<const ACTSTracking::SeedSpacePoint*>>,
-    Acts::detail::RefHolder>::SpacePointProxyType;
-
-using SSPointGrid = Acts::CylindricalSpacePointGrid<SSPoint>;
-
-using Stepper    = Acts::EigenStepper<>;
-using Navigator  = Acts::Navigator;
-using Propagator = Acts::Propagator<Stepper, Navigator>;
-using CKF        = Acts::CombinatorialKalmanFilter<Propagator, TrackContainer>;
-
-}  // namespace
-
-// ---------------------------------------------------------------------------
-// Algorithm declaration
-// ---------------------------------------------------------------------------
 
 /**
  * @brief Seeded CKF tracking algorithm using ActsGeoSvc.
@@ -119,10 +94,22 @@ using CKF        = Acts::CombinatorialKalmanFilter<Propagator, TrackContainer>;
  * ACTS contexts (geometry, magnetic-field, calibration) are default-
  * constructed as documented by the ACTS framework.
  */
-struct CKFTrackingAlg final : k4FWCore::MultiTransformer<
-    std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection>(
-        const edm4hep::TrackerHitPlaneCollection&,
-        const edm4hep::TrackerHitSimTrackerHitLinkCollection&)> {
+struct CKFTrackingAlg final
+    : k4FWCore::MultiTransformer<std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection>(
+          const edm4hep::TrackerHitPlaneCollection&, const edm4hep::TrackerHitSimTrackerHitLinkCollection&)> {
+  using TrackContainer = Acts::TrackContainer<Acts::VectorTrackContainer, Acts::VectorMultiTrajectory, std::shared_ptr>;
+  using TrackFinderOptions = Acts::CombinatorialKalmanFilterOptions<TrackContainer>;
+
+  using SSPoint = typename Acts::SpacePointContainer<
+      ACTSTracking::SpacePointContainer<std::vector<const ACTSTracking::SeedSpacePoint*>>,
+      Acts::detail::RefHolder>::SpacePointProxyType;
+
+  using SSPointGrid = Acts::CylindricalSpacePointGrid<SSPoint>;
+
+  using Stepper    = Acts::EigenStepper<>;
+  using Navigator  = Acts::Navigator;
+  using Propagator = Acts::Propagator<Stepper, Navigator>;
+  using CKF        = Acts::CombinatorialKalmanFilter<Propagator, TrackContainer>;
 
   CKFTrackingAlg(const std::string& name, ISvcLocator* svcLoc);
 
@@ -136,12 +123,10 @@ struct CKFTrackingAlg final : k4FWCore::MultiTransformer<
 
   std::vector<Acts::BoundTrackParameters> findSeeds(const Acts::SeedFinder<SSPoint, SSPointGrid>& finder,
                                                     const Acts::SeedFinderOptions&                finderOpts,
-                                                    const auto&                                   spacePointGroup,
-                                                    const SSPointGrid&                            grid,
-                                                    Acts::Range1D<float>                          middleSpRange,
-                                                    std::size_t                                   mutSpDataSize,
-                                                    edm4hep::TrackCollection&                     seedCollection,
-                                                    Acts::MagneticFieldProvider::Cache&           magCache) const;
+                                                    const auto& spacePointGroup, const SSPointGrid& grid,
+                                                    Acts::Range1D<float> middleSpRange, std::size_t mutSpDataSize,
+                                                    edm4hep::TrackCollection&           seedCollection,
+                                                    Acts::MagneticFieldProvider::Cache& magCache) const;
 
   StatusCode tracking(const std::vector<Acts::BoundTrackParameters>& paramseeds, const CKF& trackFinder,
                       const TrackFinderOptions& ckfOptions, Acts::MagneticFieldProvider::Cache& magCache,
@@ -152,14 +137,12 @@ struct CKFTrackingAlg final : k4FWCore::MultiTransformer<
   /// @name Run control
   ///@{
   Gaudi::Property<bool> m_runCKF{this, "RunCKF", true, "Run tracking using CKF. False means stop at seeding."};
-  Gaudi::Property<bool> m_propagateBackward{this, "PropagateBackward", false,
-                                            "Extrapolates tracks towards beamline."};
+  Gaudi::Property<bool> m_propagateBackward{this, "PropagateBackward", false, "Extrapolates tracks towards beamline."};
   ///@}
 
   /// @name Seed-finding configuration
   ///@{
-  Gaudi::Property<float> m_seedFinding_rMax{this, "SeedFinding_RMax", 150,
-                                            "Maximum radius of hits to consider."};
+  Gaudi::Property<float> m_seedFinding_rMax{this, "SeedFinding_RMax", 150, "Maximum radius of hits to consider."};
   Gaudi::Property<float> m_seedFinding_deltaRMin{this, "SeedFinding_DeltaRMin", 5,
                                                  "Minimum dR between hits in a seed."};
   Gaudi::Property<float> m_seedFinding_deltaRMax{this, "SeedFinding_DeltaRMax", 80,
@@ -183,43 +166,41 @@ struct CKFTrackingAlg final : k4FWCore::MultiTransformer<
   Gaudi::Property<float> m_seedFinding_impactMax{this, "SeedFinding_ImpactMax", 3.0 * Acts::UnitConstants::mm,
                                                  "Maximum d0 of tracks to seed."};
 
-  std::vector<std::string>                          m_default_empty_vec;
-  Gaudi::Property<std::vector<std::string>> m_seedFinding_zBinEdges{this, "SeedFinding_zBinEdges",
-                                                                    m_default_empty_vec,
+  std::vector<std::string>                  m_default_empty_vec;
+  Gaudi::Property<std::vector<std::string>> m_seedFinding_zBinEdges{this, "SeedFinding_zBinEdges", m_default_empty_vec,
                                                                     "Custom z bin edges for the seeding grid."};
-  Gaudi::Property<int> m_zTopBinLen{this, "SeedFinding_zTopBinLen", 1,
-                                    "Number of top bins along Z for seeding."};
+  Gaudi::Property<int> m_zTopBinLen{this, "SeedFinding_zTopBinLen", 1, "Number of top bins along Z for seeding."};
   Gaudi::Property<int> m_zBottomBinLen{this, "SeedFinding_zBottomBinLen", 1,
                                        "Number of bottom bins along Z for seeding."};
-  Gaudi::Property<int> m_phiTopBinLen{this, "SeedFinding_phiTopBinLen", 1,
-                                      "Number of top bins along phi for seeding."};
+  Gaudi::Property<int> m_phiTopBinLen{this, "SeedFinding_phiTopBinLen", 1, "Number of top bins along phi for seeding."};
   Gaudi::Property<int> m_phiBottomBinLen{this, "SeedFinding_phiBottomBinLen", 1,
                                          "Number of bottom bins along phi for seeding."};
   ///@}
 
   /// @name Track-fit initial error estimates
   ///@{
-  Gaudi::Property<double> m_initialTrackError_pos{this, "InitialTrackError_Pos", 10 * Acts::UnitConstants::um,
+  Gaudi::Property<double>  m_initialTrackError_pos{this, "InitialTrackError_Pos", 10 * Acts::UnitConstants::um,
                                                   "Initial track error for local position."};
-  Gaudi::Property<double> m_initialTrackError_phi{this, "InitialTrackError_Phi", 1 * Acts::UnitConstants::degree,
+  Gaudi::Property<double>  m_initialTrackError_phi{this, "InitialTrackError_Phi", 1 * Acts::UnitConstants::degree,
                                                   "Initial track error for phi."};
-  Gaudi::Property<double> m_initialTrackError_relP{this, "InitialTrackError_RelP", 0.25,
+  Gaudi::Property<double>  m_initialTrackError_relP{this, "InitialTrackError_RelP", 0.25,
                                                    "Initial track error for momentum (relative)."};
-  Gaudi::Property<double> m_initialTrackError_lambda{this, "InitialTrackError_Lambda",
-                                                     1 * Acts::UnitConstants::degree,
+  Gaudi::Property<double>  m_initialTrackError_lambda{this, "InitialTrackError_Lambda", 1 * Acts::UnitConstants::degree,
                                                      "Initial track error for lambda."};
-  Gaudi::Property<double> m_initialTrackError_time{this, "InitialTrackError_Time", 100 * Acts::UnitConstants::ns,
+  Gaudi::Property<double>  m_initialTrackError_time{this, "InitialTrackError_Time", 100 * Acts::UnitConstants::ns,
                                                    "Initial track error for time."};
   Gaudi::Property<double>  m_CKF_chi2CutOff{this, "CKF_Chi2CutOff", 15, "Maximum local chi2 contribution."};
   Gaudi::Property<int32_t> m_CKF_numMeasurementsCutOff{this, "CKF_NumMeasurementsCutOff", 10,
-                                                        "Maximum measurements on a single surface."};
+                                                       "Maximum measurements on a single surface."};
   ///@}
 
   /// @name Seeding layer selection
   ///@{
-  Gaudi::Property<std::vector<std::string>> m_seedingLayers{this, "SeedingLayers", m_default_empty_vec,
-                                                            "Volume/layer pairs for seed creation."};
-  ACTSTracking::GeometryIdSelector          m_seedGeometrySelection;
+  Gaudi::Property<std::vector<std::string>> m_seedingLayersCellID{
+      this, "SeedingLayersCellID", m_default_empty_vec,
+      "DD4hep (system, layer) pairs for seed space-point selection. "
+      "Flat list of alternating system and layer values; use \"*\" as wildcard."};
+  std::unordered_set<uint64_t> m_seedCellIDSet;
   ///@}
 
   /// @name Multi-threading
@@ -245,8 +226,8 @@ CKFTrackingAlg::CKFTrackingAlg(const std::string& name, ISvcLocator* svcLoc)
           name, svcLoc,
           {KeyValues("InputTrackerHitCollectionName", {"TrackerHits"}),
            KeyValues("InputTrackerHitRelationCollectionName", {"TrackerHitRelations"})},
-          {KeyValues("OutputSeedCollectionName", {"SeedTracks"}),
-           KeyValues("OutputTrackCollectionName", {"Tracks"})}) {}
+          {KeyValues("OutputSeedCollectionName", {"SeedTracks"}), KeyValues("OutputTrackCollectionName", {"Tracks"})}) {
+}
 
 // ---------------------------------------------------------------------------
 // initialize
@@ -256,13 +237,18 @@ StatusCode CKFTrackingAlg::initialize() {
   m_actsGeoSvc = svcLoc()->service<IActsGeoSvc>("ActsGeoSvc");
   K4_GAUDI_CHECK(m_actsGeoSvc);
 
-  m_seedGeometrySelection = ACTSTracking::parseSeedingLayers(m_seedingLayers.value());
+  m_seedCellIDSet = ACTSTracking::parseSeedingLayersCellID(
+      m_seedingLayersCellID.value(), m_actsGeoSvc->cellIdToSurfaceMap(), m_actsGeoSvc->cellIDEncodingString());
 
   // Apply deltaR fallback defaults
-  if (m_seedFinding_deltaRMinTop == 0.f)    m_seedFinding_deltaRMinTop    = m_seedFinding_deltaRMin;
-  if (m_seedFinding_deltaRMaxTop == 0.f)    m_seedFinding_deltaRMaxTop    = m_seedFinding_deltaRMax;
-  if (m_seedFinding_deltaRMinBottom == 0.f) m_seedFinding_deltaRMinBottom = m_seedFinding_deltaRMin;
-  if (m_seedFinding_deltaRMaxBottom == 0.f) m_seedFinding_deltaRMaxBottom = m_seedFinding_deltaRMax;
+  if (m_seedFinding_deltaRMinTop == 0.f)
+    m_seedFinding_deltaRMinTop = m_seedFinding_deltaRMin;
+  if (m_seedFinding_deltaRMaxTop == 0.f)
+    m_seedFinding_deltaRMaxTop = m_seedFinding_deltaRMax;
+  if (m_seedFinding_deltaRMinBottom == 0.f)
+    m_seedFinding_deltaRMinBottom = m_seedFinding_deltaRMin;
+  if (m_seedFinding_deltaRMaxBottom == 0.f)
+    m_seedFinding_deltaRMaxBottom = m_seedFinding_deltaRMax;
 
   debug() << "Initialization of CKFTrackingAlg successful" << endmsg;
   return StatusCode::SUCCESS;
@@ -273,25 +259,26 @@ StatusCode CKFTrackingAlg::initialize() {
 // ---------------------------------------------------------------------------
 
 std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::operator()(
-    const edm4hep::TrackerHitPlaneCollection&             trackerHitCollection,
+    const edm4hep::TrackerHitPlaneCollection& trackerHitCollection,
     const edm4hep::TrackerHitSimTrackerHitLinkCollection& /*trackerHitRelations*/) const {
-
   edm4hep::TrackCollection seedCollection;
   edm4hep::TrackCollection trackCollection;
 
   // Default-construct ACTS contexts
-  const Acts::GeometryContext    geoCtx = Acts::GeometryContext::dangerouslyDefaultConstruct();
+  const Acts::GeometryContext      geoCtx = Acts::GeometryContext::dangerouslyDefaultConstruct();
   const Acts::MagneticFieldContext magCtx{};
-  const Acts::CalibrationContext  calCtx{};
+  const Acts::CalibrationContext   calCtx{};
 
   const auto& cellIdToSurface = m_actsGeoSvc->cellIdToSurfaceMap();
+
+  dd4hep::DDSegmentation::BitFieldCoder decoder{m_actsGeoSvc->cellIDEncodingString()};
 
   // ----- Phase 1: convert EDM4HEP hits → ACTS objects ----------------------
 
   std::vector<std::pair<Acts::GeometryIdentifier, edm4hep::TrackerHitPlane>> sortedHits;
-  ACTSTracking::SourceLinkContainer                                           sourceLinks;
-  ACTSTracking::MeasurementContainer                                          measurements;
-  ACTSTracking::SeedSpacePointContainer                                       spacePoints;
+  ACTSTracking::SourceLinkContainer                                          sourceLinks;
+  ACTSTracking::MeasurementContainer                                         measurements;
+  ACTSTracking::SeedSpacePointContainer                                      spacePoints;
 
   sortedHits.reserve(trackerHitCollection.size());
 
@@ -307,7 +294,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
   debug() << "Working with " << sortedHits.size() << " hits." << endmsg;
 
   // Sort hits by geometry ID for efficient SourceLink multiset insertion
-  auto compare = [](const auto& a, const auto& b) { return a.first < b.first; };
+  auto            compare = [](const auto& a, const auto& b) { return a.first < b.first; };
   tbb::task_arena arena(m_numThreads.value());
   if (m_numThreads > 1) {
     arena.execute([&] { tbb::parallel_sort(sortedHits.begin(), sortedHits.end(), compare); });
@@ -346,16 +333,18 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
     localCov(0, 0)                          = std::pow(hitplane.getDu() * Acts::UnitConstants::mm, 2);
     localCov(1, 1)                          = std::pow(hitplane.getDv() * Acts::UnitConstants::mm, 2);
 
-    ACTSTracking::SourceLink sourceLink(surface->geometryId(), measurements.size(), hitPair.second);
-    Acts::SourceLink         srcWrap{sourceLink};
+    ACTSTracking::SourceLink  sourceLink(surface->geometryId(), measurements.size(), hitPair.second);
+    Acts::SourceLink          srcWrap{sourceLink};
     ACTSTracking::Measurement meas =
         ACTSTracking::makeMeasurement(srcWrap, loc, localCov, Acts::eBoundLoc0, Acts::eBoundLoc1);
 
     measurements.push_back(meas);
     sourceLinks.emplace_hint(sourceLinks.end(), sourceLink);
 
+    debug() << "Seed selection for spacepoint w/ cellId: " << decoder.valueString(hitPair.second.getCellID()) << endmsg;
     // Create space point for seeding if this surface is selected
-    if (m_seedGeometrySelection.check(surface->geometryId())) {
+    if (m_seedCellIDSet.count(hitPair.second.getCellID())) {
+      debug() << "Accepted" << endmsg;
       Acts::RotationMatrix3 rotLocalToGlobal = surface->referenceFrame(geoCtx, globalPos, {0, 0, 0});
 
       // Jacobian from global (x,y,z) to (rho, z)
@@ -390,9 +379,9 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
   finderCfg.deltaRMinBottomSP        = m_seedFinding_deltaRMinBottom;
   finderCfg.deltaRMaxBottomSP        = m_seedFinding_deltaRMaxBottom;
   finderCfg.collisionRegionMin       = -m_seedFinding_collisionRegion;
-  finderCfg.collisionRegionMax       =  m_seedFinding_collisionRegion;
+  finderCfg.collisionRegionMax       = m_seedFinding_collisionRegion;
   finderCfg.zMin                     = -m_seedFinding_zMax;
-  finderCfg.zMax                     =  m_seedFinding_zMax;
+  finderCfg.zMax                     = m_seedFinding_zMax;
   finderCfg.maxSeedsPerSpM           = 1;
   finderCfg.cotThetaMax              = 7.40627;  // ~2.7 η
   finderCfg.sigmaScattering          = m_seedFinding_sigmaScattering;
@@ -447,8 +436,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
   spOptions.beamPos = {0., 0.};
 
   ACTSTracking::SpacePointContainer                                       container(spacePointPtrs);
-  Acts::SpacePointContainer<decltype(container), Acts::detail::RefHolder> spContainer(spConfig, spOptions,
-                                                                                       container);
+  Acts::SpacePointContainer<decltype(container), Acts::detail::RefHolder> spContainer(spConfig, spOptions, container);
 
   SSPointGrid grid = Acts::CylindricalSpacePointGridCreator::createGrid<SSPoint>(gridCfg, gridOpts);
   Acts::CylindricalSpacePointGridCreator::fillGrid(finderCfg, finderOpts, grid, spContainer);
@@ -479,8 +467,8 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
     pOptions.direction = Acts::Direction::Backward();
   }
 
-  Acts::GainMatrixUpdater           kfUpdater;
-  Acts::MeasurementSelector         measSel{measurementSelectorCfg};
+  Acts::GainMatrixUpdater             kfUpdater;
+  Acts::MeasurementSelector           measSel{measurementSelectorCfg};
   ACTSTracking::MeasurementCalibrator measCal{measurements};
 
   ACTSTracking::SourceLinkAccessor slAccessor;
@@ -504,7 +492,8 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
   float minRange = std::numeric_limits<float>::max();
   float maxRange = std::numeric_limits<float>::lowest();
   for (const auto& coll : grid) {
-    if (coll.empty()) continue;
+    if (coll.empty())
+      continue;
     minRange = std::min(coll.front()->radius(), minRange);
     maxRange = std::max(coll.back()->radius(), maxRange);
   }
@@ -526,7 +515,8 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
     for (size_t i = r.begin(); i != r.end(); ++i) {
       const auto paramseeds = findSeeds(finder, finderOpts, spacePointGroups[i], spacePointsGrouping.grid(),
                                         rMiddleSPRange, spContainer.size(), seedCollection, magCache);
-      if (!m_runCKF) continue;
+      if (!m_runCKF)
+        continue;
       if (!tracking(paramseeds, trackFinder, ckfOptions, magCache, trackCollection).isSuccess()) {
         warning() << "Tracking failed for this event" << endmsg;
       }
@@ -534,9 +524,8 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
   };
 
   if (m_numThreads > 1) {
-    arena.execute([&] {
-      tbb::parallel_for(tbb::blocked_range<size_t>(0, spacePointGroups.size()), parallelSeedingAndTracking);
-    });
+    arena.execute(
+        [&] { tbb::parallel_for(tbb::blocked_range<size_t>(0, spacePointGroups.size()), parallelSeedingAndTracking); });
   } else {
     for (size_t i = 0; i < spacePointGroups.size(); ++i) {
       parallelSeedingAndTracking(tbb::blocked_range<size_t>(i, i + 1));
@@ -553,16 +542,14 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
 
 std::vector<Acts::BoundTrackParameters> CKFTrackingAlg::findSeeds(
     const Acts::SeedFinder<SSPoint, SSPointGrid>& finder, const Acts::SeedFinderOptions& finderOpts,
-    const auto& spacePointGroup, const SSPointGrid& grid, Acts::Range1D<float> middleSpRange,
-    std::size_t mutSpDataSize, edm4hep::TrackCollection& seedCollection,
-    Acts::MagneticFieldProvider::Cache& magCache) const {
-
+    const auto& spacePointGroup, const SSPointGrid& grid, Acts::Range1D<float> middleSpRange, std::size_t mutSpDataSize,
+    edm4hep::TrackCollection& seedCollection, Acts::MagneticFieldProvider::Cache& magCache) const {
   const Acts::GeometryContext geoCtx = Acts::GeometryContext::dangerouslyDefaultConstruct();
 
   const auto& [bottom, middle, top] = spacePointGroup;
 
-  std::vector<Acts::Seed<SSPoint>>        seeds;
-  std::vector<Acts::BoundTrackParameters> paramseeds;
+  std::vector<Acts::Seed<SSPoint>>                     seeds;
+  std::vector<Acts::BoundTrackParameters>              paramseeds;
   Acts::SeedFinder<SSPoint, SSPointGrid>::SeedingState state;
   state.spacePointMutableData.resize(mutSpDataSize);
 
@@ -573,8 +560,7 @@ std::vector<Acts::BoundTrackParameters> CKFTrackingAlg::findSeeds(
   f_seeds.reserve(seeds.size());
   for (const Acts::Seed<SSPoint>& seed : seeds) {
     const auto& sps = seed.sp();
-    f_seeds.emplace_back(*sps[0]->externalSpacePoint(), *sps[1]->externalSpacePoint(),
-                         *sps[2]->externalSpacePoint());
+    f_seeds.emplace_back(*sps[0]->externalSpacePoint(), *sps[1]->externalSpacePoint(), *sps[2]->externalSpacePoint());
   }
 
   for (const auto& seed : f_seeds) {
@@ -604,10 +590,9 @@ std::vector<Acts::BoundTrackParameters> CKFTrackingAlg::findSeeds(
     const Acts::BoundVector& params = *optParams;
     float                    p      = std::abs(1.f / params[Acts::eBoundQOverP]);
 
-    Acts::BoundMatrix cov =
-        ACTSTracking::makeInitialCovariance(p, m_initialTrackError_pos, m_initialTrackError_phi,
-                                            m_initialTrackError_lambda, m_initialTrackError_relP,
-                                            m_initialTrackError_time);
+    Acts::BoundMatrix cov = ACTSTracking::makeInitialCovariance(p, m_initialTrackError_pos, m_initialTrackError_phi,
+                                                                m_initialTrackError_lambda, m_initialTrackError_relP,
+                                                                m_initialTrackError_time);
 
     Acts::BoundTrackParameters paramseed(surface->getSharedPtr(), params, cov, Acts::ParticleHypothesis::pion());
     paramseeds.push_back(paramseed);
@@ -621,7 +606,7 @@ std::vector<Acts::BoundTrackParameters> CKFTrackingAlg::findSeeds(
     }
 
     auto seedTrackState = ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtFirstHit, paramseed,
-                                                                 (*hitField)[2] / Acts::UnitConstants::T);
+                                                                (*hitField)[2] / Acts::UnitConstants::T);
 
     {
       std::lock_guard<std::mutex> lock(m_seedMutex);
@@ -643,10 +628,9 @@ std::vector<Acts::BoundTrackParameters> CKFTrackingAlg::findSeeds(
 // tracking — run CKF for each seed and collect results
 // ---------------------------------------------------------------------------
 
-StatusCode CKFTrackingAlg::tracking(const std::vector<Acts::BoundTrackParameters>& paramseeds,
-                                     const CKF& trackFinder, const TrackFinderOptions& ckfOptions,
-                                     Acts::MagneticFieldProvider::Cache& magCache,
-                                     edm4hep::TrackCollection&           trackCollection) const {
+StatusCode CKFTrackingAlg::tracking(const std::vector<Acts::BoundTrackParameters>& paramseeds, const CKF& trackFinder,
+                                    const TrackFinderOptions& ckfOptions, Acts::MagneticFieldProvider::Cache& magCache,
+                                    edm4hep::TrackCollection& trackCollection) const {
   const Acts::GeometryContext geoCtx = Acts::GeometryContext::dangerouslyDefaultConstruct();
 
   debug() << "Starting CKF track finding with " << paramseeds.size() << " seeds." << endmsg;

@@ -146,11 +146,11 @@ ckf_tracking = CKFTrackingAlg(
     SeedFinding_SigmaScattering=50,
     SeedFinding_CollisionRegion=6,
     SeedFinding_RadLengthPerSeed=0.1,
-    # Seeding layers use (volume, layer) pairs from the Gen3 / Blueprint
-    # geometry. The volume/layer numbering differs from the TGeo-based path
-    # used by ACTSSeededCKFTrackingAlg — update these once the geometry IDs
-    # have been inspected at runtime (e.g. via ActsTestPropagator output).
-    SeedingLayers=[],
+    # SeedingLayersCellID uses DD4hep-native (system, layer) pairs, readable
+    # directly from the MAIA_v0 compact XML.  The values below seed on the
+    # first three VertexBarrel layers (system=1, layers 0–2).
+    # Use "*" as a wildcard, e.g. ["1", "*"] selects all VertexBarrel layers.
+    SeedingLayersCellID=["1", "*", "2", "1", "2", "2", "2", "3"],
     OutputTrackCollectionName=["AllTracks"],
     OutputSeedCollectionName=["SeedTracks"],
     InputTrackerHitCollectionName=["MergedTrackerHits"],

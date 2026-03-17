@@ -23,14 +23,20 @@
 
 // ACTSTracking
 #include "k4ActsTracking/GeometryIdSelector.hxx"
+#include "k4ActsTracking/IActsGeoSvc.h"
 #include "k4ActsTracking/Measurement.hxx"
 #include "k4ActsTracking/SeedSpacePoint.hxx"
 #include "k4ActsTracking/SourceLink.hxx"
 
+// DD4hep
+#include <DDSegmentation/BitFieldCoder.h>
+
 // Standard
 #include <cmath>
+#include <cstdint>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace ACTSTracking {
@@ -65,6 +71,52 @@ namespace ACTSTracking {
     }
 
     return GeometryIdSelector(geoSelection);
+  }
+
+  //! Build a set of CellIDs whose decoded (system, layer) fields match any of the user-specified pairs
+  /**
+   * Iterates over \p cellIdMap (the full CellID→Surface map from IActsGeoSvc) and returns
+   * those CellIDs whose \c system and \c layer fields — decoded with a BitFieldCoder built
+   * from \p encodingString — match at least one entry in the flat \p layers list.
+   *
+   * The \p layers list must have an even number of entries interpreted as
+   * alternating (system, layer) string pairs. Use \c "*" as a wildcard.
+   *
+   * \param layers         Flat vector of (system, layer) string pairs.
+   * \param cellIdMap      The CellID-to-surface map from IActsGeoSvc::cellIdToSurfaceMap().
+   * \param encodingString DD4hep BitFieldCoder encoding string from IActsGeoSvc::cellIDEncodingString().
+   * \return               Set of matching CellIDs for use in O(1) seed space-point filtering.
+   * \throws std::runtime_error if the vector has an odd number of entries.
+   */
+  inline std::unordered_set<uint64_t> parseSeedingLayersCellID(
+      const std::vector<std::string>&       layers,
+      const IActsGeoSvc::CellIDSurfaceMap&  cellIdMap,
+      const std::string&                    encodingString) {
+    if (layers.size() % 2 != 0)
+      throw std::runtime_error("SeedingLayersCellID needs an even number of entries");
+
+    // Parse (system, layer) pairs; -1 means wildcard
+    std::vector<std::pair<int64_t, int64_t>> selection;
+    for (std::size_t i = 0; i < layers.size(); i += 2) {
+      const int64_t sys = (layers[i]     == "*") ? -1 : std::stoi(layers[i]);
+      const int64_t lay = (layers[i + 1] == "*") ? -1 : std::stoi(layers[i + 1]);
+      selection.emplace_back(sys, lay);
+    }
+
+    dd4hep::DDSegmentation::BitFieldCoder decoder{encodingString};
+    std::unordered_set<uint64_t>          seedCellIDs;
+    for (const auto& [cellID, surface] : cellIdMap) {
+      const int64_t sys = decoder.get(cellID, "system");
+      const int64_t lay = decoder.get(cellID, "layer");
+      for (const auto& [reqSys, reqLay] : selection) {
+        if ((reqSys == -1 || sys == reqSys) && (reqLay == -1 || lay == reqLay)) {
+          seedCellIDs.insert(cellID);
+          break;
+        }
+      }
+    }
+
+    return seedCellIDs;
   }
 
   //! Build a diagonal initial track covariance matrix from per-parameter error estimates

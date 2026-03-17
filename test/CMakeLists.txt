@@ -97,11 +97,6 @@ add_test(NAME reco_MAIA_Gen3
 set_test_env(reco_MAIA_Gen3)
 
 set_tests_properties(
-  sim_MAIA
-  PROPERTIES
-    FIXTURES_SETUP sim_maia_fixture
-)
-set_tests_properties(
   reco_MAIA
   reco_MAIA_Gen3
 
