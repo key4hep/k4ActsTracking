@@ -67,8 +67,8 @@ add_test(NAME sim_MAIA
                 --gun.distribution uniform
                 --gun.thetaMax 2.96  # rougly 170 degrees
                 --gun.thetaMin -2.96  # rougly -170 degrees
-                --gun.momentumMin 5
-                --gun.momentumMax 500
+                --gun.momentumMin 5000
+                --gun.momentumMax 500000
 )
 
 add_test(NAME reco_MAIA
