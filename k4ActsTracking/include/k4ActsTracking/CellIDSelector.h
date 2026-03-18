@@ -46,11 +46,10 @@ namespace k4ActsTracking {
   /// | Syntax          | Meaning                                      |
   /// |-----------------|----------------------------------------------|
   /// | `field:N`       | Field must equal the integer `N`             |
-  /// | `field:*`       | Wildcard — field is not constrained          |
   /// | `field:N\|M\|…` | Field must equal one of `N`, `M`, … (OR)    |
   ///
   /// Fields that appear in the encoding string but are absent from the
-  /// selection are treated as wildcards.  Specifying the same field more than
+  /// selection are unconstrained.  Specifying the same field more than
   /// once in a single selection string is not detected as an error: only the
   /// last occurrence takes effect.
   ///
@@ -67,11 +66,6 @@ namespace k4ActsTracking {
   ///                          "system:3,layer:2|6|8",
   ///                          "sensor:42"});
   ///
-  /// // Wildcard: system is unconstrained, layer must be 3
-  /// CellIDSelector sel(enc, {"system:*,layer:3"});
-  /// // This is equivalent to
-  /// CellIDSelector sel(enc, {"layer:3"});
-  ///
   /// // Empty selection list — rejects every CellID
   /// CellIDSelector sel(enc, {});
   /// ```
@@ -81,8 +75,8 @@ namespace k4ActsTracking {
   /// Internally each selection string is expanded into one or more
   /// `Selector{mask, value}` pairs via the Cartesian product of the
   /// per-field value lists.  A CellID passes the selector when
-  /// `(cellID & mask) == (value & mask)`.  Wildcard fields contribute
-  /// neither to `mask` nor to `value`.
+  /// `(cellID & mask) == (value & mask)`.  Fields absent from the selection
+  /// contribute neither to `mask` nor to `value`.
   class CellIDSelector {
   public:
     /// A single bitmask/value pair produced from one element of the Cartesian
@@ -109,8 +103,8 @@ namespace k4ActsTracking {
     /// Expand a single selection string into its `Selector` pairs.
     ///
     /// Useful for inspection and testing.  The returned vector contains one
-    /// entry per element of the Cartesian product of all non-wildcard field
-    /// value lists.  An all-wildcard selection string returns an empty vector.
+    /// entry per element of the Cartesian product of all constrained field
+    /// value lists.
     ///
     /// @param selection  A single selection string (see class-level grammar).
     /// @throws std::invalid_argument if the string is malformed.

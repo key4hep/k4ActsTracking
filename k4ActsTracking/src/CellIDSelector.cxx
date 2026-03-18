@@ -26,8 +26,6 @@
 #include <string_view>
 #include <utility>
 
-#include <iostream>
-
 namespace {
   auto splitString(const std::string_view str, const char delim) {
     namespace rv = std::ranges::views;
@@ -55,11 +53,7 @@ namespace {
     const auto fieldName  = std::string(fieldConfig[0]);
     const auto fieldValue = fieldConfig[1];
     if (fieldValue.empty()) {
-      throw std::invalid_argument("'" + std::string(partialSelection) +
-                                  "' has an empty value — use '*' for a wildcard");
-    }
-    if (fieldValue == "*") {
-      return {fieldName, {}};
+      throw std::invalid_argument("'" + std::string(partialSelection) + "' has an empty value");
     }
 
     namespace rv = std::ranges::views;
@@ -122,15 +116,8 @@ namespace k4ActsTracking {
   CellIDSelector::CellIDSelector(const std::string& encodingString, const std::vector<std::string>& selections)
       : m_decoder(encodingString) {
     for (const auto& selection : selections) {
-      auto masks = getSelectionMasks(selection);
-      if (masks.empty()) {
-        // All fields are wildcards: this selection accepts every CellID,
-        // represented by a zero mask (no bits to check).
-        m_selectors.emplace_back(0ULL, 0ULL);
-      } else {
-        for (auto&& sel : masks) {
-          m_selectors.emplace_back(std::move(sel));
-        }
+      for (auto&& sel : getSelectionMasks(selection)) {
+        m_selectors.emplace_back(std::move(sel));
       }
     }
   }
@@ -139,14 +126,9 @@ namespace k4ActsTracking {
     if (selection.empty()) {
       throw std::invalid_argument("selection string must not be empty");
     }
-    // Get all the field names and values where we actually have to apply a
-    // selection in the end. I.e. if a field is configured with '*', we filter
-    // it out here already since it will be applied in the selection in any
-    // case.
     namespace rv         = std::ranges::views;
     auto fieldsAndValues = splitString(selection, ',') |
-                           rv::transform([](auto&& part) { return getFieldAndValues(part); }) |
-                           rv::filter([](auto&& v) { return !v.second.empty(); });
+                           rv::transform([](auto&& part) { return getFieldAndValues(part); });
 
     dd4hep::CellID mask = 0;
     for (const auto& [field, _] : fieldsAndValues) {

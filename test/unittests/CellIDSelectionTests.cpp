@@ -81,37 +81,12 @@ TEST_CASE("CellIDSelector::accept empty selection") {
   REQUIRE_FALSE(selector.accept(cellID));
 }
 
-TEST_CASE("CellIDSelector::accept wildcard selection") {
-  const std::string encodingString = "system:8,side:-2,layer:5,module:7,sensor:10";
-  const auto        encoder        = dd4hep::BitFieldCoder(encodingString);
-
-  // "system:*" means any system value - should accept all CellIDs
-  const auto selectorAll = CellIDSelector{encodingString, {"system:*"}};
-  const auto cellID      = GENERATE(take(100, random(0UL, std::numeric_limits<dd4hep::CellID>::max())));
-  REQUIRE(selectorAll.accept(cellID));
-
-  // "system:*,layer:3" means any system but layer must be 3
-  dd4hep::CellID specific{0};
-  encoder.set(specific, "layer", 3);
-  encoder.set(specific, "system", 7);  // any system value
-  const auto selectorLayerOnly = CellIDSelector{encodingString, {"system:*,layer:3"}};
-  REQUIRE(selectorLayerOnly.accept(specific));
-
-  encoder.set(specific, "layer", 5);
-  REQUIRE_FALSE(selectorLayerOnly.accept(specific));
-}
-
 TEST_CASE("CellIDSelector::getSelectionMasks") {
   const std::string encodingString = "system:8,side:-2,layer:5,module:7,sensor:10";
   const auto        selector       = CellIDSelector{encodingString, {}};
 
-  // Selectors that select everything should not get a mask
-  REQUIRE(selector.getSelectionMasks("system:*").empty());
-  REQUIRE(selector.getSelectionMasks("layer:*,system:*").empty());
-
   constexpr dd4hep::CellID systemMask = (0x0001ULL << 8) - 1;
   constexpr dd4hep::CellID layerMask  = ((0x0001ULL << 5) - 1) << (8 + 2);
-  constexpr dd4hep::CellID sensorMask = ((0x0001ULL << 10) - 1) << (8 + 2 + 5 + 7);
 
   constexpr auto allValues = [](const auto& sel) {
     namespace rv = std::ranges::views;
@@ -127,11 +102,6 @@ TEST_CASE("CellIDSelector::getSelectionMasks") {
   REQUIRE(sel.size() == 1);
   REQUIRE(sel[0].mask == layerMask);
   REQUIRE(sel[0].value == ((2 << (8 + 2))));
-
-  sel = selector.getSelectionMasks("system:3,layer:*");
-  REQUIRE(sel.size() == 1);
-  REQUIRE(sel[0].mask == systemMask);
-  REQUIRE(sel[0].value == 3);
 
   sel = selector.getSelectionMasks("system:4,layer:3");
   REQUIRE(sel.size() == 1);
@@ -160,17 +130,6 @@ TEST_CASE("CellIDSelector::getSelectionMasks") {
                                    3 + (12 << (8 + 2)),
                                    5 + (12 << (8 + 2)),
                                }));
-
-  sel = selector.getSelectionMasks("system:*,layer:1|3|5,sensor:3");
-  REQUIRE(sel.size() == 3);
-  for (const auto s : sel) {
-    REQUIRE(s.mask == (layerMask | sensorMask));
-  }
-  REQUIRE_THAT(allValues(sel), UnorderedRangeEquals(std::vector{
-                                   (1 << (8 + 2)) + (3 << (8 + 2 + 5 + 7)),
-                                   (3 << (8 + 2)) + (3 << (8 + 2 + 5 + 7)),
-                                   (5 << (8 + 2)) + (3 << (8 + 2 + 5 + 7)),
-                               }));
 }
 
 TEST_CASE("CellIDSelector failure modes: malformed selection strings") {
@@ -185,7 +144,7 @@ TEST_CASE("CellIDSelector failure modes: malformed selection strings") {
   // Non-integer value that cannot be parsed
   REQUIRE_THROWS_AS(CellIDSelector(encodingString, {"system:abc"}), std::invalid_argument);
 
-  // Empty value after colon is not a valid wildcard — use '*' explicitly
+  // Empty value after colon
   REQUIRE_THROWS_AS(CellIDSelector(encodingString, {"system:"}), std::invalid_argument);
 
   // Empty string as selection is not valid
