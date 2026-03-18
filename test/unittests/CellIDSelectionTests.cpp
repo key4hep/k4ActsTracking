@@ -172,3 +172,50 @@ TEST_CASE("CellIDSelector::getSelectionMasks") {
                                    (5 << (8 + 2)) + (3 << (8 + 2 + 5 + 7)),
                                }));
 }
+
+TEST_CASE("CellIDSelector failure modes: malformed selection strings") {
+  const std::string encodingString = "system:8,side:-2,layer:5,module:7,sensor:10";
+
+  // No colon separator: "field:value" format is required
+  REQUIRE_THROWS_AS(CellIDSelector(encodingString, {"system5"}), std::invalid_argument);
+
+  // Multiple colons make the split ambiguous (field name contains ":")
+  REQUIRE_THROWS_AS(CellIDSelector(encodingString, {"system:3:5"}), std::invalid_argument);
+
+  // Non-integer value that cannot be parsed
+  REQUIRE_THROWS_AS(CellIDSelector(encodingString, {"system:abc"}), std::invalid_argument);
+
+  // Empty value after colon (no integer, not a wildcard)
+  REQUIRE_THROWS_AS(CellIDSelector(encodingString, {"system:"}), std::invalid_argument);
+
+  // Empty string as selection
+  REQUIRE_THROWS_AS(CellIDSelector(encodingString, {""}), std::invalid_argument);
+
+  // Pipe-separated list with a non-integer entry
+  REQUIRE_THROWS_AS(CellIDSelector(encodingString, {"system:1|abc|3"}), std::invalid_argument);
+
+  // Pipe-separated list with an empty entry
+  REQUIRE_THROWS_AS(CellIDSelector(encodingString, {"system:1|"}), std::invalid_argument);
+
+  // Multi-field: valid first field, non-integer value in second
+  REQUIRE_THROWS_AS(CellIDSelector(encodingString, {"system:3,layer:abc"}), std::invalid_argument);
+
+  // Multi-field: valid first field, missing colon in second
+  REQUIRE_THROWS_AS(CellIDSelector(encodingString, {"system:3,layer3"}), std::invalid_argument);
+
+  // Multi-field: trailing comma produces an empty token for the second field
+  REQUIRE_THROWS_AS(CellIDSelector(encodingString, {"system:3,"}), std::invalid_argument);
+
+  // Multi-field: leading comma produces an empty token for the first field
+  REQUIRE_THROWS_AS(CellIDSelector(encodingString, {",layer:3"}), std::invalid_argument);
+}
+
+TEST_CASE("CellIDSelector failure modes: unknown field name") {
+  const std::string encodingString = "system:8,side:-2,layer:5,module:7,sensor:10";
+
+  // Field name not present in the encoding string
+  REQUIRE_THROWS(CellIDSelector(encodingString, {"nonexistent:5"}));
+
+  // Unknown field among valid ones in the same selection
+  REQUIRE_THROWS(CellIDSelector(encodingString, {"system:3,typo:1"}));
+}
