@@ -103,3 +103,5 @@ set_tests_properties(
   PROPERTIES
     FIXTURES_REQUIRED sim_maia_fixture
 )
+
+add_subdirectory(unittests)

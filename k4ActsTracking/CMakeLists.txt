@@ -21,7 +21,9 @@ set(ACTS_LIBRARY_TARGETS "Acts::Core")
 gaudi_add_library(k4ActsTracking
   SOURCES
     src/ActsGaudiLogger.cpp
+    src/CellIDSelector.cxx
   LINK
+    DD4hep::DDCore
     k4FWCore::k4FWCore
     ${ACTS_LIBRARY_TARGETS}
 )
