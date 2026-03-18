@@ -197,12 +197,11 @@ struct CKFTrackingAlg final
 
   /// @name Seeding layer selection
   ///@{
-  Gaudi::Property<std::vector<std::string>> m_seedingLayersCellID{
-      this, "SeedingLayersCellID", m_default_empty_vec,
+  Gaudi::Property<std::vector<std::string>> m_seedingSensorsCellIDs{
+      this, "SeedingSensorsCellIDs", m_default_empty_vec,
       "CellIDSelector selection strings for seed space-point filtering. "
       "Each entry is a comma-separated list of field:value constraints (e.g. \"system:1,layer:2|3\"). "
       "Multiple entries are OR-ed together. Omitted fields act as wildcards."};
-  std::optional<k4ActsTracking::CellIDSelector> m_seedSelector;
   ///@}
 
   /// @name Multi-threading
@@ -212,6 +211,8 @@ struct CKFTrackingAlg final
 
 private:
   SmartIF<IActsGeoSvc> m_actsGeoSvc;
+
+  k4ActsTracking::CellIDSelector m_seedSelector{};
 
   mutable std::mutex m_seedMutex{};
   mutable std::mutex m_trackMutex{};
@@ -241,7 +242,8 @@ StatusCode CKFTrackingAlg::initialize() {
   K4_GAUDI_CHECK(m_actsGeoSvc);
 
   debug() << "Creating SeedSelector" << endmsg;
-  m_seedSelector.emplace(m_actsGeoSvc->cellIDEncodingString(), m_seedingLayersCellID.value());
+  m_seedSelector =
+      k4ActsTracking::CellIDSelector(m_actsGeoSvc->cellIDEncodingString(), m_seedingSensorsCellIDs.value());
   debug() << "Done" << endmsg;
 
   // Apply deltaR fallback defaults
@@ -347,7 +349,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
 
     debug() << "Seed selection for spacepoint w/ cellId: " << decoder.valueString(hitPair.second.getCellID()) << endmsg;
     // Create space point for seeding if this surface is selected
-    if (m_seedSelector->accept(hitPair.second.getCellID())) {
+    if (m_seedSelector.accept(hitPair.second.getCellID())) {
       debug() << "Accepted" << endmsg;
       Acts::RotationMatrix3 rotLocalToGlobal = surface->referenceFrame(geoCtx, globalPos, {0, 0, 0});
 

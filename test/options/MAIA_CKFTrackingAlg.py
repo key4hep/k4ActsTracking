@@ -150,7 +150,7 @@ ckf_tracking = CKFTrackingAlg(
     # entry is a comma-separated list of field:value constraints read directly
     # from the MAIA_v0 compact XML encoding.  Multiple entries are OR-ed.
     # Omitted fields act as wildcards; "|" separates multiple values for a field.
-    SeedingLayersCellID=["system:1", "system:2,layer:1|2|3"],
+    SeedingSensorsCellIDs=["system:1", "system:2,layer:1|2|3"],
     OutputTrackCollectionName=["AllTracks"],
     OutputSeedCollectionName=["SeedTracks"],
     InputTrackerHitCollectionName=["MergedTrackerHits"],
