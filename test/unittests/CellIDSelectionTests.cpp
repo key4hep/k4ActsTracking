@@ -81,6 +81,26 @@ TEST_CASE("CellIDSelector::accept empty selection") {
   REQUIRE_FALSE(selector.accept(cellID));
 }
 
+TEST_CASE("CellIDSelector::accept wildcard selection") {
+  const std::string encodingString = "system:8,side:-2,layer:5,module:7,sensor:10";
+  const auto        encoder        = dd4hep::BitFieldCoder(encodingString);
+
+  // "system:*" means any system value - should accept all CellIDs
+  const auto selectorAll = CellIDSelector{encodingString, {"system:*"}};
+  const auto cellID      = GENERATE(take(100, random(0UL, std::numeric_limits<dd4hep::CellID>::max())));
+  REQUIRE(selectorAll.accept(cellID));
+
+  // "system:*,layer:3" means any system but layer must be 3
+  dd4hep::CellID specific{0};
+  encoder.set(specific, "layer", 3);
+  encoder.set(specific, "system", 7);  // any system value
+  const auto selectorLayerOnly = CellIDSelector{encodingString, {"system:*,layer:3"}};
+  REQUIRE(selectorLayerOnly.accept(specific));
+
+  encoder.set(specific, "layer", 5);
+  REQUIRE_FALSE(selectorLayerOnly.accept(specific));
+}
+
 TEST_CASE("CellIDSelector::getSelectionMasks") {
   const std::string encodingString = "system:8,side:-2,layer:5,module:7,sensor:10";
   const auto        selector       = CellIDSelector{encodingString, {}};

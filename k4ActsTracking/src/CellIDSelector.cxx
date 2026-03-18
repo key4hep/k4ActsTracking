@@ -118,8 +118,15 @@ namespace k4ActsTracking {
   CellIDSelector::CellIDSelector(const std::string& encodingString, const std::vector<std::string>& selections)
       : m_decoder(encodingString) {
     for (const auto& selection : selections) {
-      for (auto&& sel : getSelectionMasks(selection)) {
-        m_selectors.emplace_back(std::move(sel));
+      auto masks = getSelectionMasks(selection);
+      if (masks.empty()) {
+        // All fields are wildcards: this selection accepts every CellID,
+        // represented by a zero mask (no bits to check).
+        m_selectors.emplace_back(0ULL, 0ULL);
+      } else {
+        for (auto&& sel : masks) {
+          m_selectors.emplace_back(std::move(sel));
+        }
       }
     }
   }

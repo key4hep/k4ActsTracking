@@ -67,6 +67,8 @@ namespace k4ActsTracking {
   ///
   /// // Wildcard: system is unconstrained, layer must be 3
   /// CellIDSelector sel(enc, {"system:*,layer:3"});
+  /// // This is equivalent to
+  /// CellIDSelector sel(enc, {"layer:3"});
   ///
   /// // Empty selection list — rejects every CellID
   /// CellIDSelector sel(enc, {});
@@ -79,9 +81,6 @@ namespace k4ActsTracking {
   /// per-field value lists.  A CellID passes the selector when
   /// `(cellID & mask) == (value & mask)`.  Wildcard fields contribute
   /// neither to `mask` nor to `value`.
-  ///
-  /// A selection string with only wildcard fields produces **no** selectors
-  /// and therefore never accepts any CellID on its own.
   class CellIDSelector {
   public:
     /// A single bitmask/value pair produced from one element of the Cartesian
