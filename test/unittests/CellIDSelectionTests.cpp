@@ -83,7 +83,6 @@ TEST_CASE("CellIDSelector::accept empty selection") {
 
 TEST_CASE("CellIDSelector::getSelectionMasks") {
   const std::string encodingString = "system:8,side:-2,layer:5,module:7,sensor:10";
-  const auto        selector       = CellIDSelector{encodingString, {}};
 
   constexpr dd4hep::CellID systemMask = (0x0001ULL << 8) - 1;
   constexpr dd4hep::CellID layerMask  = ((0x0001ULL << 5) - 1) << (8 + 2);
@@ -93,31 +92,31 @@ TEST_CASE("CellIDSelector::getSelectionMasks") {
     return rv::transform(sel, [](const auto& elem) { return elem.value; });
   };
 
-  auto sel = selector.getSelectionMasks("system:8");
+  auto sel = CellIDSelector::getSelectionMasks("system:8", encodingString);
   REQUIRE(sel.size() == 1);
   REQUIRE(sel[0].mask == systemMask);
   REQUIRE(sel[0].value == 8);
 
-  sel = selector.getSelectionMasks("layer:2");
+  sel = CellIDSelector::getSelectionMasks("layer:2", encodingString);
   REQUIRE(sel.size() == 1);
   REQUIRE(sel[0].mask == layerMask);
   REQUIRE(sel[0].value == ((2 << (8 + 2))));
 
-  sel = selector.getSelectionMasks("system:4,layer:3");
+  sel = CellIDSelector::getSelectionMasks("system:4,layer:3", encodingString);
   REQUIRE(sel.size() == 1);
   REQUIRE(sel[0].mask == (systemMask | layerMask));
   REQUIRE(sel[0].value == (4 + (3 << (8 + 2))));
 
   using Catch::Matchers::UnorderedRangeEquals;
 
-  sel = selector.getSelectionMasks("system:3|5");
+  sel = CellIDSelector::getSelectionMasks("system:3|5", encodingString);
   REQUIRE(sel.size() == 2);
   for (const auto s : sel) {
     REQUIRE(s.mask == systemMask);
   }
   REQUIRE_THAT(allValues(sel), UnorderedRangeEquals(std::vector{3, 5}));
 
-  sel = selector.getSelectionMasks("system:3|5,layer:1|12|10");
+  sel = CellIDSelector::getSelectionMasks("system:3|5,layer:1|12|10", encodingString);
   REQUIRE(sel.size() == 6);
   for (const auto s : sel) {
     REQUIRE(s.mask == (systemMask | layerMask));

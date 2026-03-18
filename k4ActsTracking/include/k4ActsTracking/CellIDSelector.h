@@ -86,6 +86,13 @@ namespace k4ActsTracking {
       dd4hep::CellID value;  ///< Expected bit pattern after masking
     };
 
+    CellIDSelector()                                 = default;
+    CellIDSelector(const CellIDSelector&)            = default;
+    CellIDSelector& operator=(const CellIDSelector&) = default;
+    CellIDSelector(CellIDSelector&&)                 = default;
+    CellIDSelector& operator=(CellIDSelector&&)      = default;
+    ~CellIDSelector()                                = default;
+
     /// Construct a selector from a DD4hep encoding string and a list of
     /// selection strings.
     ///
@@ -108,10 +115,9 @@ namespace k4ActsTracking {
     ///
     /// @param selection  A single selection string (see class-level grammar).
     /// @throws std::invalid_argument if the string is malformed.
-    std::vector<Selector> getSelectionMasks(const std::string& selection) const;
+    static std::vector<Selector> getSelectionMasks(const std::string& selection, const dd4hep::BitFieldCoder& decoder);
 
   private:
-    dd4hep::BitFieldCoder m_decoder{};
     std::vector<Selector> m_selectors{};
   };
 }  // namespace k4ActsTracking

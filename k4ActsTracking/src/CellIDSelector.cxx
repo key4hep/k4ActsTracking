@@ -44,7 +44,7 @@ namespace {
     return container;
   }
 
-  std::pair<std::string, std::vector<int>> getFieldAndValues(auto partialSelection) {
+  std::pair<std::string, std::vector<int>> getFieldAndValues(std::string_view partialSelection) {
     const auto fieldConfig = to_vector<std::string_view>(splitString(partialSelection, ':'));
     if (fieldConfig.size() != 2) {
       throw std::invalid_argument(std::string(partialSelection) + "' is not a valid selection string");
@@ -113,33 +113,35 @@ namespace {
 }  // namespace
 
 namespace k4ActsTracking {
-  CellIDSelector::CellIDSelector(const std::string& encodingString, const std::vector<std::string>& selections)
-      : m_decoder(encodingString) {
+  CellIDSelector::CellIDSelector(const std::string& encodingString, const std::vector<std::string>& selections) {
+    dd4hep::BitFieldCoder decoder{encodingString};
+
     for (const auto& selection : selections) {
-      for (auto&& sel : getSelectionMasks(selection)) {
+      for (auto&& sel : getSelectionMasks(selection, decoder)) {
         m_selectors.emplace_back(std::move(sel));
       }
     }
   }
 
-  std::vector<CellIDSelector::Selector> CellIDSelector::getSelectionMasks(const std::string& selection) const {
+  std::vector<CellIDSelector::Selector> CellIDSelector::getSelectionMasks(const std::string&           selection,
+                                                                          const dd4hep::BitFieldCoder& decoder) {
     if (selection.empty()) {
       throw std::invalid_argument("selection string must not be empty");
     }
-    namespace rv         = std::ranges::views;
-    auto fieldsAndValues = splitString(selection, ',') |
-                           rv::transform([](auto&& part) { return getFieldAndValues(part); });
+    namespace rv = std::ranges::views;
+    auto fieldsAndValues =
+        splitString(selection, ',') | rv::transform([](auto&& part) { return getFieldAndValues(part); });
 
     dd4hep::CellID mask = 0;
     for (const auto& [field, _] : fieldsAndValues) {
-      mask |= m_decoder[field].mask();
+      mask |= decoder[field].mask();
     }
 
     std::vector<Selector> selectors{};
     for (const auto& fieldsValues : cartesianProductFields(fieldsAndValues)) {
       dd4hep::CellID value{};
       for (const auto& [name, val] : fieldsValues) {
-        m_decoder.set(value, std::string(name), val);
+        decoder.set(value, std::string(name), val);
       }
       selectors.emplace_back(mask, value);
     }
