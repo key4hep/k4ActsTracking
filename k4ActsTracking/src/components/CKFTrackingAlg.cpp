@@ -19,6 +19,7 @@
 
 // k4ActsTracking
 #include "k4ActsTracking/CKFTracking.hxx"
+#include "k4ActsTracking/CellIDSelector.h"
 #include "k4ActsTracking/Helpers.hxx"
 #include "k4ActsTracking/IActsGeoSvc.h"
 #include "k4ActsTracking/Measurement.hxx"
@@ -78,8 +79,8 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
-#include <unordered_set>
 #include <vector>
 
 using namespace Acts::UnitLiterals;
@@ -198,9 +199,10 @@ struct CKFTrackingAlg final
   ///@{
   Gaudi::Property<std::vector<std::string>> m_seedingLayersCellID{
       this, "SeedingLayersCellID", m_default_empty_vec,
-      "DD4hep (system, layer) pairs for seed space-point selection. "
-      "Flat list of alternating system and layer values; use \"*\" as wildcard."};
-  std::unordered_set<uint64_t> m_seedCellIDSet;
+      "CellIDSelector selection strings for seed space-point filtering. "
+      "Each entry is a comma-separated list of field:value constraints (e.g. \"system:1,layer:2|3\"). "
+      "Multiple entries are OR-ed together. Omitted fields act as wildcards."};
+  std::optional<k4ActsTracking::CellIDSelector> m_seedSelector;
   ///@}
 
   /// @name Multi-threading
@@ -234,11 +236,13 @@ CKFTrackingAlg::CKFTrackingAlg(const std::string& name, ISvcLocator* svcLoc)
 // ---------------------------------------------------------------------------
 
 StatusCode CKFTrackingAlg::initialize() {
+  debug() << "CKFTracking::initialize()" << endmsg;
   m_actsGeoSvc = svcLoc()->service<IActsGeoSvc>("ActsGeoSvc");
   K4_GAUDI_CHECK(m_actsGeoSvc);
 
-  m_seedCellIDSet = ACTSTracking::parseSeedingLayersCellID(
-      m_seedingLayersCellID.value(), m_actsGeoSvc->cellIdToSurfaceMap(), m_actsGeoSvc->cellIDEncodingString());
+  debug() << "Creating SeedSelector" << endmsg;
+  m_seedSelector.emplace(m_actsGeoSvc->cellIDEncodingString(), m_seedingLayersCellID.value());
+  debug() << "Done" << endmsg;
 
   // Apply deltaR fallback defaults
   if (m_seedFinding_deltaRMinTop == 0.f)
@@ -343,7 +347,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
 
     debug() << "Seed selection for spacepoint w/ cellId: " << decoder.valueString(hitPair.second.getCellID()) << endmsg;
     // Create space point for seeding if this surface is selected
-    if (m_seedCellIDSet.count(hitPair.second.getCellID())) {
+    if (m_seedSelector->accept(hitPair.second.getCellID())) {
       debug() << "Accepted" << endmsg;
       Acts::RotationMatrix3 rotLocalToGlobal = surface->referenceFrame(geoCtx, globalPos, {0, 0, 0});
 

@@ -146,11 +146,11 @@ ckf_tracking = CKFTrackingAlg(
     SeedFinding_SigmaScattering=50,
     SeedFinding_CollisionRegion=6,
     SeedFinding_RadLengthPerSeed=0.1,
-    # SeedingLayersCellID uses DD4hep-native (system, layer) pairs, readable
-    # directly from the MAIA_v0 compact XML.  The values below seed on the
-    # first three VertexBarrel layers (system=1, layers 0–2).
-    # Use "*" as a wildcard, e.g. ["1", "*"] selects all VertexBarrel layers.
-    SeedingLayersCellID=["1", "*", "2", "1", "2", "2", "2", "3"],
+    # SeedingLayersCellID uses CellIDSelector selection strings, where each
+    # entry is a comma-separated list of field:value constraints read directly
+    # from the MAIA_v0 compact XML encoding.  Multiple entries are OR-ed.
+    # Omitted fields act as wildcards; "|" separates multiple values for a field.
+    SeedingLayersCellID=["system:1", "system:2,layer:1|2|3"],
     OutputTrackCollectionName=["AllTracks"],
     OutputSeedCollectionName=["SeedTracks"],
     InputTrackerHitCollectionName=["MergedTrackerHits"],
