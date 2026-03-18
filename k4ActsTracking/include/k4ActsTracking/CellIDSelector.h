@@ -50,7 +50,9 @@ namespace k4ActsTracking {
   /// | `field:N\|M\|…` | Field must equal one of `N`, `M`, … (OR)    |
   ///
   /// Fields that appear in the encoding string but are absent from the
-  /// selection are treated as wildcards.
+  /// selection are treated as wildcards.  Specifying the same field more than
+  /// once in a single selection string is not detected as an error: only the
+  /// last occurrence takes effect.
   ///
   /// ### Examples
   ///

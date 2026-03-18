@@ -54,6 +54,10 @@ namespace {
 
     const auto fieldName  = std::string(fieldConfig[0]);
     const auto fieldValue = fieldConfig[1];
+    if (fieldValue.empty()) {
+      throw std::invalid_argument("'" + std::string(partialSelection) +
+                                  "' has an empty value — use '*' for a wildcard");
+    }
     if (fieldValue == "*") {
       return {fieldName, {}};
     }
@@ -132,6 +136,9 @@ namespace k4ActsTracking {
   }
 
   std::vector<CellIDSelector::Selector> CellIDSelector::getSelectionMasks(const std::string& selection) const {
+    if (selection.empty()) {
+      throw std::invalid_argument("selection string must not be empty");
+    }
     // Get all the field names and values where we actually have to apply a
     // selection in the end. I.e. if a field is configured with '*', we filter
     // it out here already since it will be applied in the selection in any

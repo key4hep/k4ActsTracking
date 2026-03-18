@@ -185,10 +185,10 @@ TEST_CASE("CellIDSelector failure modes: malformed selection strings") {
   // Non-integer value that cannot be parsed
   REQUIRE_THROWS_AS(CellIDSelector(encodingString, {"system:abc"}), std::invalid_argument);
 
-  // Empty value after colon (no integer, not a wildcard)
+  // Empty value after colon is not a valid wildcard — use '*' explicitly
   REQUIRE_THROWS_AS(CellIDSelector(encodingString, {"system:"}), std::invalid_argument);
 
-  // Empty string as selection
+  // Empty string as selection is not valid
   REQUIRE_THROWS_AS(CellIDSelector(encodingString, {""}), std::invalid_argument);
 
   // Pipe-separated list with a non-integer entry
@@ -218,4 +218,36 @@ TEST_CASE("CellIDSelector failure modes: unknown field name") {
 
   // Unknown field among valid ones in the same selection
   REQUIRE_THROWS(CellIDSelector(encodingString, {"system:3,typo:1"}));
+}
+
+TEST_CASE("CellIDSelector failure modes: value overflow throws") {
+  // system is 8 bits wide (values 0-255). DD4hep's BitFieldCoder::set is
+  // range-checked: specifying 300 throws rather than truncating silently.
+  const std::string encodingString = "system:8,side:-2,layer:5,module:7,sensor:10";
+  REQUIRE_THROWS(CellIDSelector(encodingString, {"system:300"}));
+
+  // Same for a value in a pipe list that is in range — succeeds.
+  REQUIRE_NOTHROW(CellIDSelector(encodingString, {"system:255"}));
+  REQUIRE_NOTHROW(CellIDSelector(encodingString, {"system:0|255"}));
+
+  // Out-of-range value inside a pipe list also throws.
+  REQUIRE_THROWS(CellIDSelector(encodingString, {"system:1|300"}));
+}
+
+TEST_CASE("CellIDSelector failure modes: duplicate field uses last value") {
+  // "system:3,system:5" contains system twice. The Cartesian product expansion
+  // produces one combination {(system,3),(system,5)} and the second set() call
+  // overwrites the first, so the effective selector is system==5 only.
+  const std::string encodingString = "system:8,side:-2,layer:5,module:7,sensor:10";
+  const auto        encoder        = dd4hep::BitFieldCoder(encodingString);
+  const auto        selector       = CellIDSelector{encodingString, {"system:3,system:5"}};
+
+  dd4hep::CellID cellID{0};
+  encoder.set(cellID, "system", 5);
+  // system:5 matches because the second value wins
+  REQUIRE(selector.accept(cellID));
+
+  encoder.set(cellID, "system", 3);
+  // system:3 does NOT match even though it appears in the selection string
+  REQUIRE_FALSE(selector.accept(cellID));
 }
