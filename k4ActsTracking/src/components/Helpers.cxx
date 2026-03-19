@@ -29,6 +29,7 @@
 #include <vector>
 
 // ACTS
+#include <Acts/EventData/ParticleHypothesis.hpp>
 #include <Acts/MagneticField/InterpolatedBFieldMap.hpp>
 
 // ACTSTracking
@@ -227,9 +228,9 @@ namespace ACTSTracking {
         return Acts::ParticleHypothesis{Acts::PdgParticle::eAntiProton};
     }
 
-    Acts::PdgParticle pdg  = Acts::PdgParticle::eInvalid;
-    float             mass = 0.0f;
-    Acts::AnyCharge   charge_type{0.0f};
+    Acts::PdgParticle      pdg  = Acts::PdgParticle::eInvalid;
+    float                  mass = 0.0f;
+    Acts::ChargeHypothesis charge_type{0.0f};
     return Acts::ParticleHypothesis{pdg, mass, charge_type};
   }
 
