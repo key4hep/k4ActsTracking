@@ -31,9 +31,8 @@ namespace ACTSTracking {
 
   /// Map an indices enum to the number of parameters it covers.
   /// Mirrors Acts::detail::kParametersSize which is being removed
-  /// in https://github.com/acts-project/acts/pull/5282  
-  template <typename indices_t>
-  inline constexpr std::size_t kParametersSize = 0;
+  /// in https://github.com/acts-project/acts/pull/5282
+  template <typename indices_t> inline constexpr std::size_t kParametersSize = 0;
   template <>
   inline constexpr std::size_t kParametersSize<Acts::BoundIndices> =
       static_cast<std::size_t>(Acts::BoundIndices::eBoundSize);
