@@ -21,8 +21,6 @@
 #include "Acts/Definitions/TrackParametrization.hpp"
 #include "Acts/EventData/SourceLink.hpp"
 #include "Acts/EventData/Types.hpp"
-#include "Acts/EventData/detail/ParameterTraits.hpp"
-#include "Acts/EventData/detail/PrintParameters.hpp"
 
 #include <boost/container/static_vector.hpp>
 
@@ -31,9 +29,20 @@
 
 namespace ACTSTracking {
 
+  /// Map an indices enum to the number of parameters it covers.
+  /// Mirrors Acts::detail::kParametersSize which is being removed
+  /// in https://github.com/acts-project/acts/pull/5282
+  template <typename indices_t> inline constexpr std::size_t kParametersSize = 0;
+  template <>
+  inline constexpr std::size_t kParametersSize<Acts::BoundIndices> =
+      static_cast<std::size_t>(Acts::BoundIndices::eBoundSize);
+  template <>
+  inline constexpr std::size_t kParametersSize<Acts::FreeIndices> =
+      static_cast<std::size_t>(Acts::FreeIndices::eFreeSize);
+
   template <typename indices_t> class VariableSizeMeasurement {
   public:
-    static constexpr std::size_t kFullSize = Acts::detail::kParametersSize<indices_t>;
+    static constexpr std::size_t kFullSize = ACTSTracking::kParametersSize<indices_t>;
 
     using Scalar = double;
 
