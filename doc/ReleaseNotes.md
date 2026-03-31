@@ -1,3 +1,39 @@
+# v00-03
+
+* 2026-03-19 Juan Miguel Carceller ([PR#50](https://github.com/key4hep/k4ActsTracking/pull/50))
+  - Use ChargeHypothesis instead of AnyCharge that has been removed in https://github.com/acts-project/acts/pull/5076
+
+* 2026-03-12 Thomas Madlener ([PR#48](https://github.com/key4hep/k4ActsTracking/pull/48))
+  - Cleanup the `GeometryIdMappingTool`
+    - Replace several overloads of `getGeometryID` with one templated member function
+    - Mark all `getGeometryID` methods as `const` as they are pure queries and should not alter internal state
+    - Cache the field indices for the internal cell id decoder to not have to go through several map lookups for every hit
+
+* 2026-03-11 Thomas Madlener ([PR#45](https://github.com/key4hep/k4ActsTracking/pull/45))
+  - Fix several deprecation warnings from Acts
+
+* 2026-03-10 Samuel Ferraro ([PR#46](https://github.com/key4hep/k4ActsTracking/pull/46))
+  - Upstream the possibility to run CKF Tracking on multiple threads ([MuonCollidersoft/k4ActsTracking#17](https://github.com/MuonColliderSoft/k4ActsTracking/pull/17))
+  - Create a dedicated `findSeeds` function to keep split between seeding and tracking introduced in #42 in place.
+
+* 2026-03-09 Thomas Madlener ([PR#47](https://github.com/key4hep/k4ActsTracking/pull/47))
+  - Make the conversion functions from ACTS to EDM4hep return handles instead of pointers to handles.
+
+* 2026-02-25 Juan Miguel Carceller ([PR#43](https://github.com/key4hep/k4ActsTracking/pull/43))
+  - Convert to TGeoAxes following changes in ACTS
+
+* 2026-02-23 Baucki (DESY atlaslap122) ([PR#42](https://github.com/key4hep/k4ActsTracking/pull/42))
+  - Refactoring of the existing ACTSSeededCKFTrackingAlg algorithm to a separate method `tracking` to allow for the possibility of externally built seeds. Existing seed finding is unchanged, followed by a call to the new `tracking`.
+  - Preparation for future algorithms to inherit from the `ACTSSeededCKFTrackingAlg` class and use the same `tracking` method on e.g. externally built track seeds (`edm4hep::TrackCollection`).
+
+* 2026-01-14 Juan Miguel Carceller ([PR#41](https://github.com/key4hep/k4ActsTracking/pull/41))
+  - Require EDM4hep in CMakeLists.txt and link to it
+
+* 2026-01-14 Thomas Madlener ([PR#40](https://github.com/key4hep/k4ActsTracking/pull/40))
+  - Cleanup the CMake configuration slightly and explicitly state files that should be built
+  - Remove configuration targetting Gaudi  v35
+  - Remove the unused `EmptyAlg` and its example
+
 # v00-02
 
 * 2025-12-17 Thomas Madlener ([PR#38](https://github.com/key4hep/k4ActsTracking/pull/38))
