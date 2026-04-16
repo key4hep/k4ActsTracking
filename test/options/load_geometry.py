@@ -16,39 +16,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-import os
+import pathlib
+
 from Gaudi.Configuration import INFO
-
 from Configurables import ActsGeoSvc, ApplicationMgr, GeoSvc
+from k4FWCore.parseArgs import parser
 
-algList = []
+parser.add_argument("--compactFile", help="The compact file of the geometry to load")
 
-try:
-    odd_base = os.environ["OPENDATADETECTOR_DATA"]
-except KeyError:
-    # For older releases OPENDATADETCTOR_DATA has not been defined so we try to
-    # retrieve it off the LD_LIBRARY_PATH
-    ld_lib_paths = os.environ["LD_LIBRARY_PATH"].split(":")
-    odd_paths = [p for p in ld_lib_paths if "opendatadetector" in p]
-    if odd_paths:
-        odd_base = f"{odd_paths[0].rsplit('/', 1)[0]}/share/OpenDataDetector"
-    else:
-        raise
+args = parser.parse_known_args()[0]
 
 dd4hep_geo = GeoSvc("GeoSvc")
-dd4hep_geo.detectors = [f"{odd_base}/xml/OpenDataDetector.xml"]
+dd4hep_geo.detectors = [args.compactFile]
 dd4hep_geo.EnableGeant4Geo = False
 
 acts_geo = ActsGeoSvc("ActsGeoSvc")
-acts_geo.GeoSvcName = dd4hep_geo.name()
-acts_geo.debugGeometry = True
-acts_geo.outputFileName = "MyObjFile"
+acts_geo.DumpVisualization = True
+acts_geo.ObjVisFileName = f"{pathlib.Path(args.compactFile).stem}-acts-geo.obj"
 
 ApplicationMgr(
-    TopAlg=algList,
+    TopAlg=[],
     EvtSel="NONE",
-    EvtMax=2,
-    # order dependent...
+    EvtMax=1,
     ExtSvc=[dd4hep_geo, acts_geo],
     OutputLevel=INFO,
 )
