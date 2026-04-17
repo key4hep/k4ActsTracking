@@ -17,10 +17,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ]]
 
+set(test_environment "\
+LD_LIBRARY_PATH=\
+${PROJECT_BINARY_DIR}:\
+${PROJECT_BINARY_DIR}/${PROJECT_NAME}:\
+$ENV{LD_LIBRARY_PATH};
+PYTHONPATH=\
+${PROJECT_BINARY_DIR}/${PROJECT_NAME}/genConfDir:\
+$ENV{PYTHONPATH};\
+GAUDI_PLUGIN_PATH=\
+${PROJECT_BINARY_DIR}/${PROJECT_NAME}:\
+$ENV{GAUDI_PLUGIN_PATH}"
+)
 
 function(set_test_env _testname)
-  set_property(TEST ${_testname} APPEND PROPERTY ENVIRONMENT "LD_LIBRARY_PATH=${PROJECT_BINARY_DIR}:${PROJECT_BINARY_DIR}/${CMAKE_PROJECT_NAME}:$<$<TARGET_EXISTS:ROOT::Core>:$<TARGET_FILE_DIR:ROOT::Core>>:$<$<TARGET_EXISTS:EDM4HEP::edm4hep>:$<TARGET_FILE_DIR:EDM4HEP::edm4hep>>:$<$<TARGET_EXISTS:podio::podio>:$<TARGET_FILE_DIR:podio::podio>>:$ENV{LD_LIBRARY_PATH}")
-  set_property(TEST ${_testname} APPEND PROPERTY ENVIRONMENT "PYTHONPATH=${PROJECT_BINARY_DIR}/${CMAKE_PROJECT_NAME}/${GAUDI_GENCONF_DIR}:$ENV{PYTHONPATH}")
+  set_tests_properties(${_testname} PROPERTIES ENVIRONMENT "${test_environment}")
 endfunction()
 
 # add_geometry_load_test(<test-name> <path-to-compact-xml>)
