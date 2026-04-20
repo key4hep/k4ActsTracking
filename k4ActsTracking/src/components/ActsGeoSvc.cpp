@@ -142,6 +142,12 @@ StatusCode ActsGeoSvc::initialize() {
   info() << fmt::format("Visited {} Surfaces and inserted {} pairs of CellID -> Acts::Surface* into the map.",
                         nSurfaces, m_cellIDToSurface.size())
          << endmsg;
+  if (nSurfaces != m_cellIDToSurface.size()) {
+    error() << fmt::format("{} Surfaces in the Tracking geometry but only {} distinct CellIDs found.", nSurfaces,
+                           m_cellIDToSurface.size());
+    return StatusCode::FAILURE;
+  }
+
   if (m_dumpVisualization.value()) {
     info() << "Creating visualiztion" << endmsg;
     // Adjust the scale here to make it easier to import in blender
