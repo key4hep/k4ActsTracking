@@ -119,8 +119,8 @@ namespace Blueprints {
     const auto vtxBarrelDetElem    = builder.findDetElementByName(containerName);
     const auto vtxBarrelLayerElems = builder.findDetElementByNamePattern(vtxBarrelDetElem.value(), layerRgx);
 
-    const auto doubleLayerName =
-        makeLayerGrouper(layerRgx, "doubleLayer", [](const auto& m) { return std::stoi(m) / 2; });
+    const auto doubleLayerName = makeLayerGrouper(layerRgx, fmt::format("{}|doubleLayer", containerName),
+                                                  [](const auto& m) { return std::stoi(m) / 2; });
 
     auto barrelEnvelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {1_mm, 1_mm});
     return builder.layersFromSensors()
@@ -259,7 +259,8 @@ namespace Blueprints {
 
     const auto posEndcapDetElems = builder.findDetElementByNamePattern(endcapDetElem.value(), spec.endcapPosFilter);
     const auto posLayerGrouper =
-        makeLayerGrouper(spec.endcapPosFilter, "doubleLayer_pos", [](const auto& m) { return std::stoi(m) / 2; });
+        makeLayerGrouper(spec.endcapPosFilter, fmt::format("{}|doubleLayer_pos", spec.endcapContainer),
+                         [](const auto& m) { return std::stoi(m) / 2; });
     builder.layersFromSensors()
         .endcap()
         .setSensorAxes(spec.endcapAxes)
@@ -272,7 +273,8 @@ namespace Blueprints {
 
     const auto negEndcapDetElems = builder.findDetElementByNamePattern(endcapDetElem.value(), spec.endcapNegFilter);
     const auto negLayerGrouper =
-        makeLayerGrouper(spec.endcapNegFilter, "doubleLayer_neg", [](const auto& m) { return std::stoi(m) / 2; });
+        makeLayerGrouper(spec.endcapNegFilter, fmt::format("{}|doubleLayer_neg", spec.endcapContainer),
+                         [](const auto& m) { return std::stoi(m) / 2; });
 
     builder.layersFromSensors()
         .endcap()
@@ -409,7 +411,8 @@ namespace Blueprints {
     const auto endcapDetElem = builder.findDetElementByName(spec.endcapContainer);
 
     const auto posEndcapDetElems = builder.findDetElementByNamePattern(endcapDetElem.value(), spec.endcapPosFilter);
-    const auto posLayerGrouper   = makeLayerGrouper(spec.endcapPosFilter, "layer_pos");
+    const auto posLayerGrouper =
+        makeLayerGrouper(spec.endcapPosFilter, fmt::format("{}|layer_pos", spec.endcapContainer));
     builder.layersFromSensors()
         .endcap()
         .setSensors(std::move(posEndcapDetElems))
@@ -421,7 +424,8 @@ namespace Blueprints {
         .addTo(*tracker);
 
     const auto negEndcapDetElems = builder.findDetElementByNamePattern(endcapDetElem.value(), spec.endcapNegFilter);
-    const auto negLayerGrouper   = makeLayerGrouper(spec.endcapNegFilter, "layer_neg");
+    const auto negLayerGrouper =
+        makeLayerGrouper(spec.endcapNegFilter, fmt::format("{}|layer_neg", spec.endcapContainer));
     builder.layersFromSensors()
         .endcap()
         .setSensors(std::move(negEndcapDetElems))
@@ -659,7 +663,8 @@ namespace Blueprints {
 
     auto endcapDetElem     = builder.findDetElementByName(spec.endcapContainer);
     auto posEndcapDetElems = builder.findDetElementByNamePattern(endcapDetElem.value(), spec.endcapPosInnerFilter);
-    auto posLayerGrouper   = makeLayerGrouper(spec.endcapPosInnerFilter, "layer_pos");
+    auto posLayerGrouper =
+        makeLayerGrouper(spec.endcapPosInnerFilter, fmt::format("{}|layer_pos", spec.endcapContainer));
     builder.layersFromSensors()
         .endcap()
         .setSensorAxes(spec.endcapAxes)
@@ -671,7 +676,8 @@ namespace Blueprints {
         .addTo(*innerInnerTracker);
 
     auto negEndcapDetElems = builder.findDetElementByNamePattern(endcapDetElem.value(), spec.endcapNegInnerFilter);
-    auto negLayerGrouper   = makeLayerGrouper(spec.endcapNegInnerFilter, "layer_neg");
+    auto negLayerGrouper =
+        makeLayerGrouper(spec.endcapNegInnerFilter, fmt::format("{}|layer_neg", spec.endcapContainer));
 
     builder.layersFromSensors()
         .endcap()
@@ -699,7 +705,7 @@ namespace Blueprints {
 
     // Then add the (rest of the) two endcaps
     posEndcapDetElems = builder.findDetElementByNamePattern(endcapDetElem.value(), spec.endcapPosOuterFilter);
-    posLayerGrouper   = makeLayerGrouper(spec.endcapPosOuterFilter, "layer_pos");
+    posLayerGrouper   = makeLayerGrouper(spec.endcapPosOuterFilter, fmt::format("{}|layer_pos", spec.endcapContainer));
     builder.layersFromSensors()
         .endcap()
         .setSensorAxes(spec.endcapAxes)
@@ -711,7 +717,7 @@ namespace Blueprints {
         .addTo(*innerTracker);
 
     negEndcapDetElems = builder.findDetElementByNamePattern(endcapDetElem.value(), spec.endcapNegOuterFilter);
-    negLayerGrouper   = makeLayerGrouper(spec.endcapNegOuterFilter, "layer_neg");
+    negLayerGrouper   = makeLayerGrouper(spec.endcapNegOuterFilter, fmt::format("{}|layer_neg", spec.endcapContainer));
     builder.layersFromSensors()
         .endcap()
         .setSensorAxes(spec.endcapAxes)
