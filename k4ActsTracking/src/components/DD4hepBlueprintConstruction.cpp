@@ -33,12 +33,14 @@
 
 #include <memory>
 #include <regex>
+#include <stdexcept>
 
 using Acts::Experimental::ContainerBlueprintNode;
 using Acts::Experimental::CylinderContainerBlueprintNode;
 using Acts::Experimental::LayerBlueprintNode;
 
 using AxisDefinition = ActsPlugins::DD4hep::BlueprintBuilder::AxisDefinition;
+using LayerGrouper   = Acts::Experimental::SensorLayerAssembler<ActsPlugins::DD4hep::DD4hepBackend>::LayerGrouper;
 
 using namespace Acts::UnitLiterals;
 using enum Acts::AxisDirection;
@@ -72,6 +74,21 @@ namespace Blueprints {
     return layer;
   }
 
+  template <typename TransformF = std::function<std::string(const std::string&)>>
+  LayerGrouper makeLayerGrouper(
+      std::regex groupRgx, std::string labelBase,
+      TransformF transformMatch = [](const std::string& match) -> std::string { return match; }) {
+    return [=](const auto& e) {
+      std::smatch       match;
+      const std::string elemName = e.name();
+      if (std::regex_match(elemName, match, groupRgx)) {
+        const auto matchgroup = match[1].str();
+        return fmt::format("{}_{}", labelBase, transformMatch(match[1].str()));
+      }
+      throw std::invalid_argument(fmt::format("Could not match regex for grouping layers. DetElem name: {}", elemName));
+    };
+  }
+
   /// Make the Acts volumes for a VertexBarrel detector where the layers are
   /// grouped into double layers such that these double layers end up in one
   /// volume in the Acts geometry.
@@ -101,15 +118,8 @@ namespace Blueprints {
     const auto vtxBarrelDetElem    = builder.findDetElementByName(containerName);
     const auto vtxBarrelLayerElems = builder.findDetElementByNamePattern(vtxBarrelDetElem.value(), layerRgx);
 
-    const auto doubleLayerName = [&](const auto& e) {
-      std::smatch       match;
-      const std::string elemName = e.name();
-      std::regex_match(elemName, match, layerRgx);
-      const auto layer = std::stoi(match[1].str());
-      // We divide the layer number by 2 and let integer division automatially
-      // sort that into the correct double layer
-      return fmt::format("doubleLayer_{}", layer / 2);
-    };
+    const auto doubleLayerName =
+        makeLayerGrouper(layerRgx, "doubleLayer", [](const auto& m) { return std::stoi(m) / 2; });
 
     auto barrelEnvelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {1_mm, 1_mm});
     return builder.layersFromSensors()
@@ -191,8 +201,8 @@ namespace Blueprints {
       .barrelFilter    = std::regex{"layer\\d"},
       .endcapContainer = "OuterTrackerEndcap",
       .endcapAxes      = "YXZ",
-      .endcapPosFilter = std::regex{"layer_pos\\d"},
-      .endcapNegFilter = std::regex{"layer_neg\\d"},
+      .endcapPosFilter = std::regex{"layer_pos(\\d)"},
+      .endcapNegFilter = std::regex{"layer_neg(\\d)"},
   };
 
   const auto InnerTrackerSpec = TrackerSpec{
@@ -201,8 +211,8 @@ namespace Blueprints {
       .barrelFilter    = std::regex{"layer\\d"},
       .endcapContainer = "InnerTrackerEndcap",
       .endcapAxes      = "YXZ",
-      .endcapPosFilter = std::regex{"layer_pos\\d"},
-      .endcapNegFilter = std::regex{"layer_neg\\d"},
+      .endcapPosFilter = std::regex{"layer_pos(\\d)"},
+      .endcapNegFilter = std::regex{"layer_neg(\\d)"},
   };
 
   /// Make the Acts volumes for a regular tracker consisting of a barrel and two
