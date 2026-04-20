@@ -18,7 +18,7 @@
 #
 import pathlib
 
-from Gaudi.Configuration import INFO
+from Gaudi.Configuration import INFO, VERBOSE
 from Configurables import ActsGeoSvc, ApplicationMgr, GeoSvc
 from k4FWCore.parseArgs import parser
 
@@ -31,6 +31,7 @@ dd4hep_geo.detectors = [args.compactFile]
 dd4hep_geo.EnableGeant4Geo = False
 
 acts_geo = ActsGeoSvc("ActsGeoSvc")
+acts_geo.OutputLevel = VERBOSE
 acts_geo.DumpVisualization = True
 acts_geo.ObjVisFileName = f"{pathlib.Path(args.compactFile).stem}-acts-geo.obj"
 
