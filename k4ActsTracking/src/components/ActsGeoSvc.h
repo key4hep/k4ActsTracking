@@ -71,7 +71,6 @@ private:
 
   using BlueprintPopulationFunc = void(const std::string&, Acts::Experimental::Blueprint&, BlueprintBuilder&);
 
-  dd4hep::Detector*                                         m_dd4hepGeo{nullptr};
   SmartIF<IGeoSvc>                                          m_geoSvc;
   std::shared_ptr<const Acts::TrackingGeometry>             m_trackingGeo{nullptr};
   std::shared_ptr<const Acts::MagneticFieldProvider>        m_magneticField{nullptr};
