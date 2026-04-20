@@ -170,6 +170,31 @@ namespace Blueprints {
       .endcapNegFilter = std::regex{"layer(\\d+)_module\\d+_sensor\\d+_neg"},
   };
 
+  /// Make a barrel blueprint node for a generic cylindrical detector.
+  ///
+  /// Uses the pre-grouped layer DetElements directly (via @c layers()), so
+  /// the barrel layers must already be organised into dedicated DetElements
+  /// matching @p spec.barrelFilter inside @p spec.barrelContainer.
+  ///
+  /// @param builder The Blueprint builder that drives the construction
+  /// @param spec    Configuration spec (barrelContainer, barrelAxes,
+  ///                barrelFilter used; endcap fields ignored)
+  ///
+  /// @returns The barrel blueprint node
+  std::shared_ptr<ContainerBlueprintNode> makeBarrel(ActsPlugins::DD4hep::BlueprintBuilder& builder,
+                                                     const TrackerSpec&                     spec) {
+    auto envelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {1_mm, 1_mm});
+    return builder.layers()
+        .barrel()
+        .setSensorAxes(spec.barrelAxes)
+        .setLayerFilter(spec.barrelFilter)
+        .setContainer(spec.barrelContainer)
+        .setEnvelope(envelope)
+        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+        .onLayer(unsetXYCoG)
+        .build();
+  }
+
   /// Attach endcaps to an existing barrel node to form a complete cylindrical
   /// detector node stacked along the z-axis.
   ///
@@ -217,14 +242,15 @@ namespace Blueprints {
   /// dedicated layer DetElements. The function collects all matching sensor
   /// DetElements and groups them into layers internally via @c layersFromSensors.
   ///
-  /// @param builder   The Blueprint builder that drives the construction
-  /// @param vtxBarrel The barrel blueprint node to attach the endcaps to
-  /// @param spec      Endcap configuration (container name, axes, pos/neg filters);
-  ///                  barrel fields of the spec are ignored
+  /// @param builder       The Blueprint builder that drives the construction
+  /// @param barrel        The barrel blueprint node to attach the endcaps to
+  /// @param spec          Endcap configuration (container name, axes, pos/neg filters);
+  ///                      barrel fields of the spec are ignored
+  /// @param containerName Name of the resulting top-level cylinder container node
   std::shared_ptr<CylinderContainerBlueprintNode> attachUngroupedEndcaps(
       ActsPlugins::DD4hep::BlueprintBuilder& builder, std::shared_ptr<ContainerBlueprintNode>&& barrel,
-      const TrackerSpec& spec = UngroupedVertexSpec) {
-    auto node = std::make_shared<Acts::Experimental::CylinderContainerBlueprintNode>("Vertex", AxisZ);
+      const TrackerSpec& spec = UngroupedVertexSpec, const std::string& containerName = "Vertex") {
+    auto node = std::make_shared<Acts::Experimental::CylinderContainerBlueprintNode>(containerName, AxisZ);
     node->addChild(barrel);
 
     auto envelope = Acts::ExtentEnvelope{}.set(AxisZ, {0.5_mm, 0.5_mm}).set(AxisR, {5_mm, 5_mm});
@@ -686,7 +712,6 @@ namespace Blueprints {
 
     negEndcapDetElems = builder.findDetElementByNamePattern(endcapDetElem.value(), spec.endcapNegOuterFilter);
     negLayerGrouper   = makeLayerGrouper(spec.endcapNegOuterFilter, "layer_neg");
-
     builder.layersFromSensors()
         .endcap()
         .setSensorAxes(spec.endcapAxes)
@@ -743,11 +768,14 @@ namespace FCCee {
 
       auto vtxBarrel = Blueprints::makeDoubleLayerVertexBarrel(builder);
       auto vertex    = Blueprints::attachUngroupedEndcaps(builder, std::move(vtxBarrel));
-      outer.addChild(vertex);
 
-      auto innerTracker =
-          Blueprints::makeRegularTrackerUngroupedEndcap(builder, Blueprints::UngroupedInnerTrackerSpec, "InnerTracker");
-      outer.addChild(innerTracker);
+      auto innerTrackerBarrel = Blueprints::makeBarrel(builder, Blueprints::UngroupedInnerTrackerSpec);
+      innerTrackerBarrel->addChild(vertex);
+
+      auto innerTrackerEndcap = Blueprints::attachUngroupedEndcaps(
+          builder, std::move(innerTrackerBarrel), Blueprints::UngroupedInnerTrackerSpec, "InnerTrackerEndcap");
+
+      outer.addChild(innerTrackerEndcap);
     }
   }  // namespace ILD_FCCee_v01
 
