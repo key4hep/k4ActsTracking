@@ -46,6 +46,37 @@ using LayerGrouper   = Acts::Experimental::SensorLayerAssembler<ActsPlugins::DD4
 using namespace Acts::UnitLiterals;
 using enum Acts::AxisDirection;
 
+/// @namespace Blueprints
+///
+/// This namespace contains some commonly used functionality for populating
+/// detector concept blueprints below. Generally the functionality is
+/// implemented according to the needs of the geometries that we try to convert.
+/// Configuration is placed into "Spec" structs that usually contain
+/// - a container name - this is the name of the DD4hep DetElement for a given
+///   subdetector)
+/// - a filter (regex) - this is the regex that will be used to filter out
+///   (layer) DetElements from the subdetector DetElement containing them. These
+///   DetElements will be converted to Acts::Surfaces and will be part of the
+///   converted geometry
+/// - an axis definition - these define the axes directions to use for the
+///   transformation from global to local (or back) coordinate systems. (These
+///   have been largely identified by trial & error so far.
+/// - a layout - this is used to differentiate between DD4hep geometries where
+///   the sensor level DetElements have not been grouped into layer DetElements
+///   (see e.g. https://github.com/key4hep/k4geo/issues/548 and
+///   https://github.com/key4hep/k4geo/issues/550). If the option Ungrouped is
+///   used the grouping of these DetElements into layers is done via the
+///   functionality to do this provided by Acts
+///
+/// These properties are usually available once for the barrel config and
+/// (partially split) for the endcap configuration of a given detector. It is
+/// also possible that it is split even more for (sub)detectors that are nested
+/// inside each other.
+///
+/// In some cases an Ungroued layout is chosen even thoug the DD4hep geometry
+/// has layer DetElements. The most common use case for this is to group two
+/// layers in the DD4hep geometry into a double layer on the Acts side (e.g.
+/// because otherwise the two enclosing cylinders would overlap).
 namespace Blueprints {
   /// Commonly used envelopes for blueprint construction below
   const auto kTrackerEnvelope      = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
@@ -54,6 +85,115 @@ namespace Blueprints {
   const auto kVertexEndcapEnvelope = Acts::ExtentEnvelope{}.set(AxisZ, {1_mm, 1_mm}).set(AxisR, {5_mm, 5_mm});
   const auto kUngroupedVertexEndcapEnvelope =
       Acts::ExtentEnvelope{}.set(AxisZ, {0.5_mm, 0.5_mm}).set(AxisR, {5_mm, 5_mm});
+
+  /// A simple struct to contain the configuration for building a regular
+  /// detector where the barrel and the endcaps can be cleanly stacked along the
+  /// z-axis
+  struct TrackerSpec {
+    enum class Layout { Grouped, Ungrouped };
+    std::string    barrelContainer;  ///< Name of the DetElement containing the barrel
+    AxisDefinition barrelAxes;       ///< The axes directions for the barrel sensors
+    std::regex     barrelFilter;     ///< The layer pattern to filter out barrel layers
+    std::string    endcapContainer;  ///< Name of the DetElement containing the endcaps
+    AxisDefinition endcapAxes;       ///< The axes directions for the endcap sensors
+    std::regex     endcapPosFilter;  ///< The layer pattern to filter out positive endcap layers
+    std::regex     endcapNegFilter;  ///< The layer pattern to filter out negative endcap layers
+    Layout         layout = Layout::Grouped;
+  };
+
+  // Vertex endcap specs reuse TrackerSpec — barrel fields are ignored since the
+  // vertex barrel is always built separately via makeDoubleLayerVertexBarrel.
+  const auto GroupedVertexSpec = TrackerSpec{
+      .barrelContainer = {},
+      .barrelAxes      = "XYZ",
+      .barrelFilter    = {},
+      .endcapContainer = "VertexEndcap",
+      .endcapAxes      = "XZY",
+      .endcapPosFilter = std::regex{"layer_pos\\d+"},
+      .endcapNegFilter = std::regex{"layer_neg\\d+"},
+  };
+
+  const auto UngroupedVertexSpec = TrackerSpec{
+      .barrelContainer = {},
+      .barrelAxes      = "XYZ",
+      .barrelFilter    = {},
+      .endcapContainer = "VertexEndcap",
+      .endcapAxes      = "XZY",
+      .endcapPosFilter = std::regex{"layer(\\d+)_module\\d+_sensor\\d+_pos"},
+      .endcapNegFilter = std::regex{"layer(\\d+)_module\\d+_sensor\\d+_neg"},
+      .layout          = TrackerSpec::Layout::Ungrouped,
+  };
+
+  const auto OuterTrackerSpec = TrackerSpec{
+      .barrelContainer = "OuterTrackerBarrel",
+      .barrelAxes      = "XYZ",
+      .barrelFilter    = std::regex{"layer\\d"},
+      .endcapContainer = "OuterTrackerEndcap",
+      .endcapAxes      = "YXZ",
+      .endcapPosFilter = std::regex{"layer_pos(\\d)"},
+      .endcapNegFilter = std::regex{"layer_neg(\\d)"},
+  };
+
+  const auto UngroupedOuterTrackerSpec = TrackerSpec{
+      .barrelContainer = "OuterTrackerBarrel",
+      .barrelAxes      = "XYZ",
+      .barrelFilter    = std::regex{"layer\\d"},
+      .endcapContainer = "OuterTrackerEndcap",
+      .endcapAxes      = "YXZ",
+      .endcapPosFilter = std::regex{"layer(\\d+)_module\\d+_sensor\\d+_pos"},
+      .endcapNegFilter = std::regex{"layer(\\d+)_module\\d+_sensor\\d+_neg"},
+      .layout          = TrackerSpec::Layout::Ungrouped,
+  };
+
+  const auto UngroupedInnerTrackerSpec = TrackerSpec{
+      .barrelContainer = "InnerTrackerBarrel",
+      .barrelAxes      = "XYZ",
+      .barrelFilter    = std::regex{"layer\\d"},
+      .endcapContainer = "InnerTrackerEndcap",
+      .endcapAxes      = "YXZ",
+      .endcapPosFilter = std::regex{"layer(\\d+)_module\\d+_sensor\\d+_pos"},
+      .endcapNegFilter = std::regex{"layer(\\d+)_module\\d+_sensor\\d+_neg"},
+      .layout          = TrackerSpec::Layout::Ungrouped,
+  };
+
+  /// A simple struct to hold configuration to build a tracker that is nested
+  /// such that a simple stacking in z does not work.
+  struct NestedInnerTrackerSpec {
+    std::string    barrelContainer{"InnerTrackerBarrel"};    ///< Name of the DetElement containing the barrel
+    AxisDefinition barrelAxes{"XYZ"};                        ///< The axes directions for the barrel sensors
+    std::regex barrelInnerFilter = std::regex{"layer[01]"};  ///< The layer pattern to filter the inner barrel layers
+                                                             ///< that enclose the vertex detector
+    std::regex barrelOuterFilter = std::regex{"layer2"};     ///< The layer pattern to filter the outer barrel
+                                                             ///< layer(s) stacked around the inner barrel
+    std::string    endcapContainer{"InnerTrackerEndcap"};    ///< Name of the DetElement containing the endcaps
+    AxisDefinition endcapAxes{"YXZ"};                        ///< The axes directions for the endcap sensors
+    std::regex     endcapPosInnerFilter = std::regex{"layer_pos0"};  ///< The layer pattern to filter the innermost
+                                                                     ///< positive endcap layers that protrude into
+                                                                     ///< the barrel radial envelope
+    std::regex endcapPosOuterFilter = std::regex{"layer_pos[1-6]"};  ///< The layer pattern to filter the outer
+                                                                     ///< positive endcap layers
+    std::regex endcapNegInnerFilter = std::regex{"layer_neg0"};      ///< The layer pattern to filter the innermost
+                                                                     ///< negative endcap layers that protrude into
+                                                                     ///< the barrel radial envelope
+    std::regex endcapNegOuterFilter = std::regex{"layer_neg[1-6]"};  ///< The layer pattern to filter the outer
+                                                                     ///< negative endcap layers
+    enum class Layout { Grouped, Ungrouped };
+    Layout layout = Layout::Grouped;
+  };
+
+  const auto UngroupedNestedInnerTrackerSpec = NestedInnerTrackerSpec{
+      .barrelContainer      = "InnerTrackerBarrel",
+      .barrelAxes           = "XYZ",
+      .barrelInnerFilter    = std::regex{"layer[01]"},
+      .barrelOuterFilter    = std::regex{"layer2"},
+      .endcapContainer      = "InnerTrackerEndcap",
+      .endcapAxes           = "YXZ",
+      .endcapPosInnerFilter = std::regex{"layer(0)_module\\d+_sensor\\d+_pos"},
+      .endcapPosOuterFilter = std::regex{"layer([1-6])_module\\d+_sensor\\d+_pos"},
+      .endcapNegInnerFilter = std::regex{"layer(0)_module\\d+_sensor\\d+_neg"},
+      .endcapNegOuterFilter = std::regex{"layer([1-6])_module\\d+_sensor\\d+_neg"},
+      .layout               = NestedInnerTrackerSpec::Layout::Ungrouped,
+  };
 
   /// Add a cylindrical beampipe to the passed node using the measures passed as arguments.
   ///
@@ -95,6 +235,8 @@ namespace Blueprints {
   /// @param labelBase     Prefix for the resulting group label
   /// @param transformMatch Optional transform applied to capture group 1 before
   ///                       appending to @p labelBase (default: identity)
+  ///
+  /// @returns a closure (lambda) object that can be passed to groupBy
   template <typename TransformF = std::function<std::string(const std::string&)>>
   LayerGrouper makeLayerGrouper(
       std::regex groupRgx, std::string labelBase,
@@ -212,44 +354,6 @@ namespace Blueprints {
         .build();
   }
 
-  /// A simple struct to contain the configuration for building a regular
-  /// detector where the barrel and the endcaps can be cleanly stacked along the
-  /// z-axis
-  struct TrackerSpec {
-    enum class Layout { Grouped, Ungrouped };
-    std::string    barrelContainer;  ///< Name of the DetElement containing the barrel
-    AxisDefinition barrelAxes;       ///< The axes directions for the barrel sensors
-    std::regex     barrelFilter;     ///< The layer pattern to filter out barrel layers
-    std::string    endcapContainer;  ///< Name of the DetElement containing the endcaps
-    AxisDefinition endcapAxes;       ///< The axes directions for the endcap sensors
-    std::regex     endcapPosFilter;  ///< The layer pattern to filter out positive endcap layers
-    std::regex     endcapNegFilter;  ///< The layer pattern to filter out negative endcap layers
-    Layout         layout = Layout::Grouped;
-  };
-
-  // Vertex endcap specs reuse TrackerSpec — barrel fields are ignored since the
-  // vertex barrel is always built separately via makeDoubleLayerVertexBarrel.
-  const auto GroupedVertexSpec = TrackerSpec{
-      .barrelContainer = {},
-      .barrelAxes      = "XYZ",
-      .barrelFilter    = {},
-      .endcapContainer = "VertexEndcap",
-      .endcapAxes      = "XZY",
-      .endcapPosFilter = std::regex{"layer_pos\\d+"},
-      .endcapNegFilter = std::regex{"layer_neg\\d+"},
-  };
-
-  const auto UngroupedVertexSpec = TrackerSpec{
-      .barrelContainer = {},
-      .barrelAxes      = "XYZ",
-      .barrelFilter    = {},
-      .endcapContainer = "VertexEndcap",
-      .endcapAxes      = "XZY",
-      .endcapPosFilter = std::regex{"layer(\\d+)_module\\d+_sensor\\d+_pos"},
-      .endcapNegFilter = std::regex{"layer(\\d+)_module\\d+_sensor\\d+_neg"},
-      .layout          = TrackerSpec::Layout::Ungrouped,
-  };
-
   /// Make a barrel blueprint node for a generic cylindrical detector.
   ///
   /// Uses the pre-grouped layer DetElements directly (via @c layers()), so
@@ -312,38 +416,6 @@ namespace Blueprints {
     return node;
   }
 
-  const auto OuterTrackerSpec = TrackerSpec{
-      .barrelContainer = "OuterTrackerBarrel",
-      .barrelAxes      = "XYZ",
-      .barrelFilter    = std::regex{"layer\\d"},
-      .endcapContainer = "OuterTrackerEndcap",
-      .endcapAxes      = "YXZ",
-      .endcapPosFilter = std::regex{"layer_pos(\\d)"},
-      .endcapNegFilter = std::regex{"layer_neg(\\d)"},
-  };
-
-  const auto UngroupedOuterTrackerSpec = TrackerSpec{
-      .barrelContainer = "OuterTrackerBarrel",
-      .barrelAxes      = "XYZ",
-      .barrelFilter    = std::regex{"layer\\d"},
-      .endcapContainer = "OuterTrackerEndcap",
-      .endcapAxes      = "YXZ",
-      .endcapPosFilter = std::regex{"layer(\\d+)_module\\d+_sensor\\d+_pos"},
-      .endcapNegFilter = std::regex{"layer(\\d+)_module\\d+_sensor\\d+_neg"},
-      .layout          = TrackerSpec::Layout::Ungrouped,
-  };
-
-  const auto UngroupedInnerTrackerSpec = TrackerSpec{
-      .barrelContainer = "InnerTrackerBarrel",
-      .barrelAxes      = "XYZ",
-      .barrelFilter    = std::regex{"layer\\d"},
-      .endcapContainer = "InnerTrackerEndcap",
-      .endcapAxes      = "YXZ",
-      .endcapPosFilter = std::regex{"layer(\\d+)_module\\d+_sensor\\d+_pos"},
-      .endcapNegFilter = std::regex{"layer(\\d+)_module\\d+_sensor\\d+_neg"},
-      .layout          = TrackerSpec::Layout::Ungrouped,
-  };
-
   /// Make the Acts volumes for a regular tracker consisting of a barrel and two
   /// endcaps that can be cleanly stacked along the z-axis without nesting.
   ///
@@ -386,45 +458,6 @@ namespace Blueprints {
     }
     return tracker;
   }
-
-  /// A simple struct to hold configuration to build a tracker that is nested
-  /// such that a simple stacking in z does not work.
-  struct NestedInnerTrackerSpec {
-    std::string    barrelContainer{"InnerTrackerBarrel"};    ///< Name of the DetElement containing the barrel
-    AxisDefinition barrelAxes{"XYZ"};                        ///< The axes directions for the barrel sensors
-    std::regex barrelInnerFilter = std::regex{"layer[01]"};  ///< The layer pattern to filter the inner barrel layers
-                                                             ///< that enclose the vertex detector
-    std::regex barrelOuterFilter = std::regex{"layer2"};     ///< The layer pattern to filter the outer barrel
-                                                             ///< layer(s) stacked around the inner barrel
-    std::string    endcapContainer{"InnerTrackerEndcap"};    ///< Name of the DetElement containing the endcaps
-    AxisDefinition endcapAxes{"YXZ"};                        ///< The axes directions for the endcap sensors
-    std::regex     endcapPosInnerFilter = std::regex{"layer_pos0"};  ///< The layer pattern to filter the innermost
-                                                                     ///< positive endcap layers that protrude into
-                                                                     ///< the barrel radial envelope
-    std::regex endcapPosOuterFilter = std::regex{"layer_pos[1-6]"};  ///< The layer pattern to filter the outer
-                                                                     ///< positive endcap layers
-    std::regex endcapNegInnerFilter = std::regex{"layer_neg0"};      ///< The layer pattern to filter the innermost
-                                                                     ///< negative endcap layers that protrude into
-                                                                     ///< the barrel radial envelope
-    std::regex endcapNegOuterFilter = std::regex{"layer_neg[1-6]"};  ///< The layer pattern to filter the outer
-                                                                     ///< negative endcap layers
-    enum class Layout { Grouped, Ungrouped };
-    Layout layout = Layout::Grouped;
-  };
-
-  const auto UngroupedNestedInnerTrackerSpec = NestedInnerTrackerSpec{
-      .barrelContainer      = "InnerTrackerBarrel",
-      .barrelAxes           = "XYZ",
-      .barrelInnerFilter    = std::regex{"layer[01]"},
-      .barrelOuterFilter    = std::regex{"layer2"},
-      .endcapContainer      = "InnerTrackerEndcap",
-      .endcapAxes           = "YXZ",
-      .endcapPosInnerFilter = std::regex{"layer(0)_module\\d+_sensor\\d+_pos"},
-      .endcapPosOuterFilter = std::regex{"layer([1-6])_module\\d+_sensor\\d+_pos"},
-      .endcapNegInnerFilter = std::regex{"layer(0)_module\\d+_sensor\\d+_neg"},
-      .endcapNegOuterFilter = std::regex{"layer([1-6])_module\\d+_sensor\\d+_neg"},
-      .layout               = NestedInnerTrackerSpec::Layout::Ungrouped,
-  };
 
   /// Make a nested inner tracker that encloses the vertex.
   ///
