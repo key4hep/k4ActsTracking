@@ -17,6 +17,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+
 # Options file for the Gen3-geometry CKF tracking algorithm (CKFTrackingAlg).
 # Uses ActsGeoSvc for geometry, magnetic field, and hit-to-surface mapping,
 # instead of the algorithm-level TGeo file loading used by ACTSSeededCKFTrackingAlg.
