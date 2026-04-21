@@ -71,24 +71,12 @@ add_test(NAME sim_MAIA
                 --gun.momentumMax 500000
 )
 
-# Setup test dependencies such that they are run in the right order always
 set_tests_properties(
   sim_MAIA
   PROPERTIES
     FIXTURES_SETUP sim_maia_fixture
 )
 
-add_test(NAME reco_MAIA
-  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-  COMMAND k4run ${CMAKE_CURRENT_LIST_DIR}/options/MAIA_CKF_Tracking.py
-          --compactFile=$ENV{k4geo_DIR}/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml
-          --trackingGeoFile=${CMAKE_CURRENT_LIST_DIR}/../data/MAIA_v0.root
-          --geoDescFile=${CMAKE_CURRENT_LIST_DIR}/../data/MAIA_v0.json
-          --materialFile=${CMAKE_CURRENT_LIST_DIR}/../data/MAIA_v0_material.json
-)
-set_test_env(reco_MAIA)
-
-# Gen3 geometry path: CKFTrackingAlg driven by ActsGeoSvc
 add_test(NAME reco_MAIA_Gen3
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
   COMMAND k4run ${CMAKE_CURRENT_LIST_DIR}/options/MAIA_CKFTrackingAlg.py
@@ -97,7 +85,6 @@ add_test(NAME reco_MAIA_Gen3
 set_test_env(reco_MAIA_Gen3)
 
 set_tests_properties(
-  reco_MAIA
   reco_MAIA_Gen3
 
   PROPERTIES
