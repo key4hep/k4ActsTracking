@@ -614,6 +614,10 @@ namespace FCCee {
                                                           Blueprints::UngroupedInnerTrackerSpec, "InnerTrackerEndcap");
       outer.addChild(innerTrackerEndcap);
 
+      // TODO: this is not yet properly working only part of the SET show up in
+      // the exporte .obj geometry. This usually indicates some issues with the
+      // AxisDirection, but that would mean that there are different
+      // AxisDirections in play for the SET geometry
       auto set =
           Blueprints::makeBarrel(builder, Blueprints::SETSpec, Blueprints::kBarrelEnvelope, Blueprints::doubleLayerKey);
       outer.addChild(set);
@@ -634,6 +638,8 @@ namespace FCCee {
       auto innerTracker =
           Blueprints::makeNestedInnerTracker(builder, std::move(vertex), Blueprints::UngroupedNestedInnerTrackerSpec);
       outer.addChild(innerTracker);
+
+      // TODO: Add SET (see V01 for caveats)
     }
   }  // namespace ILD_FCCee_v02
 
