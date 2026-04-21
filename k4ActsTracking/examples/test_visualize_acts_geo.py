@@ -50,11 +50,11 @@ actsGeoSvc.OutputLevel = VERBOSE
 
 alg_list = []
 
-# if args.test_propagation:
-#     propTest = ActsTestPropagator("TestPropagator")
-#     propTest.OutputLevel = DEBUG
-#     propTest.NumTracks = 100
-#     alg_list.append(propTest)
+if args.test_propagation:
+    propTest = ActsTestPropagator("TestPropagator")
+    propTest.OutputLevel = DEBUG
+    propTest.NumTracks = 100
+    alg_list.append(propTest)
 
 ApplicationMgr(
     TopAlg=alg_list,
