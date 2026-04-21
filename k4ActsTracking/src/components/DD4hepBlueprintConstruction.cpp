@@ -83,6 +83,18 @@ namespace Blueprints {
     return layer;
   }
 
+  /// Build a LayerGrouper that assigns sensor DetElements to named layer groups.
+  ///
+  /// The returned callable matches each DetElement name against @p groupRgx.
+  /// Capture group 1 is extracted, optionally transformed by @p transformMatch,
+  /// and appended to @p labelBase to form the group key
+  /// (e.g. `"VertexBarrel|doubleLayer_0"`).  Throws if the name does not match.
+  ///
+  /// @param groupRgx      Regex with exactly one capture group selecting the
+  ///                      layer index or identifier within the element name
+  /// @param labelBase     Prefix for the resulting group label
+  /// @param transformMatch Optional transform applied to capture group 1 before
+  ///                       appending to @p labelBase (default: identity)
   template <typename TransformF = std::function<std::string(const std::string&)>>
   LayerGrouper makeLayerGrouper(
       std::regex groupRgx, std::string labelBase,
@@ -98,6 +110,18 @@ namespace Blueprints {
     };
   }
 
+  /// Add one endcap side to @p parent using pre-grouped layer DetElements.
+  ///
+  /// Delegates to @c builder.layers().endcap(), which requires the layers to
+  /// already be organised into dedicated DetElements matched by @p filter
+  /// inside @p container.
+  ///
+  /// @param builder   Blueprint builder driving the construction
+  /// @param parent    Node to attach the endcap side to
+  /// @param container Name of the DetElement that contains the endcap layers
+  /// @param filter    Regex selecting the relevant layer DetElements
+  /// @param axes      Sensor coordinate axes for this endcap side
+  /// @param envelope  Extent envelope applied to the resulting volume
   void addGroupedEndcapSide(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::Experimental::BlueprintNode& parent,
                             const std::string& container, const std::regex& filter, AxisDefinition axes,
                             const Acts::ExtentEnvelope& envelope) {
@@ -111,6 +135,23 @@ namespace Blueprints {
         .addTo(parent);
   }
 
+  /// Add one endcap side to @p parent by collecting sensor DetElements and
+  /// grouping them into layers via @c builder.layersFromSensors().
+  ///
+  /// Use this when sensors have not been placed into dedicated layer
+  /// DetElements.  The grouper is built with @p labelPrefix as the label base
+  /// and @p keyXform to convert capture group 1 of @p filter to a group key.
+  ///
+  /// @param builder     Blueprint builder driving the construction
+  /// @param parent      Node to attach the endcap side to
+  /// @param container   Name of the DetElement that contains the sensors
+  /// @param filter      Regex selecting sensor DetElements; capture group 1
+  ///                    is used as the layer discriminator
+  /// @param axes        Sensor coordinate axes for this endcap side
+  /// @param labelPrefix Prefix passed to @c makeLayerGrouper as the label base
+  /// @param envelope    Extent envelope applied to the resulting volume
+  /// @param keyXform    Transform applied to capture group 1 to derive the
+  ///                    group key (default: identity)
   void addUngroupedEndcapSide(
       ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::Experimental::BlueprintNode& parent,
       const std::string& container, const std::regex& filter, AxisDefinition axes, const std::string& labelPrefix,
