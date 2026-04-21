@@ -106,29 +106,26 @@ namespace Blueprints {
     Layout         barrelLayout = Layout::Grouped;  ///< The layout for barrel construction
   };
 
-  // Vertex endcap specs reuse TrackerSpec — barrel fields are ignored since the
-  // vertex barrel is always built separately via makeDoubleLayerBarrel.
   const auto DoubleBarrelLayerVertexSpec = TrackerSpec{
       .barrelContainer = "VertexBarrel",
-      .barrelAxes      = "XYZ",
-      .barrelFilter    = std::regex{"layer(\\d+)"},
+      .barrelAxes      = "ZYX",
+      .barrelFilter    = std::regex{"layer_\\d+"},
       .endcapContainer = "VertexEndcap",
       .endcapAxes      = "XZY",
       .endcapPosFilter = std::regex{"layer_pos\\d+"},
       .endcapNegFilter = std::regex{"layer_neg\\d+"},
-      .endcapLayout    = Layout::Grouped,
-      .barrelLayout    = Layout::Ungrouped,  // need to group double layers ourselves
   };
 
   const auto UngroupedDoubleBarrelLayerVertexSpec = TrackerSpec{
       .barrelContainer = "VertexBarrel",
-      .barrelAxes      = "XYZ",
-      .barrelFilter    = {},
+      .barrelAxes      = "ZYX",
+      .barrelFilter    = std::regex{"VertexBarrel_layer(\\d)_ladder\\d+"},
       .endcapContainer = "VertexEndcap",
       .endcapAxes      = "XZY",
       .endcapPosFilter = std::regex{"layer(\\d+)_module\\d+_sensor\\d+_pos"},
       .endcapNegFilter = std::regex{"layer(\\d+)_module\\d+_sensor\\d+_neg"},
       .endcapLayout    = Layout::Ungrouped,
+      .barrelLayout    = Layout::Ungrouped,
   };
 
   const auto OuterTrackerSpec = TrackerSpec{
