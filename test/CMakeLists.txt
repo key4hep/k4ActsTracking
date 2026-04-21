@@ -42,8 +42,10 @@ function(add_geometry_load_test _compact_file)
   get_filename_component(_name "${_compact_file}" NAME_WE)
   add_test(NAME load_geo_${_name}
            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-           COMMAND k4run ${CMAKE_CURRENT_SOURCE_DIR}/options/load_geometry.py
-                   --compactFile "${_compact_file}")
+           COMMAND k4run ${PROJECT_SOURCE_DIR}/k4ActsTracking/examples/test_visualize_acts_geo.py
+                   --compactFile "${_compact_file}"
+                   --test-propagation
+                 )
   set_test_env(load_geo_${_name})
 endfunction()
 

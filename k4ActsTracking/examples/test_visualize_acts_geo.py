@@ -18,35 +18,46 @@
 # limitations under the License.
 #
 
-from Gaudi.Configuration import VERBOSE, DEBUG
+import pathlib
+
+from Gaudi.Configuration import DEBUG, VERBOSE
 
 from Configurables import ActsGeoSvc, GeoSvc, ActsTestPropagator, EventDataSvc
 from k4FWCore import ApplicationMgr, IOSvc
 from k4FWCore.parseArgs import parser
 
 parser.add_argument("--compactFile", help="Compact file")
+parser.add_argument(
+    "--test-propagation",
+    help="Test propagation through the geometry using an ACTS particle gun",
+    action="store_true",
+    default=False,
+)
 
 args = parser.parse_known_args()[0]
 
 iosvc = IOSvc()
-iosvc.Output = "steps.root"
+if args.test_propagation:
+    iosvc.Output = "steps.root"
 
 geoSvc = GeoSvc()
 geoSvc.detectors = [args.compactFile]
 
 actsGeoSvc = ActsGeoSvc("ActsGeoSvc")
 actsGeoSvc.DumpVisualization = True
-actsGeoSvc.ObjVisFileName = "full_mucoll_old_vertex_endcap.obj"
-actsGeoSvc.OutputLevel = DEBUG
+actsGeoSvc.ObjVisFileName = f"{pathlib.Path(args.compactFile).stem}-acts-geo.obj"
+actsGeoSvc.OutputLevel = VERBOSE
 
-propTest = ActsTestPropagator("TestPropagator")
-propTest.OutputLevel = DEBUG
-propTest.NumTracks = 20000
+alg_list = []
 
+if args.test_propagation:
+    propTest = ActsTestPropagator("TestPropagator")
+    propTest.OutputLevel = DEBUG
+    propTest.NumTracks = 100
+    alg_list.append(propTest)
 
 ApplicationMgr(
-    TopAlg=[],
-    # TopAlg=[],
+    TopAlg=alg_list,
     ExtSvc=[geoSvc, actsGeoSvc, EventDataSvc()],
     EvtMax=1,
     EvtSel="NONE",
