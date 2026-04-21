@@ -38,7 +38,7 @@ args = parser.parse_known_args()[0]
 
 iosvc = IOSvc()
 if args.test_propagation:
-    iosvc.Output = "steps.root"
+    iosvc.Output = f"{pathlib.Path(args.compactFile).stem}-steps.root"
 
 geoSvc = GeoSvc()
 geoSvc.detectors = [args.compactFile]
@@ -50,11 +50,11 @@ actsGeoSvc.OutputLevel = VERBOSE
 
 alg_list = []
 
-if args.test_propagation:
-    propTest = ActsTestPropagator("TestPropagator")
-    propTest.OutputLevel = DEBUG
-    propTest.NumTracks = 100
-    alg_list.append(propTest)
+# if args.test_propagation:
+#     propTest = ActsTestPropagator("TestPropagator")
+#     propTest.OutputLevel = DEBUG
+#     propTest.NumTracks = 100
+#     alg_list.append(propTest)
 
 ApplicationMgr(
     TopAlg=alg_list,
