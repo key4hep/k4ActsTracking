@@ -90,34 +90,31 @@ namespace Blueprints {
     };
   }
 
-  /// Make the Acts volumes for a VertexBarrel detector where the layers are
-  /// grouped into double layers such that these double layers end up in one
-  /// volume in the Acts geometry.
+  /// Make the Acts volumes for a barrel detector where sensors are grouped into
+  /// double layers, each double layer ending up in one volume in the Acts geometry.
   ///
-  /// This might be necessary in case the spacing between double layers is too
-  /// small to have cylinder shells that do not overlap
+  /// Use this when sensors are not placed into dedicated layer DetElements and
+  /// the spacing between adjacent layers is too small for non-overlapping
+  /// cylinder shells if each layer were its own volume.
   ///
   /// @param builder       The Blueprint builder that drives the construction
-  /// @param containerName The detector name in which all the sensitive elements
-  ///                      are placed
-  /// @param layerRgx      The match expression to filter out the sensitive
-  ///                      elements. @note that these should not be the
-  ///                      "top-level" layer DetElements, but rather the
-  ///                      ladders. @note This needs to contain exactly one
-  ///                      matching group which has to be convertible to int as
-  ///                      that is what will be used for grouping them into
-  ///                      double layers
+  /// @param containerName The name of the DetElement containing the sensors
+  /// @param layerRgx      Regex to select sensor DetElements. Must not match
+  ///                      top-level layer DetElements but the individual sensors
+  ///                      (e.g. ladders). Must contain exactly one capture group
+  ///                      whose value is convertible to int — adjacent pairs
+  ///                      (floor(n/2)) are merged into a single double layer.
   ///
-  /// @returns The vertex barrel blueprint node
-  std::shared_ptr<ContainerBlueprintNode> makeDoubleLayerVertexBarrel(ActsPlugins::DD4hep::BlueprintBuilder& builder,
-                                                                      const std::string& containerName = "VertexBarrel",
-                                                                      const std::regex&  layerRgx      = std::regex{
-                                                                          "VertexBarrel_layer(\\d)_ladder\\d+"}) {
+  /// @returns The barrel blueprint node
+  std::shared_ptr<ContainerBlueprintNode> makeDoubleLayerBarrel(ActsPlugins::DD4hep::BlueprintBuilder& builder,
+                                                                const std::string& containerName = "VertexBarrel",
+                                                                const std::regex&  layerRgx      = std::regex{
+                                                                    "VertexBarrel_layer(\\d)_ladder\\d+"}) {
     // Vertex Barrel has a double layer gap of only 1 mm. This makes it
     // (almost) impossible to fit them into mutually exclusive cylinder shell
     // volumes. Hence, we make each double layer an Acts layer / volume.
-    const auto vtxBarrelDetElem    = builder.findDetElementByName(containerName);
-    const auto vtxBarrelLayerElems = builder.findDetElementByNamePattern(vtxBarrelDetElem.value(), layerRgx);
+    const auto barrelDetElem    = builder.findDetElementByName(containerName);
+    const auto barrelLayerElems = builder.findDetElementByNamePattern(barrelDetElem.value(), layerRgx);
 
     const auto doubleLayerName = makeLayerGrouper(layerRgx, fmt::format("{}|doubleLayer", containerName),
                                                   [](const auto& m) { return std::stoi(m) / 2; });
@@ -128,7 +125,7 @@ namespace Blueprints {
         .setEnvelope(barrelEnvelope)
         .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
         .setSensorAxes("ZYX")
-        .setSensors(std::move(vtxBarrelLayerElems))
+        .setSensors(std::move(barrelLayerElems))
         .groupBy(doubleLayerName)
         .setContainerName(containerName)
         .onLayer(unsetXYCoG)
@@ -772,7 +769,7 @@ namespace FCCee {
 
       Blueprints::addCylindricalBeampipe(outer);
 
-      auto vtxBarrel = Blueprints::makeDoubleLayerVertexBarrel(builder);
+      auto vtxBarrel = Blueprints::makeDoubleLayerBarrel(builder);
       auto vertex    = Blueprints::attachUngroupedEndcaps(builder, std::move(vtxBarrel));
 
       auto innerTrackerBarrel = Blueprints::makeBarrel(builder, Blueprints::UngroupedInnerTrackerSpec);
@@ -780,8 +777,10 @@ namespace FCCee {
 
       auto innerTrackerEndcap = Blueprints::attachUngroupedEndcaps(
           builder, std::move(innerTrackerBarrel), Blueprints::UngroupedInnerTrackerSpec, "InnerTrackerEndcap");
-
       outer.addChild(innerTrackerEndcap);
+
+      auto set = Blueprints::makeDoubleLayerBarrel(builder, "SET", std::regex{"set_ladder_(\\d)_\\d_\\d+"});
+      outer.addChild(set);
     }
   }  // namespace ILD_FCCee_v01
 
@@ -791,7 +790,7 @@ namespace FCCee {
       auto& outer = root.addCylinderContainer(detName, AxisR);
 
       Blueprints::addCylindricalBeampipe(outer);
-      auto vtxBarrel = Blueprints::makeDoubleLayerVertexBarrel(builder);
+      auto vtxBarrel = Blueprints::makeDoubleLayerBarrel(builder);
       auto vertex    = Blueprints::attachUngroupedEndcaps(builder, std::move(vtxBarrel));
 
       auto innerTracker = Blueprints::makeNestedInnerTrackerUngroupedEndcaps(builder, std::move(vertex));
@@ -804,7 +803,7 @@ namespace FCCee {
                            ActsPlugins::DD4hep::BlueprintBuilder& builder) {
       auto& outer = root.addCylinderContainer(detName, AxisR);
       Blueprints::addCylindricalBeampipe(outer);
-      auto vtxBarrel = Blueprints::makeDoubleLayerVertexBarrel(builder);
+      auto vtxBarrel = Blueprints::makeDoubleLayerBarrel(builder);
       auto vertex    = Blueprints::attachUngroupedEndcaps(builder, std::move(vtxBarrel));
 
       auto innerTracker = Blueprints::makeNestedInnerTrackerUngroupedEndcaps(builder, std::move(vertex));
