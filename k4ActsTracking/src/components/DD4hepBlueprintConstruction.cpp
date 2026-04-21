@@ -47,6 +47,14 @@ using namespace Acts::UnitLiterals;
 using enum Acts::AxisDirection;
 
 namespace Blueprints {
+  /// Commonly used envelopes for blueprint construction below
+  const auto kTrackerEnvelope      = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
+  const auto kBarrelEnvelope       = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {1_mm, 1_mm});
+  const auto kTightBarrelEnvelope  = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {0.4_mm, 0.4_mm});
+  const auto kVertexEndcapEnvelope = Acts::ExtentEnvelope{}.set(AxisZ, {1_mm, 1_mm}).set(AxisR, {5_mm, 5_mm});
+  const auto kUngroupedVertexEndcapEnvelope =
+      Acts::ExtentEnvelope{}.set(AxisZ, {0.5_mm, 0.5_mm}).set(AxisR, {5_mm, 5_mm});
+
   /// Add a cylindrical beampipe to the passed node using the measures passed as arguments.
   ///
   /// We use this to enclose our actual beampipe because that is not a sipmle
@@ -90,6 +98,38 @@ namespace Blueprints {
     };
   }
 
+  void addGroupedEndcapSide(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::Experimental::BlueprintNode& parent,
+                            const std::string& container, const std::regex& filter, AxisDefinition axes,
+                            const Acts::ExtentEnvelope& envelope) {
+    builder.layers()
+        .endcap()
+        .setSensorAxes(std::move(axes))
+        .setContainer(container)
+        .setLayerFilter(filter)
+        .setEnvelope(envelope)
+        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+        .addTo(parent);
+  }
+
+  void addUngroupedEndcapSide(
+      ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::Experimental::BlueprintNode& parent,
+      const std::string& container, const std::regex& filter, AxisDefinition axes, const std::string& labelPrefix,
+      const Acts::ExtentEnvelope&                    envelope,
+      std::function<std::string(const std::string&)> keyXform = [](const std::string& m) { return m; }) {
+    const auto detElem = builder.findDetElementByName(container);
+    auto       sensors = builder.findDetElementByNamePattern(detElem.value(), filter);
+    auto       grouper = makeLayerGrouper(filter, labelPrefix, std::move(keyXform));
+    builder.layersFromSensors()
+        .endcap()
+        .setSensorAxes(std::move(axes))
+        .setContainerName(container)
+        .setSensors(std::move(sensors))
+        .groupBy(std::move(grouper))
+        .setEnvelope(envelope)
+        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+        .addTo(parent);
+  }
+
   /// Make the Acts volumes for a barrel detector where sensors are grouped into
   /// double layers, each double layer ending up in one volume in the Acts geometry.
   ///
@@ -119,10 +159,9 @@ namespace Blueprints {
     const auto doubleLayerName = makeLayerGrouper(layerRgx, fmt::format("{}|doubleLayer", containerName),
                                                   [](const auto& m) { return std::stoi(m) / 2; });
 
-    auto barrelEnvelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {1_mm, 1_mm});
     return builder.layersFromSensors()
         .barrel()
-        .setEnvelope(barrelEnvelope)
+        .setEnvelope(kBarrelEnvelope)
         .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
         .setSensorAxes("ZYX")
         .setSensors(std::move(barrelLayerElems))
@@ -136,6 +175,7 @@ namespace Blueprints {
   /// detector where the barrel and the endcaps can be cleanly stacked along the
   /// z-axis
   struct TrackerSpec {
+    enum class Layout { Grouped, Ungrouped };
     std::string    barrelContainer;  ///< Name of the DetElement containing the barrel
     AxisDefinition barrelAxes;       ///< The axes directions for the barrel sensors
     std::regex     barrelFilter;     ///< The layer pattern to filter out barrel layers
@@ -143,6 +183,7 @@ namespace Blueprints {
     AxisDefinition endcapAxes;       ///< The axes directions for the endcap sensors
     std::regex     endcapPosFilter;  ///< The layer pattern to filter out positive endcap layers
     std::regex     endcapNegFilter;  ///< The layer pattern to filter out negative endcap layers
+    Layout         layout = Layout::Grouped;
   };
 
   // Vertex endcap specs reuse TrackerSpec — barrel fields are ignored since the
@@ -165,6 +206,7 @@ namespace Blueprints {
       .endcapAxes      = "XZY",
       .endcapPosFilter = std::regex{"layer(\\d+)_module\\d+_sensor\\d+_pos"},
       .endcapNegFilter = std::regex{"layer(\\d+)_module\\d+_sensor\\d+_neg"},
+      .layout          = TrackerSpec::Layout::Ungrouped,
   };
 
   /// Make a barrel blueprint node for a generic cylindrical detector.
@@ -180,13 +222,12 @@ namespace Blueprints {
   /// @returns The barrel blueprint node
   std::shared_ptr<ContainerBlueprintNode> makeBarrel(ActsPlugins::DD4hep::BlueprintBuilder& builder,
                                                      const TrackerSpec&                     spec) {
-    auto envelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {1_mm, 1_mm});
     return builder.layers()
         .barrel()
         .setSensorAxes(spec.barrelAxes)
         .setLayerFilter(spec.barrelFilter)
         .setContainer(spec.barrelContainer)
-        .setEnvelope(envelope)
+        .setEnvelope(kBarrelEnvelope)
         .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
         .onLayer(unsetXYCoG)
         .build();
@@ -195,94 +236,38 @@ namespace Blueprints {
   /// Attach endcaps to an existing barrel node to form a complete cylindrical
   /// detector node stacked along the z-axis.
   ///
-  /// The layers must already be organised into dedicated DetElements so that
-  /// @c builder.layers() can pick them up directly via the filter patterns in
-  /// @p spec.
-  ///
-  /// @param builder The Blueprint builder that drives the construction
-  /// @param barrel  The barrel blueprint node to attach the endcaps to
-  /// @param spec    Endcap configuration (container name, axes, pos/neg filters);
-  ///                barrel fields of the spec are ignored
-  std::shared_ptr<CylinderContainerBlueprintNode> attachEndcaps(ActsPlugins::DD4hep::BlueprintBuilder&    builder,
-                                                                std::shared_ptr<ContainerBlueprintNode>&& barrel,
-                                                                const TrackerSpec& spec = GroupedVertexSpec) {
-    auto node = std::make_shared<Acts::Experimental::CylinderContainerBlueprintNode>("Vertex", AxisZ);
-    node->addChild(barrel);
-
-    // We use an Endcap envelope with smaller z-padding to accomodate for the double layer structure
-    auto envelope = Acts::ExtentEnvelope{}.set(AxisZ, {1_mm, 1_mm}).set(AxisR, {5_mm, 5_mm});
-    builder.layers()
-        .endcap()
-        .setSensorAxes(spec.endcapAxes)
-        .setContainer(spec.endcapContainer)
-        .setLayerFilter(spec.endcapPosFilter)
-        .setEnvelope(envelope)
-        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-        .addTo(*node);
-
-    builder.layers()
-        .endcap()
-        .setSensorAxes(spec.endcapAxes)
-        .setContainer(spec.endcapContainer)
-        .setLayerFilter(spec.endcapNegFilter)
-        .setEnvelope(envelope)
-        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-        .addTo(*node);
-
-    return node;
-  }
-
-  /// Attach endcaps to an existing barrel node to form a complete cylindrical
-  /// detector node stacked along the z-axis.
-  ///
-  /// Use this variant when the individual sensors have not been placed into
-  /// dedicated layer DetElements. The function collects all matching sensor
-  /// DetElements and groups them into layers internally via @c layersFromSensors.
+  /// Dispatches on @p spec.layout: Grouped uses pre-existing layer DetElements
+  /// directly; Ungrouped collects sensor DetElements and groups them internally.
   ///
   /// @param builder       The Blueprint builder that drives the construction
   /// @param barrel        The barrel blueprint node to attach the endcaps to
-  /// @param spec          Endcap configuration (container name, axes, pos/neg filters);
-  ///                      barrel fields of the spec are ignored
+  /// @param spec          Endcap configuration (container name, axes, pos/neg filters,
+  ///                      layout); barrel fields of the spec are ignored
   /// @param containerName Name of the resulting top-level cylinder container node
-  std::shared_ptr<CylinderContainerBlueprintNode> attachUngroupedEndcaps(
+  /// @param keyXform      Transform applied to capture group 1 of the filter regex
+  ///                      to derive the layer-group key (Ungrouped path only)
+  std::shared_ptr<CylinderContainerBlueprintNode> attachEndcaps(
       ActsPlugins::DD4hep::BlueprintBuilder& builder, std::shared_ptr<ContainerBlueprintNode>&& barrel,
-      const TrackerSpec& spec = UngroupedVertexSpec, const std::string& containerName = "Vertex") {
-    auto node = std::make_shared<Acts::Experimental::CylinderContainerBlueprintNode>(containerName, AxisZ);
+      const TrackerSpec& spec = GroupedVertexSpec, const std::string& containerName = "Vertex",
+      std::function<std::string(const std::string&)> keyXform = [](const std::string& m) {
+        return std::to_string(std::stoi(m) / 2);
+      }) {
+    auto node = std::make_shared<CylinderContainerBlueprintNode>(containerName, AxisZ);
     node->addChild(barrel);
 
-    auto envelope = Acts::ExtentEnvelope{}.set(AxisZ, {0.5_mm, 0.5_mm}).set(AxisR, {5_mm, 5_mm});
-
-    const auto endcapDetElem = builder.findDetElementByName(spec.endcapContainer);
-
-    const auto posEndcapDetElems = builder.findDetElementByNamePattern(endcapDetElem.value(), spec.endcapPosFilter);
-    const auto posLayerGrouper =
-        makeLayerGrouper(spec.endcapPosFilter, fmt::format("{}|doubleLayer_pos", spec.endcapContainer),
-                         [](const auto& m) { return std::stoi(m) / 2; });
-    builder.layersFromSensors()
-        .endcap()
-        .setSensorAxes(spec.endcapAxes)
-        .setContainerName(spec.endcapContainer)
-        .groupBy(posLayerGrouper)
-        .setSensors(std::move(posEndcapDetElems))
-        .setEnvelope(envelope)
-        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-        .addTo(*node);
-
-    const auto negEndcapDetElems = builder.findDetElementByNamePattern(endcapDetElem.value(), spec.endcapNegFilter);
-    const auto negLayerGrouper =
-        makeLayerGrouper(spec.endcapNegFilter, fmt::format("{}|doubleLayer_neg", spec.endcapContainer),
-                         [](const auto& m) { return std::stoi(m) / 2; });
-
-    builder.layersFromSensors()
-        .endcap()
-        .setSensorAxes(spec.endcapAxes)
-        .setContainerName(spec.endcapContainer)
-        .setSensors(std::move(negEndcapDetElems))
-        .groupBy(negLayerGrouper)
-        .setEnvelope(envelope)
-        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-        .addTo(*node);
-
+    if (spec.layout == TrackerSpec::Layout::Grouped) {
+      addGroupedEndcapSide(builder, *node, spec.endcapContainer, spec.endcapPosFilter, spec.endcapAxes,
+                           kVertexEndcapEnvelope);
+      addGroupedEndcapSide(builder, *node, spec.endcapContainer, spec.endcapNegFilter, spec.endcapAxes,
+                           kVertexEndcapEnvelope);
+    } else {
+      addUngroupedEndcapSide(builder, *node, spec.endcapContainer, spec.endcapPosFilter, spec.endcapAxes,
+                             fmt::format("{}|doubleLayer_pos", spec.endcapContainer), kUngroupedVertexEndcapEnvelope,
+                             keyXform);
+      addUngroupedEndcapSide(builder, *node, spec.endcapContainer, spec.endcapNegFilter, spec.endcapAxes,
+                             fmt::format("{}|doubleLayer_neg", spec.endcapContainer), kUngroupedVertexEndcapEnvelope,
+                             std::move(keyXform));
+    }
     return node;
   }
 
@@ -304,16 +289,7 @@ namespace Blueprints {
       .endcapAxes      = "YXZ",
       .endcapPosFilter = std::regex{"layer(\\d+)_module\\d+_sensor\\d+_pos"},
       .endcapNegFilter = std::regex{"layer(\\d+)_module\\d+_sensor\\d+_neg"},
-  };
-
-  const auto InnerTrackerSpec = TrackerSpec{
-      .barrelContainer = "InnerTrackerBarrel",
-      .barrelAxes      = "XYZ",
-      .barrelFilter    = std::regex{"layer\\d"},
-      .endcapContainer = "InnerTrackerEndcap",
-      .endcapAxes      = "YXZ",
-      .endcapPosFilter = std::regex{"layer_pos(\\d)"},
-      .endcapNegFilter = std::regex{"layer_neg(\\d)"},
+      .layout          = TrackerSpec::Layout::Ungrouped,
   };
 
   const auto UngroupedInnerTrackerSpec = TrackerSpec{
@@ -324,6 +300,7 @@ namespace Blueprints {
       .endcapAxes      = "YXZ",
       .endcapPosFilter = std::regex{"layer(\\d+)_module\\d+_sensor\\d+_pos"},
       .endcapNegFilter = std::regex{"layer(\\d+)_module\\d+_sensor\\d+_neg"},
+      .layout          = TrackerSpec::Layout::Ungrouped,
   };
 
   /// Make the Acts volumes for a regular tracker consisting of a barrel and two
@@ -332,107 +309,40 @@ namespace Blueprints {
   /// This is the simple case where all endcap layers fit within the z-extent of
   /// the barrel, i.e. no endcap layer protrudes into the radial envelope of the
   /// barrel layers. The barrel and both endcaps are stacked along z inside a
-  /// single container node.
+  /// single container node. Dispatches on @p spec.layout for grouped vs.
+  /// ungrouped endcap sensor DetElements.
   ///
   /// @param builder     The Blueprint builder that drives the construction
   /// @param spec        The configuration spec defining the barrel and endcap
-  ///                    container names, sensor axes, and layer filters
+  ///                    container names, sensor axes, layer filters, and layout
   /// @param trackerName The name of the resulting top-level tracker node
   ///
   /// @returns The tracker blueprint node
   std::shared_ptr<CylinderContainerBlueprintNode> makeRegularTracker(ActsPlugins::DD4hep::BlueprintBuilder& builder,
                                                                      const TrackerSpec&                     spec,
                                                                      const std::string& trackerName) {
-    auto envelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
-    auto tracker  = std::make_shared<CylinderContainerBlueprintNode>(trackerName, AxisZ);
+    auto tracker = std::make_shared<CylinderContainerBlueprintNode>(trackerName, AxisZ);
 
     builder.layers()
         .barrel()
         .setSensorAxes(spec.barrelAxes)
         .setLayerFilter(spec.barrelFilter)
         .setContainer(spec.barrelContainer)
-        .setEnvelope(envelope)
-        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-        .addTo(*tracker);
-    builder.layers()
-        .endcap()
-        .setSensorAxes(spec.endcapAxes)
-        .setContainer(spec.endcapContainer)
-        .setLayerFilter(spec.endcapNegFilter)
-        .setEnvelope(envelope)
-        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-        .addTo(*tracker);
-    builder.layers()
-        .endcap()
-        .setSensorAxes(spec.endcapAxes)
-        .setContainer(spec.endcapContainer)
-        .setLayerFilter(spec.endcapPosFilter)
-        .setEnvelope(envelope)
+        .setEnvelope(kTrackerEnvelope)
         .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
         .addTo(*tracker);
 
-    return tracker;
-  }
-
-  /// Make the Acts volumes for a regular tracker consisting of a barrel and two
-  /// endcaps that can be cleanly stacked along the z-axis without nesting. In
-  /// this case the sensors are not placed into DetElements and have to be
-  /// grouped first.
-  ///
-  /// This is the simple case where all endcap layers fit within the z-extent of
-  /// the barrel, i.e. no endcap layer protrudes into the radial envelope of the
-  /// barrel layers. The barrel and both endcaps are stacked along z inside a
-  /// single container node.
-  ///
-  /// @param builder     The Blueprint builder that drives the construction
-  /// @param spec        The configuration spec defining the barrel and endcap
-  ///                    container names, sensor axes, and layer filters
-  /// @param trackerName The name of the resulting top-level tracker node
-  ///
-  /// @returns The tracker blueprint node
-  std::shared_ptr<CylinderContainerBlueprintNode> makeRegularTrackerUngroupedEndcap(
-      ActsPlugins::DD4hep::BlueprintBuilder& builder, const TrackerSpec& spec, const std::string& trackerName) {
-    auto envelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
-    auto tracker  = std::make_shared<CylinderContainerBlueprintNode>(trackerName, AxisZ);
-
-    // Barrel can just be done normally
-    builder.layers()
-        .barrel()
-        .setSensorAxes(spec.barrelAxes)
-        .setLayerFilter(spec.barrelFilter)
-        .setContainer(spec.barrelContainer)
-        .setEnvelope(envelope)
-        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-        .addTo(*tracker);
-
-    const auto endcapDetElem = builder.findDetElementByName(spec.endcapContainer);
-
-    const auto posEndcapDetElems = builder.findDetElementByNamePattern(endcapDetElem.value(), spec.endcapPosFilter);
-    const auto posLayerGrouper =
-        makeLayerGrouper(spec.endcapPosFilter, fmt::format("{}|layer_pos", spec.endcapContainer));
-    builder.layersFromSensors()
-        .endcap()
-        .setSensors(std::move(posEndcapDetElems))
-        .groupBy(posLayerGrouper)
-        .setSensorAxes(spec.endcapAxes)
-        .setContainerName(spec.endcapContainer)
-        .setEnvelope(envelope)
-        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-        .addTo(*tracker);
-
-    const auto negEndcapDetElems = builder.findDetElementByNamePattern(endcapDetElem.value(), spec.endcapNegFilter);
-    const auto negLayerGrouper =
-        makeLayerGrouper(spec.endcapNegFilter, fmt::format("{}|layer_neg", spec.endcapContainer));
-    builder.layersFromSensors()
-        .endcap()
-        .setSensors(std::move(negEndcapDetElems))
-        .groupBy(negLayerGrouper)
-        .setSensorAxes(spec.endcapAxes)
-        .setContainerName(spec.endcapContainer)
-        .setEnvelope(envelope)
-        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-        .addTo(*tracker);
-
+    if (spec.layout == TrackerSpec::Layout::Grouped) {
+      addGroupedEndcapSide(builder, *tracker, spec.endcapContainer, spec.endcapNegFilter, spec.endcapAxes,
+                           kTrackerEnvelope);
+      addGroupedEndcapSide(builder, *tracker, spec.endcapContainer, spec.endcapPosFilter, spec.endcapAxes,
+                           kTrackerEnvelope);
+    } else {
+      addUngroupedEndcapSide(builder, *tracker, spec.endcapContainer, spec.endcapNegFilter, spec.endcapAxes,
+                             fmt::format("{}|layer_neg", spec.endcapContainer), kTrackerEnvelope);
+      addUngroupedEndcapSide(builder, *tracker, spec.endcapContainer, spec.endcapPosFilter, spec.endcapAxes,
+                             fmt::format("{}|layer_pos", spec.endcapContainer), kTrackerEnvelope);
+    }
     return tracker;
   }
 
@@ -457,6 +367,8 @@ namespace Blueprints {
                                                                      ///< the barrel radial envelope
     std::regex endcapNegOuterFilter = std::regex{"layer_neg[1-6]"};  ///< The layer pattern to filter the outer
                                                                      ///< negative endcap layers
+    enum class Layout { Grouped, Ungrouped };
+    Layout layout = Layout::Grouped;
   };
 
   const auto UngroupedNestedInnerTrackerSpec = NestedInnerTrackerSpec{
@@ -470,6 +382,7 @@ namespace Blueprints {
       .endcapPosOuterFilter = std::regex{"layer([1-6])_module\\d+_sensor\\d+_pos"},
       .endcapNegInnerFilter = std::regex{"layer(0)_module\\d+_sensor\\d+_neg"},
       .endcapNegOuterFilter = std::regex{"layer([1-6])_module\\d+_sensor\\d+_neg"},
+      .layout               = NestedInnerTrackerSpec::Layout::Ungrouped,
   };
 
   /// Make a nested inner tracker that encloses the vertex.
@@ -502,6 +415,7 @@ namespace Blueprints {
   ///      r             endcap(Pos|Neg)InnerFilter
   ///
   /// The labels correspond to the members of the NestedInnerTrackerSpec.
+  /// Dispatches on @p spec.layout for grouped vs. ungrouped endcap sensors.
   ///
   /// @param builder  The Blueprint builder that drives the construction
   /// @param vertex   The vertex detector blueprint node
@@ -523,13 +437,12 @@ namespace Blueprints {
     // two innermost InnerTrackerBarrel layers because the outermost vertex
     // layer extends further in r, than the innermost border of the InnerTracker
     // endcaps. Hence, we also need to stack them in the correct order.
-    auto envelope         = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
     auto innerInnerBarrel = builder.layers()
                                 .barrel()
                                 .setSensorAxes(spec.barrelAxes)
                                 .setLayerFilter(spec.barrelInnerFilter)
                                 .setContainer(spec.barrelContainer)
-                                .setEnvelope(envelope)
+                                .setEnvelope(kTrackerEnvelope)
                                 .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
                                 .onLayer(Blueprints::unsetXYCoG)
                                 .build();
@@ -537,22 +450,18 @@ namespace Blueprints {
 
     auto innerInnerTracker = std::make_shared<CylinderContainerBlueprintNode>("InnerInnerTracker", AxisZ);
     innerInnerTracker->addChild(innerInnerBarrel);
-    builder.layers()
-        .endcap()
-        .setSensorAxes(spec.endcapAxes)
-        .setContainer(spec.endcapContainer)
-        .setLayerFilter(spec.endcapPosInnerFilter)
-        .setEnvelope(envelope)
-        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-        .addTo(*innerInnerTracker);
-    builder.layers()
-        .endcap()
-        .setSensorAxes(spec.endcapAxes)
-        .setContainer(spec.endcapContainer)
-        .setLayerFilter(spec.endcapNegInnerFilter)
-        .setEnvelope(envelope)
-        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-        .addTo(*innerInnerTracker);
+
+    if (spec.layout == NestedInnerTrackerSpec::Layout::Grouped) {
+      addGroupedEndcapSide(builder, *innerInnerTracker, spec.endcapContainer, spec.endcapPosInnerFilter,
+                           spec.endcapAxes, kTrackerEnvelope);
+      addGroupedEndcapSide(builder, *innerInnerTracker, spec.endcapContainer, spec.endcapNegInnerFilter,
+                           spec.endcapAxes, kTrackerEnvelope);
+    } else {
+      addUngroupedEndcapSide(builder, *innerInnerTracker, spec.endcapContainer, spec.endcapPosInnerFilter,
+                             spec.endcapAxes, fmt::format("{}|layer_pos", spec.endcapContainer), kTrackerEnvelope);
+      addUngroupedEndcapSide(builder, *innerInnerTracker, spec.endcapContainer, spec.endcapNegInnerFilter,
+                             spec.endcapAxes, fmt::format("{}|layer_neg", spec.endcapContainer), kTrackerEnvelope);
+    }
 
     auto innerTracker = std::make_shared<CylinderContainerBlueprintNode>("InnerTracker", AxisZ);
     innerTracker->addCylinderContainer("InnerTrackerBarrel", AxisR, [&](auto& innerBarrel) {
@@ -562,168 +471,23 @@ namespace Blueprints {
           .setSensorAxes(spec.barrelAxes)
           .setContainer(spec.barrelContainer)
           .setLayerFilter(spec.barrelOuterFilter)
-          .setEnvelope(envelope)
-          .onLayer(Blueprints::unsetXYCoG)
-          .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-          .addTo(innerBarrel);
-    });
-    // Then add the (rest of the) two endcaps
-    builder.layers()
-        .endcap()
-        .setSensorAxes(spec.endcapAxes)
-        .setContainer(spec.endcapContainer)
-        .setLayerFilter(spec.endcapPosOuterFilter)
-        .setEnvelope(envelope)
-        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-        .addTo(*innerTracker);
-    builder.layers()
-        .endcap()
-        .setSensorAxes(spec.endcapAxes)
-        .setContainer(spec.endcapContainer)
-        .setLayerFilter(spec.endcapNegOuterFilter)
-        .setEnvelope(envelope)
-        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-        .addTo(*innerTracker);
-
-    return innerTracker;
-  }
-
-  /// Make a nested inner tracker that encloses the vertex.
-  ///
-  /// This version uses a DD4hep detector geometry where the individual layers
-  /// have not been put into dedicated DetElements. Instead this conversion will
-  /// pick up all DetElements of the sensors and group them internally.
-  ///
-  /// Nesting in this case means that at least one of the endcap layers
-  /// protrudes into the cylinder described by the barrel layers. This makes it
-  /// necessary to stack the volumes surrounding the layers in the correct order
-  /// in r and z to avoid overlapping volumes.
-  ///
-  /// For this specific case the tracker can only be nested "once" this means
-  /// that it looks something like the following.
-  ///
-  ///      b                                            b
-  ///      a                                            a
-  ///      r   endcap(Pos|Neg)OuterFilter               r
-  ///      r    ⌄  ⌄  ⌄                       ⌄  ⌄  ⌄   r
-  ///      r    |  |  | ───────────────────── |  |  | < e
-  ///      e    |  |  | ───────────────────── |  |  | < l
-  ///      l >  |  |  |  |  | ───────── |  |  |  |  |   O
-  ///      I >  |  |  |  |  | ───────── |  |  |  |  |   u
-  ///      n    |  |  |  |  |           |  |  |  |  |   t
-  ///      n    |  |  |  |  |    VTX    |  |  |  |  |   e
-  ///      e    |  |  |  |  |           |  |  |  |  |   r
-  ///      r >  |  |  |  |  | ───────── |  |  |  |  |   F
-  ///      F >  |  |  |  |  | ───────── |  |  |  |  |   i
-  ///      i    |  |  | ───────────────────── |  |  | < l
-  ///      l    |  |  | ───────────────────── |  |  | < t
-  ///      t                                            e
-  ///      e             ^  ^           ^  ^            r
-  ///      r             endcap(Pos|Neg)InnerFilter
-  ///
-  /// The labels correspond to the members of the NestedInnerTrackerSpec.
-  ///
-  /// @param builder  The Blueprint builder that drives the construction
-  /// @param vertex   The vertex detector blueprint node
-  /// @param spec     The spec for defining how the nesting is done specifically
-  ///                 for this detector
-  ///
-  /// @returns The inner tracker blueprint node
-  std::shared_ptr<CylinderContainerBlueprintNode> makeNestedInnerTrackerUngroupedEndcaps(
-      ActsPlugins::DD4hep::BlueprintBuilder& builder, std::shared_ptr<CylinderContainerBlueprintNode>&& vertex,
-      const NestedInnerTrackerSpec& spec = UngroupedNestedInnerTrackerSpec) {
-    // We have to create the inner tracker in several steps, because the inner
-    // most endcap layer protrudes into the envelope that is created by the
-    // outermost barrel layer. That creates an overlap in z while stacking.
-    // Hence, we build it in steps grouping the innermost two layers of the
-    // barrel and the innermost layer of the endcap into an "inner" inner
-    // tracker (stacking them along z), we then stack the last barrel layer
-    // along r, before stacking the remaining endcap layers along z.
-    // Additionally, we have to first put the whole vertex detector inside the
-    // two innermost InnerTrackerBarrel layers because the outermost vertex
-    // layer extends further in r, than the innermost border of the InnerTracker
-    // endcaps. Hence, we also need to stack them in the correct order.
-    auto envelope         = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {5_mm, 5_mm});
-    auto innerInnerBarrel = builder.layers()
-                                .barrel()
-                                .setSensorAxes(spec.barrelAxes)
-                                .setLayerFilter(spec.barrelInnerFilter)
-                                .setContainer(spec.barrelContainer)
-                                .setEnvelope(envelope)
-                                .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-                                .onLayer(Blueprints::unsetXYCoG)
-                                .build();
-    innerInnerBarrel->addChild(vertex);
-
-    auto innerInnerTracker = std::make_shared<CylinderContainerBlueprintNode>("InnerInnerTracker", AxisZ);
-    innerInnerTracker->addChild(innerInnerBarrel);
-
-    auto endcapDetElem     = builder.findDetElementByName(spec.endcapContainer);
-    auto posEndcapDetElems = builder.findDetElementByNamePattern(endcapDetElem.value(), spec.endcapPosInnerFilter);
-    auto posLayerGrouper =
-        makeLayerGrouper(spec.endcapPosInnerFilter, fmt::format("{}|layer_pos", spec.endcapContainer));
-    builder.layersFromSensors()
-        .endcap()
-        .setSensorAxes(spec.endcapAxes)
-        .setContainerName(spec.endcapContainer)
-        .setSensors(std::move(posEndcapDetElems))
-        .groupBy(posLayerGrouper)
-        .setEnvelope(envelope)
-        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-        .addTo(*innerInnerTracker);
-
-    auto negEndcapDetElems = builder.findDetElementByNamePattern(endcapDetElem.value(), spec.endcapNegInnerFilter);
-    auto negLayerGrouper =
-        makeLayerGrouper(spec.endcapNegInnerFilter, fmt::format("{}|layer_neg", spec.endcapContainer));
-
-    builder.layersFromSensors()
-        .endcap()
-        .setSensorAxes(spec.endcapAxes)
-        .setContainerName(spec.endcapContainer)
-        .setSensors(std::move(negEndcapDetElems))
-        .groupBy(negLayerGrouper)
-        .setEnvelope(envelope)
-        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-        .addTo(*innerInnerTracker);
-
-    auto innerTracker = std::make_shared<CylinderContainerBlueprintNode>("InnerTracker", AxisZ);
-    innerTracker->addCylinderContainer("InnerTrackerBarrel", AxisR, [&](auto& innerBarrel) {
-      innerBarrel.addChild(innerInnerTracker);
-      builder.layers()
-          .barrel()
-          .setSensorAxes(spec.barrelAxes)
-          .setContainer(spec.barrelContainer)
-          .setLayerFilter(spec.barrelOuterFilter)
-          .setEnvelope(envelope)
+          .setEnvelope(kTrackerEnvelope)
           .onLayer(Blueprints::unsetXYCoG)
           .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
           .addTo(innerBarrel);
     });
 
-    // Then add the (rest of the) two endcaps
-    posEndcapDetElems = builder.findDetElementByNamePattern(endcapDetElem.value(), spec.endcapPosOuterFilter);
-    posLayerGrouper   = makeLayerGrouper(spec.endcapPosOuterFilter, fmt::format("{}|layer_pos", spec.endcapContainer));
-    builder.layersFromSensors()
-        .endcap()
-        .setSensorAxes(spec.endcapAxes)
-        .setContainerName(spec.endcapContainer)
-        .setSensors(std::move(posEndcapDetElems))
-        .groupBy(posLayerGrouper)
-        .setEnvelope(envelope)
-        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-        .addTo(*innerTracker);
-
-    negEndcapDetElems = builder.findDetElementByNamePattern(endcapDetElem.value(), spec.endcapNegOuterFilter);
-    negLayerGrouper   = makeLayerGrouper(spec.endcapNegOuterFilter, fmt::format("{}|layer_neg", spec.endcapContainer));
-    builder.layersFromSensors()
-        .endcap()
-        .setSensorAxes(spec.endcapAxes)
-        .setContainerName(spec.endcapContainer)
-        .setSensors(std::move(negEndcapDetElems))
-        .groupBy(negLayerGrouper)
-        .setEnvelope(envelope)
-        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-        .addTo(*innerTracker);
+    if (spec.layout == NestedInnerTrackerSpec::Layout::Grouped) {
+      addGroupedEndcapSide(builder, *innerTracker, spec.endcapContainer, spec.endcapPosOuterFilter, spec.endcapAxes,
+                           kTrackerEnvelope);
+      addGroupedEndcapSide(builder, *innerTracker, spec.endcapContainer, spec.endcapNegOuterFilter, spec.endcapAxes,
+                           kTrackerEnvelope);
+    } else {
+      addUngroupedEndcapSide(builder, *innerTracker, spec.endcapContainer, spec.endcapPosOuterFilter, spec.endcapAxes,
+                             fmt::format("{}|layer_pos", spec.endcapContainer), kTrackerEnvelope);
+      addUngroupedEndcapSide(builder, *innerTracker, spec.endcapContainer, spec.endcapNegOuterFilter, spec.endcapAxes,
+                             fmt::format("{}|layer_neg", spec.endcapContainer), kTrackerEnvelope);
+    }
 
     return innerTracker;
   }
@@ -740,13 +504,12 @@ namespace MuColl {
       // NOTE: Need to set rather small padding here for the R-direction, because
       // the innermost two layers are a double layer for which the cylindrical
       // volumes are overlapping otherwise
-      auto barrelEnvelope = Acts::ExtentEnvelope{}.set(AxisZ, {5_mm, 5_mm}).set(AxisR, {0.4_mm, 0.4_mm});
-      auto vertexBarrel   = builder.layers()
+      auto vertexBarrel = builder.layers()
                               .barrel()
                               .setSensorAxes("ZYX")
                               .setLayerFilter("layer_\\d")
                               .setContainer("VertexBarrel")
-                              .setEnvelope(barrelEnvelope)
+                              .setEnvelope(Blueprints::kTightBarrelEnvelope)
                               .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
                               .onLayer(Blueprints::unsetXYCoG)
                               .build();
@@ -770,13 +533,13 @@ namespace FCCee {
       Blueprints::addCylindricalBeampipe(outer);
 
       auto vtxBarrel = Blueprints::makeDoubleLayerBarrel(builder);
-      auto vertex    = Blueprints::attachUngroupedEndcaps(builder, std::move(vtxBarrel));
+      auto vertex    = Blueprints::attachEndcaps(builder, std::move(vtxBarrel), Blueprints::UngroupedVertexSpec);
 
       auto innerTrackerBarrel = Blueprints::makeBarrel(builder, Blueprints::UngroupedInnerTrackerSpec);
       innerTrackerBarrel->addChild(vertex);
 
-      auto innerTrackerEndcap = Blueprints::attachUngroupedEndcaps(
-          builder, std::move(innerTrackerBarrel), Blueprints::UngroupedInnerTrackerSpec, "InnerTrackerEndcap");
+      auto innerTrackerEndcap = Blueprints::attachEndcaps(builder, std::move(innerTrackerBarrel),
+                                                          Blueprints::UngroupedInnerTrackerSpec, "InnerTrackerEndcap");
       outer.addChild(innerTrackerEndcap);
 
       auto set = Blueprints::makeDoubleLayerBarrel(builder, "SET", std::regex{"set_ladder_(\\d)_\\d_\\d+"});
@@ -791,9 +554,10 @@ namespace FCCee {
 
       Blueprints::addCylindricalBeampipe(outer);
       auto vtxBarrel = Blueprints::makeDoubleLayerBarrel(builder);
-      auto vertex    = Blueprints::attachUngroupedEndcaps(builder, std::move(vtxBarrel));
+      auto vertex    = Blueprints::attachEndcaps(builder, std::move(vtxBarrel), Blueprints::UngroupedVertexSpec);
 
-      auto innerTracker = Blueprints::makeNestedInnerTrackerUngroupedEndcaps(builder, std::move(vertex));
+      auto innerTracker =
+          Blueprints::makeNestedInnerTracker(builder, std::move(vertex), Blueprints::UngroupedNestedInnerTrackerSpec);
       outer.addChild(innerTracker);
     }
   }  // namespace ILD_FCCee_v02
@@ -804,13 +568,14 @@ namespace FCCee {
       auto& outer = root.addCylinderContainer(detName, AxisR);
       Blueprints::addCylindricalBeampipe(outer);
       auto vtxBarrel = Blueprints::makeDoubleLayerBarrel(builder);
-      auto vertex    = Blueprints::attachUngroupedEndcaps(builder, std::move(vtxBarrel));
+      auto vertex    = Blueprints::attachEndcaps(builder, std::move(vtxBarrel), Blueprints::UngroupedVertexSpec);
 
-      auto innerTracker = Blueprints::makeNestedInnerTrackerUngroupedEndcaps(builder, std::move(vertex));
+      auto innerTracker =
+          Blueprints::makeNestedInnerTracker(builder, std::move(vertex), Blueprints::UngroupedNestedInnerTrackerSpec);
       outer.addChild(innerTracker);
 
       auto outerTracker =
-          Blueprints::makeRegularTrackerUngroupedEndcap(builder, Blueprints::UngroupedOuterTrackerSpec, "OuterTracker");
+          Blueprints::makeRegularTracker(builder, Blueprints::UngroupedOuterTrackerSpec, "OuterTracker");
       outer.addChild(outerTracker);
     }
   }  // namespace CLD_o2_v07
