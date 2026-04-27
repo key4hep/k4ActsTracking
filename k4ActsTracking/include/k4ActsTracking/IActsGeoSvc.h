@@ -21,6 +21,9 @@
 #define IACTSGEOSVC_H
 
 #include <GaudiKernel/IService.h>
+
+#include <cstdint>
+#include <memory>
 #include <unordered_map>
 
 namespace dd4hep {
@@ -32,18 +35,21 @@ namespace dd4hep {
 namespace Acts {
   class TrackingGeometry;
   class Surface;
+  class MagneticFieldProvider;
 }  // namespace Acts
 
 class GAUDI_API IActsGeoSvc : virtual public IService {
 public:
-  using VolumeSurfaceMap = std::unordered_map<uint64_t, const Acts::Surface*>;
+  using CellIDSurfaceMap = std::unordered_map<uint64_t, const Acts::Surface*>;
 
 public:
   DeclareInterfaceID(IActsGeoSvc, 1, 0);
 
-  virtual const Acts::TrackingGeometry& trackingGeometry() const = 0;
+  virtual std::shared_ptr<const Acts::TrackingGeometry>      trackingGeometry() const   = 0;
+  virtual std::shared_ptr<const Acts::MagneticFieldProvider> magneticField() const      = 0;
+  virtual const CellIDSurfaceMap&                            cellIdToSurfaceMap() const = 0;
 
-  virtual ~IActsGeoSvc() {}
+  virtual ~IActsGeoSvc() = default;
 };
 
 #endif  // IACTSGEOSVC_H

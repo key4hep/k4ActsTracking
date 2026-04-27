@@ -41,6 +41,8 @@ set(_plugin_sources
   src/components/GeometryIdSelector.cxx
   src/components/Helpers.cxx
   src/components/TrackTruthAlg.cxx
+  src/components/ActsTestPropagator.cpp
+  src/components/DD4hepBlueprintConstruction.cpp
 )
 
 gaudi_add_module(k4ActsTrackingPlugins
