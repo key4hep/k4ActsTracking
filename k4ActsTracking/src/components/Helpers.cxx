@@ -63,9 +63,9 @@ namespace ACTSTracking {
     return inpath;
   }
 
-  edm4hep::MutableTrack ACTS2edm4hep_track(const TrackResult&                           fitter_res,
-                                           std::shared_ptr<Acts::MagneticFieldProvider> magneticField,
-                                           Acts::MagneticFieldProvider::Cache&          magCache) {
+  edm4hep::MutableTrack ACTS2edm4hep_track(const TrackResult&                                 fitter_res,
+                                           std::shared_ptr<const Acts::MagneticFieldProvider> magneticField,
+                                           Acts::MagneticFieldProvider::Cache&                magCache) {
     // Create new object
     edm4hep::MutableTrack track{};
 

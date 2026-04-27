@@ -80,9 +80,9 @@ namespace ACTSTracking {
  *
  * \return Track with equivalent parameters of the ACTS track
  */
-  edm4hep::MutableTrack ACTS2edm4hep_track(const TrackResult&                           fitter_res,
-                                           std::shared_ptr<Acts::MagneticFieldProvider> magneticField,
-                                           Acts::MagneticFieldProvider::Cache&          magCache);
+  edm4hep::MutableTrack ACTS2edm4hep_track(const TrackResult&                                 fitter_res,
+                                           std::shared_ptr<const Acts::MagneticFieldProvider> magneticField,
+                                           Acts::MagneticFieldProvider::Cache&                magCache);
 
   //! Convert ACTS track state class to edm4hep class
   /**
