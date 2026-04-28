@@ -17,6 +17,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ]]
 
+add_subdirectory(unittests)
+
 set(test_environment "\
 LD_LIBRARY_PATH=\
 ${PROJECT_BINARY_DIR}:\
@@ -91,4 +93,48 @@ set_tests_properties(
     FIXTURES_REQUIRED sim_maia_fixture
 )
 
-add_subdirectory(unittests)
+add_test(NAME clone_CLDConfig
+  COMMAND bash -c "if [ ! -d CLDConfig ]; then git clone https://github.com/key4hep/CLDConfig.git --depth 1; fi && cp -r CLDConfig/CLDConfig . && sed -i -e '/Overlay.Overlay/d' -e '/HighLevelReco.RecoMCTruthLink/d' CLDConfig/CLDReconstruction.py"
+)
+set_tests_properties(clone_CLDConfig PROPERTIES FIXTURES_SETUP CLDConfig)
+
+add_test(NAME sim_CLD_o2_v08
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/CLDConfig
+  COMMAND ddsim --compactFile $ENV{k4geo_DIR}/FCCee/CLD/compact/CLD_o2_v08/CLD_o2_v08.xml
+                --outputFile particle_gun_CLD_o2_v08_SIM.edm4hep.root
+                --runType=batch -G -N=10
+                --gun.multiplicity 10
+                --gun.particle "mu-"
+                --gun.distribution uniform
+                --gun.momentumMin 1500
+                --gun.momentumMax 100000
+)
+set_tests_properties(sim_CLD_o2_v08
+  PROPERTIES
+  FIXTURES_REQUIRED CLDConfig
+  FIXTURES_SETUP sim_CLD_fixture
+)
+
+add_test(NAME std_reco_CLD_o2_v08
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/CLDConfig
+  COMMAND k4run CLDReconstruction.py
+                --compactFile $ENV{k4geo_DIR}/FCCee/CLD/compact/CLD_o2_v08/CLD_o2_v08.xml
+                --inputFiles=particle_gun_CLD_o2_v08_SIM.edm4hep.root
+                --trackingOnly
+                --outputBasename particle_gun_CLD_o2_v08
+)
+set_test_env(std_reco_CLD_o2_v08)
+set_tests_properties(std_reco_CLD_o2_v08
+  PROPERTIES
+  FIXTURES_REQUIRED sim_CLD_fixture
+  FIXTURES_SETUP reco_CLD_fixture
+
+)
+
+add_test(NAME ckf_tracking_CLD_o2_v08
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/CLDConfig
+  COMMAND k4run ${CMAKE_CURRENT_LIST_DIR}/options/CLD_CKFTracking.py
+                --compactFile $ENV{k4geo_DIR}/FCCee/CLD/compact/CLD_o2_v08/CLD_o2_v08.xml
+)
+set_test_env(ckf_tracking_CLD_o2_v08)
+set_tests_properties(ckf_tracking_CLD_o2_v08 PROPERTIES FIXTURES_REQUIRED reco_CLD_fixture)
