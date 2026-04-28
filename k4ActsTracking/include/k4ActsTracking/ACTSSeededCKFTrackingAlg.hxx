@@ -254,7 +254,7 @@ std::vector<Acts::BoundTrackParameters> ACTSSeededCKFTrackingAlg::findSeeds(
     const Acts::Vector3         seedPos(bottomSP->x(), bottomSP->y(), bottomSP->z());
     Acts::Result<Acts::Vector3> seedField = magneticField()->getField(seedPos, magCache);
     if (!seedField.ok()) {
-      throw std::runtime_error("Field lookup error: " + std::to_string(seedField.error().value()));
+      throw std::runtime_error("Field lookup error: " + seedField.error().message());
     }
 
     Acts::Result<Acts::BoundVector> optParams =
@@ -286,7 +286,7 @@ std::vector<Acts::BoundTrackParameters> ACTSSeededCKFTrackingAlg::findSeeds(
 
     Acts::Result<Acts::Vector3> hitField = magneticField()->getField(globalPos, magCache);
     if (!hitField.ok()) {
-      throw std::runtime_error("Field lookup error: " + std::to_string(hitField.error().value()));
+      throw std::runtime_error("Field lookup error: " + hitField.error().message());
     }
 
     auto seedTrackState = ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtFirstHit, paramseed,
