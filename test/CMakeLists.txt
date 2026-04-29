@@ -36,29 +36,6 @@ function(set_test_env _testname)
   set_tests_properties(${_testname} PROPERTIES ENVIRONMENT "${test_environment}")
 endfunction()
 
-# add_geometry_load_test(<test-name> <path-to-compact-xml>)
-#
-# Add a test that loads the passed compact file and converts the geometry into
-# an ACTS geometry before dumping it to an .obj file
-function(add_geometry_load_test _compact_file)
-  get_filename_component(_name "${_compact_file}" NAME_WE)
-  add_test(NAME load_geo_${_name}
-           WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-           COMMAND k4run ${PROJECT_SOURCE_DIR}/k4ActsTracking/examples/test_visualize_acts_geo.py
-                   --compactFile "${_compact_file}"
-                   --test-propagation
-                 )
-  set_test_env(load_geo_${_name})
-endfunction()
-
-add_geometry_load_test($ENV{k4geo_DIR}/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml)
-add_geometry_load_test($ENV{k4geo_DIR}/MuColl/MuSIC/compact/MuSIC_v2/MuSIC_v2.xml)
-add_geometry_load_test($ENV{k4geo_DIR}/FCCee/ILD_FCCee/compact/ILD_FCCee_v01/ILD_FCCee_v01.xml)
-add_geometry_load_test($ENV{k4geo_DIR}/FCCee/ILD_FCCee/compact/ILD_FCCee_v02/ILD_FCCee_v02.xml)
-add_geometry_load_test($ENV{k4geo_DIR}/FCCee/CLD/compact/CLD_o2_v07/CLD_o2_v07.xml)
-add_geometry_load_test($ENV{k4geo_DIR}/FCCee/CLD/compact/CLD_o2_v08/CLD_o2_v08.xml)
-
-
 # add_clone_config(URL <git-url>
 #                  [POST_CLONE <bash>])
 #
@@ -136,6 +113,27 @@ function(add_k4run_test _name)
     set_tests_properties(${_name} PROPERTIES FIXTURES_SETUP "${ARG_FIXTURES_SETUP}")
   endif()
 endfunction()
+
+# add_geometry_load_test(<test-name> <path-to-compact-xml>)
+#
+# Add a test that loads the passed compact file and converts the geometry into
+# an ACTS geometry before dumping it to an .obj file
+function(add_geometry_load_test _compact_file)
+  get_filename_component(_name "${_compact_file}" NAME_WE)
+  add_k4run_test(load_geo_${_name}
+    OPTIONS_FILE ${PROJECT_SOURCE_DIR}/k4ActsTracking/examples/test_visualize_acts_geo.py
+    EXTRA_ARGS --compactFile "${_compact_file}"
+               --test-propagation
+    USE_TEST_ENV
+  )
+endfunction()
+
+add_geometry_load_test($ENV{k4geo_DIR}/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml)
+add_geometry_load_test($ENV{k4geo_DIR}/MuColl/MuSIC/compact/MuSIC_v2/MuSIC_v2.xml)
+add_geometry_load_test($ENV{k4geo_DIR}/FCCee/ILD_FCCee/compact/ILD_FCCee_v01/ILD_FCCee_v01.xml)
+add_geometry_load_test($ENV{k4geo_DIR}/FCCee/ILD_FCCee/compact/ILD_FCCee_v02/ILD_FCCee_v02.xml)
+add_geometry_load_test($ENV{k4geo_DIR}/FCCee/CLD/compact/CLD_o2_v07/CLD_o2_v07.xml)
+add_geometry_load_test($ENV{k4geo_DIR}/FCCee/CLD/compact/CLD_o2_v08/CLD_o2_v08.xml)
 
 
 # === MAIA chain (no upstream config, no standard reco baseline) ===
