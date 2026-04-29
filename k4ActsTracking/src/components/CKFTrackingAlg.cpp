@@ -229,12 +229,10 @@ DECLARE_COMPONENT(CKFTrackingAlg)
 // ---------------------------------------------------------------------------
 
 CKFTrackingAlg::CKFTrackingAlg(const std::string& name, ISvcLocator* svcLoc)
-    : MultiTransformer(
-          name, svcLoc,
-          {KeyValues("InputTrackerHitCollectionName", {"TrackerHits"}),
-           KeyValues("InputTrackerHitRelationCollectionName", {"TrackerHitRelations"})},
-          {KeyValues("OutputSeedCollectionName", {"SeedTracks"}), KeyValues("OutputTrackCollectionName", {"Tracks"})}) {
-}
+    : MultiTransformer(name, svcLoc,
+                       {KeyValue("InputTrackerHitCollection", "TrackerHits"),
+                        KeyValue("InputTrackerHitRelationCollection", "TrackerHitRelations")},
+                       {KeyValue("OutputSeedCollection", "SeedTracks"), KeyValue("OutputTrackCollection", "Tracks")}) {}
 
 StatusCode CKFTrackingAlg::initialize() {
   m_actsGeoSvc = svcLoc()->service<IActsGeoSvc>("ActsGeoSvc");

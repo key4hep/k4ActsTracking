@@ -92,10 +92,10 @@ ckf_tracking = CKFTrackingAlg(
     # from the MAIA_v0 compact XML encoding.  Multiple entries are OR-ed.
     # Omitted fields act as wildcards; "|" separates multiple values for a field.
     SeedingSensorsCellIDs=["system:1|2", "system:3|4,layer:1"],
-    OutputTrackCollectionName=["CKFTracks"],
-    OutputSeedCollectionName=["CKFSeedTracks"],
-    InputTrackerHitCollectionName=hit_merger.OutputCollection,
-    InputTrackerHitRelationCollectionName=hit_rel_merger.OutputCollection,
+    OutputTrackCollection="CKFTracks",
+    OutputSeedCollection="CKFTrackSeeds",
+    InputTrackerHitCollection=hit_merger.OutputCollection,
+    InputTrackerHitRelationCollection=hit_rel_merger.OutputCollection,
     OutputLevel=VERBOSE,
 )
 
