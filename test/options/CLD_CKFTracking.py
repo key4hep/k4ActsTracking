@@ -21,7 +21,7 @@
 from Gaudi.Configuration import INFO
 from k4FWCore import ApplicationMgr, IOSvc
 
-from test_helpers._ckf_helpers import (
+from _ckf_helpers import (
     make_ckf_tracking,
     make_services,
     make_hit_mergers,
