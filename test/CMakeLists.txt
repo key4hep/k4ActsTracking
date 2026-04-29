@@ -138,3 +138,51 @@ add_test(NAME ckf_tracking_CLD_o2_v08
 )
 set_test_env(ckf_tracking_CLD_o2_v08)
 set_tests_properties(ckf_tracking_CLD_o2_v08 PROPERTIES FIXTURES_REQUIRED reco_CLD_fixture)
+
+
+
+add_test(NAME clone_ILDConfig
+  COMMAND bash -c "if [ ! -d ILDConfig ]; then git clone https://github.com/iLCSoft/ILDConfig.git --depth 1; fi"
+)
+set_tests_properties(clone_ILDConfig PROPERTIES FIXTURES_SETUP ILDConfig)
+add_test(NAME sim_ILD_FCCee_v01
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/ILDConfig/StandardConfig/production
+  COMMAND ddsim --compactFile $ENV{k4geo_DIR}/FCCee/ILD_FCCee/compact/ILD_FCCee_v01/ILD_FCCee_v01.xml
+                --outputFile particle_gun_ILD_FCCee_v01_SIM.edm4hep.root
+                --runType=batch -G -N=10
+                --gun.multiplicity 10
+                --gun.particle "mu-"
+                --gun.distribution uniform
+                --gun.momentumMin 1500
+                --gun.momentumMax 1000000
+)
+set_tests_properties(sim_ILD_FCCee_v01
+  PROPERTIES
+    FIXTURES_REQUIRED ILDConfig
+    FIXTURES_SETUP sim_ILD_FCCee_v01_fixture
+)
+
+add_test(NAME std_reco_ILD_FCCee_v01
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/ILDConfig/StandardConfig/production
+  COMMAND k4run ILDReconstruction.py
+          --compactFile $ENV{k4geo_DIR}/FCCee/ILD_FCCee/compact/ILD_FCCee_v01/ILD_FCCee_v01.xml
+          --inputFiles particle_gun_ILD_FCCee_v01_SIM.edm4hep.root
+          --trackingOnly
+          --outputFileBase particle_gun_ILD_FCCee_v01
+)
+set_tests_properties(std_reco_ILD_FCCee_v01
+  PROPERTIES
+    FIXTURES_REQUIRED sim_ILD_FCCee_v01_fixture
+    FIXTURES_SETUP reco_ILD_fixture
+)
+
+add_test(NAME ckf_tracking_ILD_FCCee_v01
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/ILDConfig/StandardConfig/production
+  COMMAND k4run ${CMAKE_CURRENT_LIST_DIR}/options/ILD_CKFTracking.py
+          --compactFile $ENV{k4geo_DIR}/FCCee/ILD_FCCee/compact/ILD_FCCee_v01/ILD_FCCee_v01.xml
+)
+set_test_env(ckf_tracking_ILD_FCCee_v01)
+set_tests_properties(ckf_tracking_ILD_FCCee_v01
+  PROPERTIES
+    FIXTURES_REQUIRED reco_ILD_fixture
+)
