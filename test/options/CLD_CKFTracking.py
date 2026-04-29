@@ -18,42 +18,20 @@
 # limitations under the License.
 #
 
-# Options file for the Gen3-geometry CKF tracking algorithm (CKFTrackingAlg).
-# Uses ActsGeoSvc for geometry, magnetic field, and hit-to-surface mapping,
-# instead of the algorithm-level TGeo file loading used by ACTSSeededCKFTrackingAlg.
-
-from Gaudi.Configuration import INFO, VERBOSE
-from Gaudi.Configurables import (
-    GeoSvc,
-    ActsGeoSvc,
-    CKFTrackingAlg,
-    CollectionMerger,
-    EventDataSvc,
-)
+from Gaudi.Configuration import INFO
 from k4FWCore import ApplicationMgr, IOSvc
-from k4FWCore.parseArgs import parser
 
-parser.add_argument(
-    "--compactFile",
-    help="The geometry compact file to use for reconstruction",
-    type=str,
-)
-args = parser.parse_known_args()[0]
-svcList = [
-    GeoSvc("GeoSvc", detectors=[args.compactFile], EnableGeant4Geo=False),
-    ActsGeoSvc("ActsGeoSvc"),
-    EventDataSvc("EventDataSvc"),
-]
-
-iosvc = IOSvc(
-    "IOSvc",
-    Input=["particle_gun_CLD_o2_v08_REC.edm4hep.root"],
-    Output="particle_gun_CLD_o2_v08_ACTS_CKFTracking.edm4hep.root",
+from test_helpers._ckf_helpers import (
+    make_ckf_tracking,
+    make_services,
+    make_hit_mergers,
 )
 
-hit_merger = CollectionMerger(
-    "MergeHits",
-    InputCollections=[
+svcList = make_services()
+iosvc = IOSvc("IOSvc")
+
+hit_merger, hit_rel_merger = make_hit_mergers(
+    hit_collections=[
         "VXDTrackerHits",
         "VXDEndcapTrackerHits",
         "ITrackerHits",
@@ -61,11 +39,7 @@ hit_merger = CollectionMerger(
         "ITrackerEndcapHits",
         "OTrackerEndcapHits",
     ],
-    OutputCollection="AllTrackerHits",
-)
-hit_rel_merger = CollectionMerger(
-    "MergeHitRelations",
-    InputCollections=[
+    relation_collections=[
         "VXDTrackerHitRelations",
         "VXDEndcapTrackerHitRelations",
         "InnerTrackerBarrelHitsRelations",
@@ -73,32 +47,13 @@ hit_rel_merger = CollectionMerger(
         "OuterTrackerBarrelHitsRelations",
         "OuterTrackerEndcapHitsRelations",
     ],
-    OutputCollection="AllTrackerHitRelations",
 )
 
-ckf_tracking = CKFTrackingAlg(
-    "CKFTracking",
-    RunCKF=True,
-    CKF_Chi2CutOff=10,
-    SeedFinding_RMax=150,
-    SeedFinding_MinPt=500,
-    SeedFinding_ImpactMax=3,
-    CKF_NumMeasurementsCutOff=1,
-    SeedFinding_SigmaScattering=50,
-    SeedFinding_CollisionRegion=6,
-    SeedFinding_RadLengthPerSeed=0.1,
-    # SeedingLayersCellID uses CellIDSelector selection strings, where each
-    # entry is a comma-separated list of field:value constraints read directly
-    # from the MAIA_v0 compact XML encoding.  Multiple entries are OR-ed.
-    # Omitted fields act as wildcards; "|" separates multiple values for a field.
-    SeedingSensorsCellIDs=["system:1|2", "system:3|4,layer:1"],
-    OutputTrackCollection="CKFTracks",
-    OutputSeedCollection="CKFTrackSeeds",
-    InputTrackerHitCollection=hit_merger.OutputCollection,
-    InputTrackerHitRelationCollection=hit_rel_merger.OutputCollection,
-    OutputLevel=VERBOSE,
+ckf_tracking = make_ckf_tracking(
+    hit_merger,
+    hit_rel_merger,
+    seeding_cellids=["system:1|2", "system:3|4,layer:1"],
 )
-
 
 ApplicationMgr(
     TopAlg=[hit_merger, hit_rel_merger, ckf_tracking],

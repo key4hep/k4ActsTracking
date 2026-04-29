@@ -147,6 +147,8 @@ add_sim_test(sim_MAIA
 add_k4run_test(reco_MAIA_Gen3
   OPTIONS_FILE ${CMAKE_CURRENT_LIST_DIR}/options/MAIA_CKFTrackingAlg.py
   EXTRA_ARGS --compactFile=${_maia_compact}
+             --IOSvc.Input particle_gun_MAIA_SIM.edm4hep.root
+             --IOSvc.Output particle_gun_MAIA_CKFTracks.edm4hep.root
   USE_TEST_ENV
   FIXTURES_REQUIRED sim_maia_fixture
 )
@@ -183,6 +185,8 @@ add_k4run_test(ckf_tracking_CLD_o2_v08
   WORKING_DIRECTORY ${_cld_dir}
   OPTIONS_FILE ${CMAKE_CURRENT_LIST_DIR}/options/CLD_CKFTracking.py
   EXTRA_ARGS --compactFile ${_cld_compact}
+             --IOSvc.Input particle_gun_CLD_o2_v08_REC.edm4hep.root
+             --IOSvc.Output particle_gun_CLD_o2_v08_CKFTracks.edm4hep.root
   USE_TEST_ENV
   FIXTURES_REQUIRED reco_CLD_fixture
 )
@@ -219,6 +223,8 @@ add_k4run_test(ckf_tracking_ILD_FCCee_v01
   WORKING_DIRECTORY ${_ild_dir}
   OPTIONS_FILE ${CMAKE_CURRENT_LIST_DIR}/options/ILD_CKFTracking.py
   EXTRA_ARGS --compactFile ${_ild_compact}
+             --IOSvc.Input particle_gun_ILD_FCCee_v01_REC.edm4hep.root
+             --IOSvc.Output particle_gun_ILD_FCCee_v01_CKFTracks.edm4hep.root
   USE_TEST_ENV
   FIXTURES_REQUIRED reco_ILD_fixture
 )
