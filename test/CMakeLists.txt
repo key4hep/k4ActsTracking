@@ -36,18 +36,14 @@ function(set_test_env _testname)
   set_tests_properties(${_testname} PROPERTIES ENVIRONMENT "${test_environment}")
 endfunction()
 
-# add_clone_config(URL <git-url>
-#                  [POST_CLONE <bash>])
+# add_clone_config(URL <git-url>)
 #
 # Derives the clone directory, test name (clone_<dir>), and fixture name (<dir>)
 # from the URL basename. Skips the clone if the directory already exists.
 function(add_clone_config)
-  cmake_parse_arguments(ARG "" "URL;POST_CLONE" "" ${ARGN})
+  cmake_parse_arguments(ARG "" "URL" "" ${ARGN})
   get_filename_component(_dir "${ARG_URL}" NAME_WE)
   set(_cmd "if [ ! -d ${_dir} ]; then git clone ${ARG_URL} --depth 1; fi")
-  if(ARG_POST_CLONE)
-    string(APPEND _cmd " && ${ARG_POST_CLONE}")
-  endif()
   add_test(NAME clone_${_dir} COMMAND bash -c "${_cmd}")
   set_tests_properties(clone_${_dir} PROPERTIES FIXTURES_SETUP ${_dir})
 endfunction()
@@ -158,12 +154,9 @@ add_k4run_test(reco_MAIA_Gen3
 
 # === CLD chain ===
 set(_cld_compact $ENV{k4geo_DIR}/FCCee/CLD/compact/CLD_o2_v08/CLD_o2_v08.xml)
-set(_cld_dir ${CMAKE_CURRENT_BINARY_DIR}/CLDConfig)
+set(_cld_dir ${CMAKE_CURRENT_BINARY_DIR}/CLDConfig/CLDConfig)
 
-add_clone_config(
-  URL https://github.com/key4hep/CLDConfig.git
-  # POST_CLONE "cp -r CLDConfig/CLDConfig . && sed -i -e '/Overlay.Overlay/d' -e '/HighLevelReco.RecoMCTruthLink/d' CLDConfig/CLDReconstruction.py"
-)
+add_clone_config(URL https://github.com/key4hep/CLDConfig.git)
 
 add_sim_test(sim_CLD_o2_v08
   WORKING_DIRECTORY ${_cld_dir}
