@@ -117,7 +117,7 @@ algList.append(
             "OuterTrackerBarrelHits",
             "OuterTrackerEndcapHits",
         ],
-        OutputCollection=["MergedTrackerHits"],
+        OutputCollection="MergedTrackerHits",
     )
 )
 
@@ -132,7 +132,7 @@ algList.append(
             "OuterTrackerBarrelHitsRelations",
             "OuterTrackerEndcapHitsRelations",
         ],
-        OutputCollection=["MergedTrackerHitsRelations"],
+        OutputCollection="MergedTrackerHitsRelations",
     )
 )
 
