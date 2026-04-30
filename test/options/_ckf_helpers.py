@@ -60,12 +60,12 @@ def make_hit_mergers(
     hit_merger = CollectionMerger(
         "MergeHits",
         InputCollections=hit_collections,
-        OutputCollection=hits_output,
+        OutputCollection=[hits_output],
     )
     hit_rel_merger = CollectionMerger(
         "MergeHitRelations",
         InputCollections=relation_collections,
-        OutputCollection=relations_output,
+        OutputCollection=[relations_output],
     )
     return hit_merger, hit_rel_merger
 
@@ -80,6 +80,17 @@ def make_ckf_tracking(
     NOTE: This is really just an example on how to configure it for some
     technical tests! This will not work for any meaningful tracking!
     """
+    merged_hits = (
+        hit_merger.OutputCollection[0]
+        if isinstance(hit_merger.OutputCollection, list)
+        else hit_merger.OutputCollection
+    )
+    merged_relations = (
+        hit_rel_merger.OutputCollection[0]
+        if isinstance(hit_rel_merger.OutputCollection, list)
+        else hit_rel_merger.OutputCollection
+    )
+
     return CKFTrackingAlg(
         "CKFTracking",
         RunCKF=True,
@@ -94,7 +105,7 @@ def make_ckf_tracking(
         SeedingSensorsCellIDs=seeding_cellids,
         OutputTrackCollection="CKFTracks",
         OutputSeedCollection="CKFTrackSeeds",
-        InputTrackerHitCollection=hit_merger.OutputCollection,
-        InputTrackerHitRelationCollection=hit_rel_merger.OutputCollection,
+        InputTrackerHitCollection=merged_hits,
+        InputTrackerHitRelationCollection=merged_relations,
         OutputLevel=VERBOSE,
     )

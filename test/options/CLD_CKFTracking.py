@@ -18,8 +18,13 @@
 # limitations under the License.
 #
 
+import os
+import sys
+
 from Gaudi.Configuration import INFO
 from k4FWCore import ApplicationMgr, IOSvc
+
+sys.path.insert(0, os.path.dirname(__file__))
 
 from _ckf_helpers import (
     make_ckf_tracking,
