@@ -18,6 +18,10 @@
 # limitations under the License.
 #
 
+import importlib.util
+import os
+import sys
+
 from Gaudi.Configuration import VERBOSE
 from Gaudi.Configurables import (
     ActsGeoSvc,
@@ -27,6 +31,12 @@ from Gaudi.Configurables import (
     GeoSvc,
 )
 from k4FWCore.parseArgs import parser
+
+def _first_collection_name(value):
+    """Return a collection name from either a scalar or single-item list property."""
+    if isinstance(value, (list, tuple)):
+        return value[0]
+    return value
 
 
 def _get_compact_file():
@@ -60,12 +70,12 @@ def make_hit_mergers(
     hit_merger = CollectionMerger(
         "MergeHits",
         InputCollections=hit_collections,
-        OutputCollection=hits_output,
+        OutputCollection=[hits_output],
     )
     hit_rel_merger = CollectionMerger(
         "MergeHitRelations",
         InputCollections=relation_collections,
-        OutputCollection=relations_output,
+        OutputCollection=[relations_output],
     )
     return hit_merger, hit_rel_merger
 
@@ -95,7 +105,7 @@ def make_ckf_tracking(
         SeedingSensorsCellIDs=seeding_cellids,
         OutputTrackCollection="CKFTracks",
         OutputSeedCollection="CKFTrackSeeds",
-        InputTrackerHitCollection=hit_merger.OutputCollection,
-        InputTrackerHitRelationCollection=hit_rel_merger.OutputCollection,
+        InputTrackerHitCollection=_first_collection_name(hit_merger.OutputCollection),
+        InputTrackerHitRelationCollection=_first_collection_name(hit_rel_merger.OutputCollection),
         OutputLevel=VERBOSE,
     )
