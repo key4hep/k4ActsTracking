@@ -70,12 +70,12 @@ def make_hit_mergers(
     hit_merger = CollectionMerger(
         "MergeHits",
         InputCollections=hit_collections,
-        OutputCollection=[hits_output],
+        OutputCollection=hits_output,
     )
     hit_rel_merger = CollectionMerger(
         "MergeHitRelations",
         InputCollections=relation_collections,
-        OutputCollection=[relations_output],
+        OutputCollection=relations_output,
     )
     return hit_merger, hit_rel_merger
 
@@ -105,7 +105,7 @@ def make_ckf_tracking(
         SeedingSensorsCellIDs=seeding_cellids,
         OutputTrackCollection="CKFTracks",
         OutputSeedCollection="CKFTrackSeeds",
-        InputTrackerHitCollection=_first_collection_name(hit_merger.OutputCollection),
-        InputTrackerHitRelationCollection=_first_collection_name(hit_rel_merger.OutputCollection),
+        InputTrackerHitCollection=hit_merger.OutputCollection,
+        InputTrackerHitRelationCollection=hit_rel_merger.OutputCollection,
         OutputLevel=VERBOSE,
     )
