@@ -63,9 +63,9 @@ namespace ACTSTracking {
     return inpath;
   }
 
-  edm4hep::MutableTrack ACTS2edm4hep_track(const TrackResult&                           fitter_res,
-                                           std::shared_ptr<Acts::MagneticFieldProvider> magneticField,
-                                           Acts::MagneticFieldProvider::Cache&          magCache) {
+  edm4hep::MutableTrack ACTS2edm4hep_track(const TrackResult&                                 fitter_res,
+                                           std::shared_ptr<const Acts::MagneticFieldProvider> magneticField,
+                                           Acts::MagneticFieldProvider::Cache&                magCache) {
     // Create new object
     edm4hep::MutableTrack track{};
 
@@ -78,7 +78,7 @@ namespace ACTSTracking {
     const Acts::Vector3         zeroPos(0, 0, 0);
     Acts::Result<Acts::Vector3> fieldRes = magneticField->getField(zeroPos, magCache);
     if (!fieldRes.ok()) {
-      throw std::runtime_error("Field lookup error: " + fieldRes.error().value());
+      throw std::runtime_error("Field lookup error: " + fieldRes.error().message());
     }
     Acts::Vector3 field = *fieldRes;
 
@@ -107,7 +107,7 @@ namespace ACTSTracking {
 
       fieldRes = magneticField->getField(hitPos, magCache);
       if (!fieldRes.ok()) {
-        throw std::runtime_error("Field lookup error: " + fieldRes.error().value());
+        throw std::runtime_error("Field lookup error: " + fieldRes.error().message());
       }
       field = *fieldRes;
 
