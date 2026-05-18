@@ -32,6 +32,7 @@
 // edm4hep
 #include <edm4hep/TrackCollection.h>
 #include <edm4hep/TrackerHitPlaneCollection.h>
+#include <edm4hep/TrackerHitSimTrackerHitLinkCollection.h>
 
 // Gaudi
 #include <Gaudi/Property.h>
@@ -63,7 +64,8 @@
  * @version $Id$
  */
 struct ACTSAlgBase : k4FWCore::MultiTransformer<std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection>(
-                         const edm4hep::TrackerHitPlaneCollection&)> {
+                         const edm4hep::TrackerHitPlaneCollection&,
+                         const edm4hep::TrackerHitSimTrackerHitLinkCollection&)> {
   using DetectorElementPtr = std::shared_ptr<const ActsPlugins::TGeoDetectorElement>;
   using DetectorStore      = std::vector<DetectorElementPtr>;
 
@@ -165,6 +167,7 @@ private:
 
   Acts::CalibrationContext m_calibrationContext;  ///< Calibration Context
 
+protected:
   SmartIF<IGeoSvc> m_geoSvc;
 };
 

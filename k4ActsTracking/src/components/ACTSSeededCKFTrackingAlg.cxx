@@ -27,6 +27,10 @@
 #include <edm4hep/SimTrackerHit.h>
 #include <edm4hep/TrackState.h>
 #include <edm4hep/TrackerHitPlane.h>
+#include <edm4hep/TrackerHitSimTrackerHitLinkCollection.h>
+
+// podio
+#include <podio/LinkNavigator.h>
 
 // ACTS
 #include <Acts/Seeding/SpacePointGrid.hpp>
@@ -36,6 +40,8 @@
 #include <Acts/TrackFinding/TrackStateCreator.hpp>
 #include <Acts/TrackFitting/GainMatrixUpdater.hpp>
 #include <Acts/Utilities/RangeXD.hpp>
+
+#include <DDSegmentation/BitFieldCoder.h>
 
 // TBB
 #include <tbb/concurrent_vector.h>
@@ -93,7 +99,8 @@ StatusCode ACTSSeededCKFTrackingAlg::initialize() {
 }
 
 std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrackingAlg::operator()(
-    const edm4hep::TrackerHitPlaneCollection& trackerHitCollection) const {
+    const edm4hep::TrackerHitPlaneCollection&             trackerHitCollection,
+    const edm4hep::TrackerHitSimTrackerHitLinkCollection& trackerHitRelations) const {
   // Prepare output collections
   edm4hep::TrackCollection seedCollection;
   edm4hep::TrackCollection trackCollection;
@@ -111,6 +118,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
   sortedHits.reserve(trackerHitCollection.size());
 
   for (const auto& hit : trackerHitCollection) {
+    debug() << "Adding hit " << hit.id() << endmsg;
     sortedHits.push_back(std::make_pair(geoIDMappingTool()->getGeometryID(hit), hit));
   }
   debug() << "Working with " << sortedHits.size() << " hits." << endmsg;
@@ -126,6 +134,10 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
     std::sort(sortedHits.begin(), sortedHits.end(), compare);
   }
 
+  dd4hep::DDSegmentation::BitFieldCoder decoder{m_geoSvc->constantAsString(m_encodingStringVariable.value())};
+
+  podio::LinkNavigator hitRelNav{trackerHitRelations};
+
   // Turn the edm4hep TrackerHit's into Acts objects
   // Assumes that the hits are sorted by the GeoID
   sourceLinks.reserve(sortedHits.size());
@@ -138,9 +150,26 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
     const edm4hep::Vector3d& edmglobalpos = hitPair.second.getPosition();
     Acts::Vector3            globalPos    = {edmglobalpos.x, edmglobalpos.y, edmglobalpos.z};
 
+    debug() << "Converting hit " << hitPair.second.id() << " to local position (pos = " << edmglobalpos
+            << ") using surface with geoId " << hitPair.first
+            << " dd4hep cellid: " << decoder.valueString(hitPair.second.getCellID()) << endmsg;
+
     Acts::Result<Acts::Vector2> lpResult = surface->globalToLocal(geometryContext(), globalPos, {0, 0, 0}, 0.5_um);
-    if (!lpResult.ok())
-      throw std::runtime_error("Global to local transformation did not succeed.");
+    if (!lpResult.ok()) {
+      warning() << "Global to local transformation did not succeed" << endmsg;
+      Acts::Vector3 loc3DFrame = surface->localToGlobalTransform(geometryContext()).inverse() * globalPos;
+      debug() << "Local position: " << loc3DFrame.x() << ", " << loc3DFrame.y() << ", " << loc3DFrame.z()
+              << " z tolerance: " << 0.5_um << endmsg;
+
+      const auto simHits = hitRelNav.getLinked(hitPair.second);
+      if (!simHits.empty()) {
+        const auto& simPos = simHits.front().o.getPosition();
+        debug() << "SimTrackerHit position: " << simPos.x << ", " << simPos.y << ", " << simPos.z << endmsg;
+      }
+      continue;
+
+      // throw std::runtime_error("Global to local transformation did not succeed.");
+    }
 
     Acts::Vector2 loc = lpResult.value();
 
