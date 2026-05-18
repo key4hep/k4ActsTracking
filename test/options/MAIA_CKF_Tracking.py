@@ -175,7 +175,6 @@ ckf_tracking = ACTSSeededCKFTrackingAlg(
     OutputTrackCollectionName=["AllTracks"],
     OutputSeedCollectionName=["SeedTracks"],
     InputTrackerHitCollectionName=["MergedTrackerHits"],
-    InputTrackerHitRelationCollectionName=["MergedTrackerHitsRelations"],
     OutputLevel=VERBOSE,
 )
 algList.append(ckf_tracking)
