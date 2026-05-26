@@ -168,8 +168,8 @@ private:
   Gaudi::Property<float> m_seedFinding_radLengthPerSeed{this, "SeedFinding_RadLengthPerSeed", 0.1,
                                                         "Average radiation length per seed."};
   Gaudi::Property<float> m_seedFinding_minPt{this, "SeedFinding_MinPt", 500.0, "Minimum pT of tracks to seed [MeV]."};
-  Gaudi::Property<float> m_seedFinding_impactMax{this, "SeedFinding_ImpactMax", 3.0, 
-                                                  "Maximum d0 of tracks to seed [mm]."};
+  Gaudi::Property<float> m_seedFinding_impactMax{this, "SeedFinding_ImpactMax", 3.0,
+                                                 "Maximum d0 of tracks to seed [mm]."};
 
   std::vector<std::string>                  m_default_empty_vec;
   Gaudi::Property<std::vector<std::string>> m_seedFinding_zBinEdges{this, "SeedFinding_zBinEdges", m_default_empty_vec,
