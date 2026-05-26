@@ -213,7 +213,6 @@ private:
   Gaudi::Property<int> m_numThreads{this, "NumThreads", 1, "Number of threads for internal TBB parallelism."};
   ///@}
 
-private:
   SmartIF<IActsGeoSvc> m_actsGeoSvc;
 
   k4ActsTracking::CellIDSelector m_seedSelector{};
