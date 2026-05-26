@@ -34,7 +34,7 @@ namespace {
            rv::transform([](auto&& subrange) { return std::string_view(subrange.begin(), subrange.end()); });
   }
 
-  // Implement a very simple polyfill to maintain compatibility with c++20
+  // Implement a very simple polyfill to maintain compatibility with c++23
   template <typename T, std::ranges::input_range R> auto to_vector(R&& range) {
     std::vector<T> container;
     if constexpr (std::ranges::sized_range<R>) {
@@ -152,7 +152,7 @@ namespace k4ActsTracking {
   bool CellIDSelector::accept(const dd4hep::CellID cellID) const {
     for (const auto& selector : m_selectors) {
       // The passed CellID has to be equal to any of the configured values after
-      // masking irrelvant parts
+      // masking irrelevant parts
       if ((selector.value & selector.mask) == (cellID & selector.mask)) {
         return true;
       }

@@ -152,7 +152,7 @@ StatusCode ActsGeoSvc::initialize() {
   }
 
   if (m_dumpVisualization.value()) {
-    info() << "Creating visualiztion" << endmsg;
+    info() << "Creating visualization" << endmsg;
     // Adjust the scale here to make it easier to import in blender
     Acts::ObjVisualization3D vis{4, 0.001};
     m_trackingGeo->visualize(vis, gctxt);
