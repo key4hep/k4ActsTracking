@@ -31,12 +31,6 @@ from Gaudi.Configurables import (
 )
 from k4FWCore.parseArgs import parser
 
-def _first_collection_name(value):
-    """Return a collection name from either a scalar or single-item list property."""
-    if isinstance(value, (list, tuple)):
-        return value[0]
-    return value
-
 
 def _get_compact_file():
     parser.add_argument(
