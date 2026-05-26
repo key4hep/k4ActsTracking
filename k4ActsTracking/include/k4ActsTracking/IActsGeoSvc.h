@@ -22,7 +22,8 @@
 
 #include <GaudiKernel/IService.h>
 
-#include <cstdint>
+#include <DD4hep/Primitives.h>
+
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -41,7 +42,7 @@ namespace Acts {
 
 class GAUDI_API IActsGeoSvc : virtual public IService {
 public:
-  using CellIDSurfaceMap = std::unordered_map<uint64_t, const Acts::Surface*>;
+  using CellIDSurfaceMap = std::unordered_map<dd4hep::CellID, const Acts::Surface*>;
 
 public:
   DeclareInterfaceID(IActsGeoSvc, 1, 0);

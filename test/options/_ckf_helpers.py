@@ -18,11 +18,10 @@
 # limitations under the License.
 #
 
-import importlib.util
 import os
 import sys
 
-from Gaudi.Configuration import VERBOSE
+from Gaudi.Configuration import INFO
 from Gaudi.Configurables import (
     ActsGeoSvc,
     CKFTrackingAlg,
@@ -107,5 +106,5 @@ def make_ckf_tracking(
         OutputSeedCollection="CKFTrackSeeds",
         InputTrackerHitCollection=hit_merger.OutputCollection,
         InputTrackerHitRelationCollection=hit_rel_merger.OutputCollection,
-        OutputLevel=VERBOSE,
+        OutputLevel=INFO,
     )
