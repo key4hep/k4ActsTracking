@@ -198,10 +198,6 @@ add_k4run_test(ckf_tracking_CLD_o2_v08
 set(_ild_compact $ENV{k4geo_DIR}/FCCee/ILD_FCCee/compact/ILD_FCCee_v01/ILD_FCCee_v01.xml)
 set(_ild_dir ${CMAKE_CURRENT_BINARY_DIR}/ILDConfig/StandardConfig/production)
 
-# Explicitly add working directory to PYTHONPATH for ILD tests
-set_tests_properties(std_reco_ILD_FCCee_v01 PROPERTIES
-  ENVIRONMENT "PYTHONPATH=${_ild_dir}:$ENV{PYTHONPATH}")
-
 add_clone_config(URL https://github.com/iLCSoft/ILDConfig.git)
 
 add_sim_test(sim_ILD_FCCee_v01
@@ -224,6 +220,10 @@ add_k4run_test(std_reco_ILD_FCCee_v01
   FIXTURES_REQUIRED sim_ILD_FCCee_v01_fixture
   FIXTURES_SETUP reco_ILD_fixture
 )
+
+# Explicitly add working directory to PYTHONPATH for ILD tests
+set_tests_properties(std_reco_ILD_FCCee_v01 PROPERTIES
+  ENVIRONMENT "PYTHONPATH=${_ild_dir}:$ENV{PYTHONPATH}")
 
 add_k4run_test(ckf_tracking_ILD_FCCee_v01
   WORKING_DIRECTORY ${_ild_dir}
