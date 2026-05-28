@@ -219,11 +219,8 @@ add_k4run_test(std_reco_ILD_FCCee_v01
              --outputFileBase particle_gun_ILD_FCCee_v01
   FIXTURES_REQUIRED sim_ILD_FCCee_v01_fixture
   FIXTURES_SETUP reco_ILD_fixture
+  USE_TEST_ENV
 )
-
-# Explicitly add working directory to PYTHONPATH for ILD tests
-set_tests_properties(std_reco_ILD_FCCee_v01 PROPERTIES
-  ENVIRONMENT "PYTHONPATH=${_ild_dir}:$ENV{PYTHONPATH}")
 
 add_k4run_test(ckf_tracking_ILD_FCCee_v01
   WORKING_DIRECTORY ${_ild_dir}
@@ -234,3 +231,9 @@ add_k4run_test(ckf_tracking_ILD_FCCee_v01
   USE_TEST_ENV
   FIXTURES_REQUIRED reco_ILD_fixture
 )
+
+# Explicitly add working directory to PYTHONPATH for ILD tests
+set_property(TEST std_reco_ILD_FCCee_v01 APPEND PROPERTY
+  ENVIRONMENT "PYTHONPATH=${_ild_dir}:$ENV{PYTHONPATH}")
+set_property(TEST ckf_tracking_ILD_FCCee_v01 APPEND PROPERTY
+  ENVIRONMENT "PYTHONPATH=${_ild_dir}:$ENV{PYTHONPATH}")
