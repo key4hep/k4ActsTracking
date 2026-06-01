@@ -642,4 +642,4 @@ StatusCode CKFTrackingAlg::tracking(const std::vector<Acts::BoundTrackParameters
   return StatusCode::SUCCESS;
 }
 
-DECLARE_COMPONENT(k4ActsTracking::CKFTrackingAlg);
+DECLARE_COMPONENT(CKFTrackingAlg);
