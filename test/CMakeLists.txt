@@ -35,13 +35,17 @@ $ENV{GAUDI_PLUGIN_PATH}"
 )
 
 function(set_test_env _testname)
-  set_property(TEST ${_testname} APPEND PROPERTY ENVIRONMENT
-    LD_LIBRARY_PATH=${PROJECT_BINARY_DIR}:$<TARGET_FILE_DIR:k4ActsTrackingPlugins>:$<TARGET_FILE_DIR:ROOT::Core>:$<TARGET_FILE_DIR:k4FWCore::k4FWCore>:$<TARGET_FILE_DIR:EDM4HEP::edm4hep>:$ENV{LD_LIBRARY_PATH}
-    PYTHONPATH=$<TARGET_PROPERTY:k4ActsTrackingPlugins,BINARY_DIR>/genConfDir:$<TARGET_FILE_DIR:k4FWCore::k4FWCore>/../python:$ENV{PYTHONPATH}
-    PATH=$<TARGET_FILE_DIR:k4FWCore::k4FWCore>/../bin:$ENV{PATH}
-    K4ACTSTRACKING=${CMAKE_CURRENT_LIST_DIR}/
-  )
+  set_tests_properties(${_testname} PROPERTIES ENVIRONMENT "${test_environment}")
 endfunction()
+
+#function(set_test_env _testname)
+#  set_property(TEST ${_testname} APPEND PROPERTY ENVIRONMENT
+#    LD_LIBRARY_PATH=${PROJECT_BINARY_DIR}:$<TARGET_FILE_DIR:k4ActsTrackingPlugins>:$<TARGET_FILE_DIR:ROOT::Core>:$<TARGET_FILE_DIR:k4FWCore::k4FWCore>:$<TARGET_FILE_DIR:EDM4HEP::edm4hep>:$ENV{LD_LIBRARY_PATH}
+#    PYTHONPATH=$<TARGET_PROPERTY:k4ActsTrackingPlugins,BINARY_DIR>/genConfDir:$<TARGET_FILE_DIR:k4FWCore::k4FWCore>/../python:$ENV{PYTHONPATH}
+#    PATH=$<TARGET_FILE_DIR:k4FWCore::k4FWCore>/../bin:$ENV{PATH}
+#    K4ACTSTRACKING=${CMAKE_CURRENT_LIST_DIR}/
+#  )
+#endfunction()
 
 # add_clone_config(URL <git-url>)
 #
