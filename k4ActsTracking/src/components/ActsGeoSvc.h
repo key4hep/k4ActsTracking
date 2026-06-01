@@ -63,8 +63,12 @@ public:
                                                  "Name of the 3D visualization file"};
   Gaudi::Property<bool>        m_dumpVisualization{this, "DumpVisualization", false,
                                             "Whether or not to create a 3D visualization dump"};
+  Gaudi::Property<std::string> m_encodingStringConstant{
+      this, "EncodingStringVariable", "GlobalTrackerReadoutID",
+      "Name of the DD4hep constant holding the CellID encoding string."};
 
   const CellIDSurfaceMap& cellIdToSurfaceMap() const override { return m_cellIDToSurface; }
+  std::string             cellIDEncodingString() const override { return m_cellIDEncodingString; }
 
 private:
   using BlueprintBuilder = ActsPlugins::DD4hep::BlueprintBuilder;
@@ -76,6 +80,7 @@ private:
   std::shared_ptr<const Acts::MagneticFieldProvider>        m_magneticField{nullptr};
   std::unordered_map<dd4hep::CellID, const Acts::Surface*>  m_cellIDToSurface{};
   std::unordered_map<std::string, BlueprintPopulationFunc*> m_bluePrintPopulationFuncs{};
+  std::string                                               m_cellIDEncodingString{};
 };
 
 inline std::shared_ptr<const Acts::TrackingGeometry> ActsGeoSvc::trackingGeometry() const { return m_trackingGeo; }

@@ -21,7 +21,9 @@ set(ACTS_LIBRARY_TARGETS "Acts::Core")
 gaudi_add_library(k4ActsTracking
   SOURCES
     src/ActsGaudiLogger.cpp
+    src/CellIDSelector.cxx
   LINK
+    DD4hep::DDCore
     k4FWCore::k4FWCore
     ${ACTS_LIBRARY_TARGETS}
 )
@@ -43,6 +45,7 @@ set(_plugin_sources
   src/components/TrackTruthAlg.cxx
   src/components/ActsTestPropagator.cpp
   src/components/DD4hepBlueprintConstruction.cpp
+  src/components/CKFTrackingAlg.cpp
 )
 
 gaudi_add_module(k4ActsTrackingPlugins
@@ -69,12 +72,4 @@ install(TARGETS k4ActsTrackingPlugins
   COMPONENT dev)
 
 set(GAUDI_GENCONF_DIR "genConfDir")
-
-function(set_test_env _testname)
-  set_property(TEST ${_testname} APPEND PROPERTY ENVIRONMENT
-    LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}:$<TARGET_FILE_DIR:k4ActsTrackingPlugins>:$<TARGET_FILE_DIR:ROOT::Core>:$<TARGET_FILE_DIR:k4FWCore::k4FWCore>:$<TARGET_FILE_DIR:EDM4HEP::edm4hep>:$<TARGET_FILE_DIR:podio::podio>:$ENV{LD_LIBRARY_PATH}
-    PYTHONPATH=${CMAKE_BINARY_DIR}/${CMAKE_PROJECT_NAME}/${GAUDI_GENCONF_DIR}:$<TARGET_FILE_DIR:k4FWCore::k4FWCore>/../python:$ENV{PYTHONPATH}
-    PATH=$<TARGET_FILE_DIR:k4FWCore::k4FWCore>/../bin:$ENV{PATH}
-    K4ACTSTRACKING=${CMAKE_CURRENT_LIST_DIR}/
-    )
-endfunction()
+set_property(TARGET k4ActsTrackingPlugins PROPERTY GAUDI_GENCONF TRUE)
