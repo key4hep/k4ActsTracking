@@ -72,6 +72,7 @@ install(TARGETS k4ActsTrackingPlugins
   COMPONENT dev)
 
 set(GAUDI_GENCONF_DIR "genConfDir")
+set_property(TARGET k4ActsTrackingPlugins PROPERTY GAUDI_GENCONF TRUE)
 
 function(set_test_env _testname)
   set_property(TEST ${_testname} APPEND PROPERTY ENVIRONMENT
