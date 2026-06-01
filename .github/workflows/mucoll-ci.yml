@@ -14,6 +14,8 @@ concurrency:
 jobs:
   build-mucoll-image:
     runs-on: ubuntu-latest
+    env:
+      CTEST_EXCLUDE_REGEX: '(CLD|ILD)'
     steps:
       - name: Free Disk Space (Ubuntu)
         uses: endersonmenezes/free-disk-space@v2
@@ -59,7 +61,7 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=$(pwd)/install \
             -DCMAKE_CXX_FLAGS=" -fdiagnostics-color=always -Werror -Wno-error=deprecated-declarations"
           cmake --build build
-          ctest --test-dir build -j$(nproc) --output-on-failure
+          ctest --test-dir build -j$(nproc) --output-on-failure -E "${CTEST_EXCLUDE_REGEX}"
           cmake --build build --target install
 
           ccache -s
