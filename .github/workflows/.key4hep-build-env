@@ -1,0 +1,32 @@
+# Sourced by key4hep/key4hep-actions/key4hep-build from inside the build/
+# directory, immediately before `cmake ..`.
+#
+# Why this exists
+# ---------------
+# Some of the stacks we build against already ship a copy of k4ActsTracking
+# (notably the LCG `devkey-head` view used for the nightly alma9 job). On the
+# `*.hsf.org/key4hep` stacks this is handled by `k4_local_repo`, which makes the
+# freshly built tree shadow the in-stack copy -- but `k4_local_repo` does not
+# exist in the LCG views, so nothing shadows it there.
+#
+# Gaudi generates the runtime component list by invoking
+#   listcomponents --output k4ActsTrackingPlugins.components libk4ActsTrackingPlugins.so
+# with the *bare soname*. The dynamic loader resolves that name through
+# LD_LIBRARY_PATH, which (in the generated build environment) starts with the
+# stack's lib directory and does NOT contain the build tree. It therefore
+# introspects the stale in-stack libk4ActsTrackingPlugins.so and copies its
+# component list verbatim -- silently dropping any component that is new in this
+# checkout (e.g. CKFTrackingAlg). At runtime Gaudi then reports the missing
+# component as "unknown (No factory available)". (genconf is unaffected because
+# it is handed the absolute build-tree path.)
+#
+# Prepending the build-tree plugin directory (where libk4ActsTrackingPlugins.so
+# is linked) makes the bare soname resolve to the freshly built library. This
+# value is captured into the generated build environment (k4actstrackingenv.sh)
+# at configure time and is what the `run` wrapper uses when it drives
+# listcomponents during the build. Harmless on the stacks where k4_local_repo
+# already does the right thing.
+#
+# NOTE: the action `cd`s into build/ before sourcing this file, so ${PWD} is the
+# build directory and ${PWD}/k4ActsTracking is the plugin library output dir.
+export LD_LIBRARY_PATH="${PWD}/k4ActsTracking:${LD_LIBRARY_PATH}"
