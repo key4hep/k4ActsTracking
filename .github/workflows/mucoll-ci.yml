@@ -15,7 +15,7 @@ jobs:
   build-mucoll-image:
     runs-on: ubuntu-latest
     env:
-      CTEST_EXCLUDE_REGEX: '(CLD|ILD)'
+      CTEST_EXCLUDE_REGEX: "(CLD|ILD)"
     steps:
       - name: Free Disk Space (Ubuntu)
         uses: endersonmenezes/free-disk-space@v3
