@@ -35,7 +35,12 @@ $ENV{GAUDI_PLUGIN_PATH}"
 )
 
 function(set_test_env _testname)
-  set_tests_properties(${_testname} PROPERTIES ENVIRONMENT "${test_environment}")
+  set_property(TEST ${_testname} APPEND PROPERTY ENVIRONMENT
+    LD_LIBRARY_PATH=$<TARGET_FILE_DIR:k4ActsTrackingPlugins>:$<TARGET_FILE_DIR:ROOT::Core>:$<TARGET_FILE_DIR:k4FWCore::k4FWCore>:$<TARGET_FILE_DIR:EDM4HEP::edm4hep>:$ENV{LD_LIBRARY_PATH}
+    PYTHONPATH=$<TARGET_PROPERTY:k4ActsTrackingPlugins,BINARY_DIR>/${GAUDI_GENCONF_DIR}:$<TARGET_FILE_DIR:k4FWCore::k4FWCore>/../python:$ENV{PYTHONPATH}
+    PATH=$<TARGET_FILE_DIR:k4FWCore::k4FWCore>/../bin:$ENV{PATH}
+    K4ACTSTRACKING=${CMAKE_CURRENT_LIST_DIR}/
+  )
 endfunction()
 
 # add_clone_config(URL <git-url>)
@@ -237,7 +242,3 @@ set_property(TEST std_reco_ILD_FCCee_v01 APPEND PROPERTY
   ENVIRONMENT "PYTHONPATH=${_ild_dir}:$ENV{PYTHONPATH}")
 set_property(TEST ckf_tracking_ILD_FCCee_v01 APPEND PROPERTY
   ENVIRONMENT "PYTHONPATH=${_ild_dir}:$ENV{PYTHONPATH}")
-
-set_tests_properties(ckf_tracking_CLD_o2_v08 PROPERTIES
-  ENVIRONMENT "GAUDI_PLUGIN_PATH=${CMAKE_INSTALL_PREFIX}/lib:$ENV{GAUDI_PLUGIN_PATH};LD_LIBRARY_PATH=${CMAKE_INSTALL_PREFIX}/lib:$ENV{LD_LIBRARY_PATH}"
-)
