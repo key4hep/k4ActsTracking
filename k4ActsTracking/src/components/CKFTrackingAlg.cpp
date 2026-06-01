@@ -87,8 +87,6 @@
 
 using namespace Acts::UnitLiterals;
 
-DECLARE_COMPONENT(CKFTrackingAlg)
-
 template <> struct fmt::formatter<podio::ObjectID> : fmt::ostream_formatter {};
 
 /**
@@ -645,3 +643,5 @@ StatusCode CKFTrackingAlg::tracking(const std::vector<Acts::BoundTrackParameters
 
   return StatusCode::SUCCESS;
 }
+
+DECLARE_COMPONENT(CKFTrackingAlg)
