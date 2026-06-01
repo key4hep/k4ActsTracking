@@ -221,7 +221,7 @@ private:
   mutable std::mutex m_trackMutex{};
 };
 
-
+DECLARE_COMPONENT(CKFTrackingAlg)
 
 // ---------------------------------------------------------------------------
 // Constructor
@@ -643,5 +643,3 @@ StatusCode CKFTrackingAlg::tracking(const std::vector<Acts::BoundTrackParameters
 
   return StatusCode::SUCCESS;
 }
-
-DECLARE_COMPONENT(CKFTrackingAlg)
