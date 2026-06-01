@@ -87,6 +87,8 @@
 
 using namespace Acts::UnitLiterals;
 
+DECLARE_COMPONENT(CKFTrackingAlg)
+
 template <> struct fmt::formatter<podio::ObjectID> : fmt::ostream_formatter {};
 
 /**
@@ -221,7 +223,7 @@ private:
   mutable std::mutex m_trackMutex{};
 };
 
-DECLARE_COMPONENT(CKFTrackingAlg)
+
 
 // ---------------------------------------------------------------------------
 // Constructor
