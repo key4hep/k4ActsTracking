@@ -18,7 +18,7 @@
  */
 
 // k4ActsTracking
-#include "k4ActsTracking/CKFTracking.hxx"
+#include "k4ActsTracking/CKFTrackingAlg.hxx"
 #include "k4ActsTracking/CellIDSelector.h"
 #include "k4ActsTracking/Helpers.hxx"
 #include "k4ActsTracking/IActsGeoSvc.h"
