@@ -19,7 +19,18 @@ limitations under the License.
 
 add_subdirectory(unittests)
 
+# Force-load the freshly built Gaudi plugin module.
+#
+# When the sourced key4hep stack already ships this package (e.g. the nightly
+# view contains an older libk4ActsTrackingPlugins.so), Gaudi's PluginService
+# resolves plugin libraries relative to where libGaudiPluginService.so lives
+# (the view) and ignores LD_LIBRARY_PATH/GAUDI_PLUGIN_PATH for the dlopen. The
+# local build is then shadowed by the stale view copy, so components added on
+# this branch (e.g. CKFTrackingAlg) are reported as "No factory available".
+# LD_PRELOADing the locally built module makes its factories register first;
+# PluginService keeps the first registration, so the local components win.
 set(test_environment "\
+LD_PRELOAD=$<TARGET_FILE:k4ActsTrackingPlugins>;\
 LD_LIBRARY_PATH=\
 ${PROJECT_BINARY_DIR}:\
 ${PROJECT_BINARY_DIR}/${PROJECT_NAME}:\
