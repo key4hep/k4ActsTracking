@@ -252,8 +252,20 @@ add_k4run_test(ckf_tracking_ILD_FCCee_v01
   FIXTURES_REQUIRED reco_ILD_fixture
 )
 
-# Explicitly add working directory to PYTHONPATH for ILD tests
+# Explicitly add the ILD working directory to PYTHONPATH for ILD tests.
+#
+# This APPENDs a second PYTHONPATH= entry to the test ENVIRONMENT; CTest applies
+# env entries in order, so a later duplicate of the same variable OVERRIDES the
+# earlier one set by USE_TEST_ENV. We must therefore keep the local genConfDir
+# (and options) ahead of the inherited $ENV{PYTHONPATH} here too — otherwise the
+# CVMFS view's k4ActsTrackingPluginsConf (which lacks CKFTrackingAlg) shadows the
+# local configurable and k4run fails with "Configurable CKFTrackingAlg not found".
+set(_ild_pythonpath "\
+${_ild_dir}:\
+${CMAKE_CURRENT_SOURCE_DIR}/options:\
+${PROJECT_BINARY_DIR}/${PROJECT_NAME}/genConfDir:\
+$ENV{PYTHONPATH}")
 set_property(TEST std_reco_ILD_FCCee_v01 APPEND PROPERTY
-  ENVIRONMENT "PYTHONPATH=${_ild_dir}:$ENV{PYTHONPATH}")
+  ENVIRONMENT "PYTHONPATH=${_ild_pythonpath}")
 set_property(TEST ckf_tracking_ILD_FCCee_v01 APPEND PROPERTY
-  ENVIRONMENT "PYTHONPATH=${_ild_dir}:$ENV{PYTHONPATH}")
+  ENVIRONMENT "PYTHONPATH=${_ild_pythonpath}")
