@@ -203,9 +203,6 @@ protected:
   Gaudi::Property<int> m_numThreads{this, "NumThreads", 1, "Number of threads to use for internal multithreading."};
   ///@}
 
-  // Thread-safe counter
-  // mutable Gaudi::Accumulators::Counter<> m_fitFails{this, "FitFails"};
-
 private:
   // Mutexes for threadsafe container filling of seeds and tracks
   mutable std::mutex m_seedMutex{};
@@ -302,7 +299,7 @@ std::vector<Acts::BoundTrackParameters> ACTSSeededCKFTrackingAlg::findSeeds(
       seedTrack.addToTrackStates(seedTrackState);
     }
 
-    debug() << "Seed Paramemeters" << std::endl << paramseed << endmsg;
+    debug() << "Seed Parameters" << std::endl << paramseed << endmsg;
   }
 
   debug() << "Seeds found: " << std::endl << paramseeds.size() << endmsg;
