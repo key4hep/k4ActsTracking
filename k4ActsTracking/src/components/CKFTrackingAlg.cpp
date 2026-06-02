@@ -215,6 +215,10 @@ private:
 
   SmartIF<IActsGeoSvc> m_actsGeoSvc;
 
+  // Track finder (propagator) is geometry/field dependent only, so it is built
+  // once in initialize() and reused (read-only) across events and threads.
+  std::optional<CKF> m_trackFinder{};
+
   k4ActsTracking::CellIDSelector m_seedSelector{};
 
   mutable std::mutex m_seedMutex{};
@@ -247,6 +251,18 @@ StatusCode CKFTrackingAlg::initialize() {
     m_seedFinding_deltaRMinBottom = m_seedFinding_deltaRMin;
   if (m_seedFinding_deltaRMaxBottom == 0.f)
     m_seedFinding_deltaRMaxBottom = m_seedFinding_deltaRMax;
+
+  // The propagator and CKF only depend on the tracking geometry and magnetic
+  // field, both available here, so build them once instead of per event.
+  Navigator::Config navigatorCfg{m_actsGeoSvc->trackingGeometry()};
+  navigatorCfg.resolvePassive   = false;
+  navigatorCfg.resolveMaterial  = true;
+  navigatorCfg.resolveSensitive = true;
+
+  Stepper    stepper(m_actsGeoSvc->magneticField());
+  Navigator  navigator(navigatorCfg);
+  Propagator propagator(std::move(stepper), std::move(navigator));
+  m_trackFinder.emplace(std::move(propagator));
 
   return StatusCode::SUCCESS;
 }
@@ -433,15 +449,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
 
   Acts::SeedFinder<SSPoint, SSPointGrid> finder(finderCfg);
 
-  Navigator::Config navigatorCfg{m_actsGeoSvc->trackingGeometry()};
-  navigatorCfg.resolvePassive   = false;
-  navigatorCfg.resolveMaterial  = true;
-  navigatorCfg.resolveSensitive = true;
-
-  Stepper    stepper(m_actsGeoSvc->magneticField());
-  Navigator  navigator(navigatorCfg);
-  Propagator propagator(std::move(stepper), std::move(navigator));
-  CKF        trackFinder(std::move(propagator));
+  const CKF& trackFinder = *m_trackFinder;
 
   Acts::MeasurementSelector::Config measurementSelectorCfg = {
       {Acts::GeometryIdentifier(), {{}, {m_CKF_chi2CutOff}, {(std::size_t)(m_CKF_numMeasurementsCutOff)}}}};
@@ -495,12 +503,15 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
   }
 
   auto parallelSeedingAndTracking = [&](const tbb::blocked_range<size_t>& r) {
+    // The magnetic-field cache is mutated on every field lookup, so each
+    // parallel invocation needs its own cache rather than sharing one.
+    Acts::MagneticFieldProvider::Cache localMagCache = m_actsGeoSvc->magneticField()->makeCache(magCtx);
     for (size_t i = r.begin(); i != r.end(); ++i) {
       const auto paramseeds = findSeeds(finder, finderOpts, spacePointGroups[i], spacePointsGrouping.grid(),
-                                        rMiddleSPRange, spContainer.size(), seedCollection, magCache);
+                                        rMiddleSPRange, spContainer.size(), seedCollection, localMagCache);
       if (!m_runCKF)
         continue;
-      if (!tracking(paramseeds, trackFinder, ckfOptions, magCache, trackCollection).isSuccess()) {
+      if (!tracking(paramseeds, trackFinder, ckfOptions, localMagCache, trackCollection).isSuccess()) {
         warning() << "Tracking failed for this event" << endmsg;
       }
     }
