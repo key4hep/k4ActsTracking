@@ -81,6 +81,7 @@
 
 // Standard
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -178,6 +179,110 @@ private:
   Gaudi::Property<int> m_phiTopBinLen{this, "SeedFinding_phiTopBinLen", 1, "Number of top bins along phi for seeding."};
   Gaudi::Property<int> m_phiBottomBinLen{this, "SeedFinding_phiBottomBinLen", 1,
                                          "Number of bottom bins along phi for seeding."};
+
+  Gaudi::Property<float> m_seedFinding_deltaRMiddleMinSPRange{
+      this, "SeedFinding_DeltaRMiddleMinSPRange", 10 * Acts::UnitConstants::mm,
+      "Lower offset added to the rounded minimum radius when computing the variable middle space-point range."};
+  Gaudi::Property<float> m_seedFinding_deltaRMiddleMaxSPRange{
+      this, "SeedFinding_DeltaRMiddleMaxSPRange", 10 * Acts::UnitConstants::mm,
+      "Upper offset subtracted from the rounded maximum radius when computing the variable middle space-point range."};
+  ///@}
+
+  /// @name Seed filter configuration
+  ///@{
+  Gaudi::Property<float> m_seedFilter_deltaInvHelixDiameter{
+      this, "SeedFilter_DeltaInvHelixDiameter", 0.00003 * (1 / Acts::UnitConstants::mm),
+      "Allowed difference in curvature (inverted seed radii) between two compatible seeds."};
+  Gaudi::Property<float> m_seedFilter_compatSeedWeight{
+      this, "SeedFilter_CompatSeedWeight", 200, "Weight added to a seed when a compatible seed is found (c1 factor)."};
+  Gaudi::Property<float> m_seedFilter_impactWeightFactor{
+      this, "SeedFilter_ImpactWeightFactor", 1,
+      "Factor multiplying the transverse impact parameter d0, subtracted from the seed weight (c2 factor)."};
+  Gaudi::Property<float> m_seedFilter_zOriginWeightFactor{
+      this, "SeedFilter_ZOriginWeightFactor", 1,
+      "Factor multiplying the longitudinal impact parameter z0, subtracted from the seed weight (c3 factor)."};
+  Gaudi::Property<unsigned int> m_seedFilter_maxSeedsPerSpM{
+      this, "SeedFilter_MaxSeedsPerSpM", 1, "Maximum number (minus one) of accepted seeds per middle space-point."};
+  Gaudi::Property<unsigned int> m_seedFilter_compatSeedLimit{
+      this, "SeedFilter_CompatSeedLimit", 2,
+      "Maximum number of compatible space-points used in the score calculation."};
+  Gaudi::Property<float> m_seedFilter_seedWeightIncrement{
+      this, "SeedFilter_SeedWeightIncrement", 0,
+      "Weight increment applied when the number of compatible seeds exceeds NumSeedIncrement."};
+  Gaudi::Property<float> m_seedFilter_numSeedIncrement{
+      this, "SeedFilter_NumSeedIncrement", std::numeric_limits<float>::max(),
+      "Number of compatible seeds above which SeedWeightIncrement is applied (default: effectively disabled)."};
+  Gaudi::Property<float> m_seedFilter_absDeltaEtaWeightFactor{
+      this, "SeedFilter_AbsDeltaEtaWeightFactor", 0,
+      "Weight factor for the abs(delta-eta) penalty between seed direction and beamspot-to-pca vector (0 disables)."};
+  Gaudi::Property<float> m_seedFilter_absDeltaEtaMinImpact{
+      this, "SeedFilter_AbsDeltaEtaMinImpact", 2 * Acts::UnitConstants::mm,
+      "Minimum impact parameter required to apply the abs(delta-eta) weight."};
+  Gaudi::Property<bool> m_seedFilter_seedConfirmation{
+      this, "SeedFilter_SeedConfirmation", false,
+      "Enable quality seed confirmation, defined per (r, z) detector region by the seed confirmation ranges."};
+  Gaudi::Property<unsigned int> m_seedFilter_maxSeedsPerSpMConf{
+      this, "SeedFilter_MaxSeedsPerSpMConf", 5,
+      "Maximum number of normal-quality seeds per middle space-point in seed confirmation."};
+  Gaudi::Property<unsigned int> m_seedFilter_maxQualitySeedsPerSpMConf{
+      this, "SeedFilter_MaxQualitySeedsPerSpMConf", 5,
+      "Maximum number of high-quality seeds per inner-middle space-point doublet in seed confirmation."};
+  Gaudi::Property<bool> m_seedFilter_useDeltaRinsteadOfTopRadius{
+      this, "SeedFilter_UseDeltaRinsteadOfTopRadius", false,
+      "Use deltaR between top and middle space-point instead of the top radius to search for compatible SPs."};
+  ///@}
+
+  /// @name Seed confirmation ranges (only used when SeedFilter_SeedConfirmation is true)
+  ///@{
+  Gaudi::Property<float> m_centralSeedConf_zMin{
+      this, "SeedFilter_CentralSeedConf_ZMin", std::numeric_limits<float>::lowest(),
+      "Central region: minimum z of the middle space-point splitting the seed confirmation region."};
+  Gaudi::Property<float> m_centralSeedConf_zMax{
+      this, "SeedFilter_CentralSeedConf_ZMax", std::numeric_limits<float>::max(),
+      "Central region: maximum z of the middle space-point splitting the seed confirmation region."};
+  Gaudi::Property<float> m_centralSeedConf_rMax{
+      this, "SeedFilter_CentralSeedConf_RMax", std::numeric_limits<float>::max(),
+      "Central region: inner space-point radius splitting the seed confirmation region."};
+  Gaudi::Property<unsigned int> m_centralSeedConf_nTopForLargeR{
+      this, "SeedFilter_CentralSeedConf_NTopForLargeR", 0,
+      "Central region: minimum compatible outer SPs required if the inner SP radius is larger than RMax."};
+  Gaudi::Property<unsigned int> m_centralSeedConf_nTopForSmallR{
+      this, "SeedFilter_CentralSeedConf_NTopForSmallR", 0,
+      "Central region: minimum compatible outer SPs required if the inner SP radius is smaller than RMax."};
+  Gaudi::Property<float> m_centralSeedConf_minBottomRadius{
+      this, "SeedFilter_CentralSeedConf_MinBottomRadius", 60 * Acts::UnitConstants::mm,
+      "Central region: minimum radius for the inner seed component in quality seed confirmation."};
+  Gaudi::Property<float> m_centralSeedConf_maxZOrigin{
+      this, "SeedFilter_CentralSeedConf_MaxZOrigin", 150 * Acts::UnitConstants::mm,
+      "Central region: maximum longitudinal impact parameter of the seed in quality seed confirmation."};
+  Gaudi::Property<float> m_centralSeedConf_minImpact{
+      this, "SeedFilter_CentralSeedConf_MinImpact", 1 * Acts::UnitConstants::mm,
+      "Central region: minimum impact parameter of the seed in quality seed confirmation."};
+
+  Gaudi::Property<float> m_forwardSeedConf_zMin{
+      this, "SeedFilter_ForwardSeedConf_ZMin", std::numeric_limits<float>::lowest(),
+      "Forward region: minimum z of the middle space-point splitting the seed confirmation region."};
+  Gaudi::Property<float> m_forwardSeedConf_zMax{
+      this, "SeedFilter_ForwardSeedConf_ZMax", std::numeric_limits<float>::max(),
+      "Forward region: maximum z of the middle space-point splitting the seed confirmation region."};
+  Gaudi::Property<float> m_forwardSeedConf_rMax{
+      this, "SeedFilter_ForwardSeedConf_RMax", std::numeric_limits<float>::max(),
+      "Forward region: inner space-point radius splitting the seed confirmation region."};
+  Gaudi::Property<unsigned int> m_forwardSeedConf_nTopForLargeR{
+      this, "SeedFilter_ForwardSeedConf_NTopForLargeR", 0,
+      "Forward region: minimum compatible outer SPs required if the inner SP radius is larger than RMax."};
+  Gaudi::Property<unsigned int> m_forwardSeedConf_nTopForSmallR{
+      this, "SeedFilter_ForwardSeedConf_NTopForSmallR", 0,
+      "Forward region: minimum compatible outer SPs required if the inner SP radius is smaller than RMax."};
+  Gaudi::Property<float> m_forwardSeedConf_minBottomRadius{
+      this, "SeedFilter_ForwardSeedConf_MinBottomRadius", 60 * Acts::UnitConstants::mm,
+      "Forward region: minimum radius for the inner seed component in quality seed confirmation."};
+  Gaudi::Property<float> m_forwardSeedConf_maxZOrigin{
+      this, "SeedFilter_ForwardSeedConf_MaxZOrigin", 150 * Acts::UnitConstants::mm,
+      "Forward region: maximum longitudinal impact parameter of the seed in quality seed confirmation."};
+  Gaudi::Property<float> m_forwardSeedConf_minImpact{
+      this, "SeedFilter_ForwardSeedConf_MinImpact", 1 * Acts::UnitConstants::mm,
+      "Forward region: minimum impact parameter of the seed in quality seed confirmation."};
   ///@}
 
   /// @name Track-fit initial error estimates
@@ -475,8 +580,8 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
   }
 
   // Variable middle space point radial region of interest.
-  constexpr float               deltaRMiddleMinSPRange = 10.f * Acts::UnitConstants::mm;
-  constexpr float               deltaRMiddleMaxSPRange = 10.f * Acts::UnitConstants::mm;
+  const float                   deltaRMiddleMinSPRange = m_seedFinding_deltaRMiddleMinSPRange;
+  const float                   deltaRMiddleMaxSPRange = m_seedFinding_deltaRMiddleMaxSPRange;
   const std::pair<float, float> rMiddleSPRange{std::floor(minRange / 2) * 2 + deltaRMiddleMinSPRange,
                                                std::floor(maxRange / 2) * 2 - deltaRMiddleMaxSPRange};
 
@@ -513,8 +618,39 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
       Acts::TripletSeedFinder::create(Acts::TripletSeedFinder::DerivedConfig(tripletFinderCfg, bFieldInZ));
 
   Acts::BroadTripletSeedFilter::Config filterCfg;
-  filterCfg.deltaRMin      = m_seedFinding_deltaRMin;
-  filterCfg.maxSeedsPerSpM = 1;
+  filterCfg.deltaInvHelixDiameter       = m_seedFilter_deltaInvHelixDiameter;
+  filterCfg.deltaRMin                   = m_seedFinding_deltaRMin;
+  filterCfg.compatSeedWeight            = m_seedFilter_compatSeedWeight;
+  filterCfg.impactWeightFactor          = m_seedFilter_impactWeightFactor;
+  filterCfg.zOriginWeightFactor         = m_seedFilter_zOriginWeightFactor;
+  filterCfg.maxSeedsPerSpM              = m_seedFilter_maxSeedsPerSpM;
+  filterCfg.compatSeedLimit             = m_seedFilter_compatSeedLimit;
+  filterCfg.seedWeightIncrement         = m_seedFilter_seedWeightIncrement;
+  filterCfg.numSeedIncrement            = m_seedFilter_numSeedIncrement;
+  filterCfg.absDeltaEtaWeightFactor     = m_seedFilter_absDeltaEtaWeightFactor;
+  filterCfg.absDeltaEtaMinImpact        = m_seedFilter_absDeltaEtaMinImpact;
+  filterCfg.seedConfirmation            = m_seedFilter_seedConfirmation;
+  filterCfg.maxSeedsPerSpMConf          = m_seedFilter_maxSeedsPerSpMConf;
+  filterCfg.maxQualitySeedsPerSpMConf   = m_seedFilter_maxQualitySeedsPerSpMConf;
+  filterCfg.useDeltaRinsteadOfTopRadius = m_seedFilter_useDeltaRinsteadOfTopRadius;
+
+  filterCfg.centralSeedConfirmationRange.zMinSeedConf            = m_centralSeedConf_zMin;
+  filterCfg.centralSeedConfirmationRange.zMaxSeedConf            = m_centralSeedConf_zMax;
+  filterCfg.centralSeedConfirmationRange.rMaxSeedConf            = m_centralSeedConf_rMax;
+  filterCfg.centralSeedConfirmationRange.nTopForLargeR           = m_centralSeedConf_nTopForLargeR;
+  filterCfg.centralSeedConfirmationRange.nTopForSmallR           = m_centralSeedConf_nTopForSmallR;
+  filterCfg.centralSeedConfirmationRange.seedConfMinBottomRadius = m_centralSeedConf_minBottomRadius;
+  filterCfg.centralSeedConfirmationRange.seedConfMaxZOrigin      = m_centralSeedConf_maxZOrigin;
+  filterCfg.centralSeedConfirmationRange.minImpactSeedConf       = m_centralSeedConf_minImpact;
+
+  filterCfg.forwardSeedConfirmationRange.zMinSeedConf            = m_forwardSeedConf_zMin;
+  filterCfg.forwardSeedConfirmationRange.zMaxSeedConf            = m_forwardSeedConf_zMax;
+  filterCfg.forwardSeedConfirmationRange.rMaxSeedConf            = m_forwardSeedConf_rMax;
+  filterCfg.forwardSeedConfirmationRange.nTopForLargeR           = m_forwardSeedConf_nTopForLargeR;
+  filterCfg.forwardSeedConfirmationRange.nTopForSmallR           = m_forwardSeedConf_nTopForSmallR;
+  filterCfg.forwardSeedConfirmationRange.seedConfMinBottomRadius = m_forwardSeedConf_minBottomRadius;
+  filterCfg.forwardSeedConfirmationRange.seedConfMaxZOrigin      = m_forwardSeedConf_maxZOrigin;
+  filterCfg.forwardSeedConfirmationRange.minImpactSeedConf       = m_forwardSeedConf_minImpact;
 
   auto seedingLogger = Acts::getDefaultLogger("CKFSeeding", Acts::Logging::WARNING);
 
