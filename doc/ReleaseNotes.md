@@ -1,3 +1,26 @@
+# v00-04
+
+* 2026-06-03 Thomas Madlener ([PR#49](https://github.com/key4hep/k4ActsTracking/pull/49))
+  - Added an initial proof-of-concept CKF tracking workflow for Gen3/DD4hep geometries, including DD4hep-to-ACTS conversion, CellID-based seed selection, and reusable test helpers.
+  - Added end-to-end test coverage for MAIA_v0, CLD, and ILD_FCCee_v01 tracking chains.
+
+* 2026-04-28 Thomas Madlener ([PR#57](https://github.com/key4hep/k4ActsTracking/pull/57))
+  - Make error messages from ACTS (propagated by us via exceptions) more useful by including the error message instead of just the numerical error code
+  - Remove a few unused services an includes from the ACTSSeededCKFTrackingAlg
+  - Make helper functions accept a const magnetic field because it can
+
+* 2026-04-28 Thomas Madlener ([PR#58](https://github.com/key4hep/k4ActsTracking/pull/58))
+  - Do not fail the mucoll based CI just because of deprecation warnings
+
+* 2026-04-27 Thomas Madlener ([PR#36](https://github.com/key4hep/k4ActsTracking/pull/36))
+  - Rework the ActsGeoSvc to do the conversion from DD4hep to ACTS Gen3 geometry in-memory via the ACTS blueprint API. This does not yet update any tracking functionality, it only adds geometry conversion
+    - Populate a CellID to Acts::Surface mapping on the fly after geometry conversion.
+    - Provide a uniform & constant magnetic field taking the value at (0, 0, 0) from the DD4hep geometry
+  - Provide an extensible way of adding more detectors. For now a subset of detectors living in k4geo is handled
+    - MuonCollider: MAIA_v0, MuSIC_v2
+    - FCCee: ILD_FCCee_v01, ILD_FCCee_v02, CLD_o2_v08, CLD_o2_v07
+    - LUXE: LUXE_v0 (lives in https://github.com/LUXESoftware/luxegeo)
+
 # v00-03
 
 * 2026-03-19 Juan Miguel Carceller ([PR#50](https://github.com/key4hep/k4ActsTracking/pull/50))
