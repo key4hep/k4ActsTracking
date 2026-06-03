@@ -126,9 +126,9 @@ private:
   /// Convert the seeds found by the triplet seeder into ACTS bound track
   /// parameters and create the corresponding edm4hep seed tracks. The space
   /// point indices stored in @p seeds reference @p spacePoints.
-  std::vector<Acts::BoundTrackParameters> seedsToParameters(const Acts::SeedContainer2&        seeds,
-                                                            const Acts::SpacePointContainer2&  spacePoints,
-                                                            edm4hep::TrackCollection&          seedCollection,
+  std::vector<Acts::BoundTrackParameters> seedsToParameters(const Acts::SeedContainer2&         seeds,
+                                                            const Acts::SpacePointContainer2&   spacePoints,
+                                                            edm4hep::TrackCollection&           seedCollection,
                                                             Acts::MagneticFieldProvider::Cache& magCache) const;
 
   StatusCode tracking(const std::vector<Acts::BoundTrackParameters>& paramseeds, std::size_t begin, std::size_t end,
@@ -389,10 +389,10 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
 
   static const Acts::Vector3 zeropos(0, 0, 0);
 
-  const float bFieldInZ      = (*m_actsGeoSvc->magneticField()->getField(zeropos, magCache))[2];
-  const float cotThetaMax    = 7.40627f;  // ~2.7 η
-  const float minPt          = m_seedFinding_minPt * Acts::UnitConstants::MeV;
-  const float impactMax      = m_seedFinding_impactMax * Acts::UnitConstants::mm;
+  const float bFieldInZ       = (*m_actsGeoSvc->magneticField()->getField(zeropos, magCache))[2];
+  const float cotThetaMax     = 7.40627f;  // ~2.7 η
+  const float minPt           = m_seedFinding_minPt * Acts::UnitConstants::MeV;
+  const float impactMax       = m_seedFinding_impactMax * Acts::UnitConstants::mm;
   const float collisionRegion = m_seedFinding_collisionRegion;
 
   // -------------------------------------------------------------------------
@@ -475,8 +475,8 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
   }
 
   // Variable middle space point radial region of interest.
-  constexpr float            deltaRMiddleMinSPRange = 10.f * Acts::UnitConstants::mm;
-  constexpr float            deltaRMiddleMaxSPRange = 10.f * Acts::UnitConstants::mm;
+  constexpr float               deltaRMiddleMinSPRange = 10.f * Acts::UnitConstants::mm;
+  constexpr float               deltaRMiddleMaxSPRange = 10.f * Acts::UnitConstants::mm;
   const std::pair<float, float> rMiddleSPRange{std::floor(minRange / 2) * 2 + deltaRMiddleMinSPRange,
                                                std::floor(maxRange / 2) * 2 - deltaRMiddleMaxSPRange};
 
@@ -497,7 +497,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
       Acts::DoubletSeedFinder::create(Acts::DoubletSeedFinder::DerivedConfig(bottomFinderCfg, bFieldInZ));
 
   Acts::DoubletSeedFinder::Config topFinderCfg = bottomFinderCfg;
-  topFinderCfg.candidateDirection             = Acts::Direction::Forward();
+  topFinderCfg.candidateDirection              = Acts::Direction::Forward();
   topFinderCfg.deltaRMin                       = m_seedFinding_deltaRMinTop;
   topFinderCfg.deltaRMax                       = m_seedFinding_deltaRMaxTop;
   auto topFinder = Acts::DoubletSeedFinder::create(Acts::DoubletSeedFinder::DerivedConfig(topFinderCfg, bFieldInZ));
