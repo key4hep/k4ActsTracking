@@ -69,6 +69,7 @@
 #include <Acts/TrackFinding/TrackStateCreator.hpp>
 #include <Acts/TrackFitting/GainMatrixUpdater.hpp>
 #include <Acts/Utilities/RangeXD.hpp>
+#include <Acts/Utilities/TrackHelpers.hpp>
 
 // TBB
 #include <tbb/blocked_range.h>
@@ -228,6 +229,13 @@ private:
   // geometry. Built once in initialize() and reused read-only across threads.
   std::optional<ACTSTracking::CaloFacePropagator> m_caloPropagator{};
 
+  // Propagator (with tracking-geometry navigator) used to extrapolate the
+  // fitted track back to the perigee surface at the IP, so the track parameters
+  // (in particular D0/Z0) are expressed there. Built once in initialize() and
+  // reused read-only across threads.
+  std::optional<Propagator>             m_extrapPropagator{};
+  std::shared_ptr<Acts::PerigeeSurface> m_perigeeSurface{};
+
   k4ActsTracking::CellIDSelector m_seedSelector{};
 
   mutable std::mutex m_seedMutex{};
@@ -272,6 +280,15 @@ StatusCode CKFTrackingAlg::initialize() {
   Navigator  navigator(navigatorCfg);
   Propagator propagator(std::move(stepper), std::move(navigator));
   m_trackFinder.emplace(std::move(propagator));
+
+  // Build the propagator used to extrapolate fitted tracks back to the IP
+  // perigee surface. It shares the tracking-geometry navigator configuration
+  // with the CKF so it can navigate through the detector to the beam line.
+  Stepper    extrapStepper(m_actsGeoSvc->magneticField());
+  Navigator  extrapNavigator(navigatorCfg);
+  Propagator extrapPropagator(std::move(extrapStepper), std::move(extrapNavigator));
+  m_extrapPropagator.emplace(std::move(extrapPropagator));
+  m_perigeeSurface = Acts::Surface::makeShared<Acts::PerigeeSurface>(Acts::Vector3{0., 0., 0.});
 
   // The calorimeter face lies outside the tracking geometry, so extrapolation
   // there uses a geometry-free (VoidNavigator) propagator. Only build it when
@@ -660,6 +677,27 @@ StatusCode CKFTrackingAlg::tracking(const std::vector<Acts::BoundTrackParameters
         if (!smoothResult.ok()) {
           warning() << "Track smoothing error: " << smoothResult.error() << endmsg;
           continue;
+        }
+
+        // Extrapolate the fitted track back to the perigee surface at the IP so
+        // that the track parameters (in particular D0 and Z0) are expressed
+        // there. This reproduces the TrackStateAtIP behaviour from older ACTS
+        // and must happen before ACTS2edm4hep_track, which fills the AtIP state
+        // from the track-level parameters.
+        if (m_extrapPropagator) {
+          const Acts::MagneticFieldContext magCtx{};
+          Propagator::Options<>            extrapOptions{geoCtx, magCtx};
+          extrapOptions.maxSteps = 10000;
+          if (m_propagateBackward) {
+            extrapOptions.direction = Acts::Direction::Backward();
+          }
+          auto extrapResult =
+              Acts::extrapolateTrackToReferenceSurface(trackTip, *m_perigeeSurface, *m_extrapPropagator, extrapOptions,
+                                                       Acts::TrackExtrapolationStrategy::firstOrLast);
+          if (!extrapResult.ok()) {
+            warning() << "Track extrapolation to perigee failed: " << extrapResult.error() << endmsg;
+            continue;
+          }
         }
 
         auto track = ACTSTracking::ACTS2edm4hep_track(trackTip, m_actsGeoSvc->magneticField(), magCache);

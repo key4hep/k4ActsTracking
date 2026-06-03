@@ -60,6 +60,7 @@
 namespace Acts {
   template <typename T, typename G, typename P> class SeedFinder;
   class SeedFinderOptions;
+  class PerigeeSurface;
 }  // namespace Acts
 
 /**
@@ -116,8 +117,9 @@ public:
                                                     Acts::MagneticFieldProvider::Cache& magCache) const;
 
   StatusCode tracking(const std::vector<Acts::BoundTrackParameters>& paramseeds, const CKF& trackFinder,
-                      const TrackFinderOptions& ckfOptions, Acts::MagneticFieldProvider::Cache& magCache,
-                      edm4hep::TrackCollection& trackCollection) const;
+                      const TrackFinderOptions& ckfOptions, const Propagator& extrapPropagator,
+                      const Acts::PerigeeSurface& perigeeSurface, Propagator::Options<>& extrapOptions,
+                      Acts::MagneticFieldProvider::Cache& magCache, edm4hep::TrackCollection& trackCollection) const;
 
 protected:
   /**
