@@ -38,15 +38,30 @@
 #include <Acts/EventData/TrackParameters.hpp>
 #include <Acts/EventData/VectorMultiTrajectory.hpp>
 #include <Acts/EventData/VectorTrackContainer.hpp>
+#include <Acts/Geometry/GeometryContext.hpp>
+#include <Acts/MagneticField/MagneticFieldContext.hpp>
 #include <Acts/MagneticField/MagneticFieldProvider.hpp>
+#include <Acts/Propagator/EigenStepper.hpp>
+#include <Acts/Propagator/Propagator.hpp>
+#include <Acts/Propagator/VoidNavigator.hpp>
 #include <Acts/TrackFinding/CombinatorialKalmanFilter.hpp>
 #include <Acts/TrackFitting/KalmanFitter.hpp>
 #include "Acts/EventData/ParticleHypothesis.hpp"
 
 // ACTSTracking
+#include "k4ActsTracking/IActsGeoSvc.h"
 #include "k4ActsTracking/SourceLink.hxx"
 
+// Standard
+#include <optional>
+
 namespace ACTSTracking {
+
+  /// Propagator used to extrapolate fitted tracks out to the calorimeter face.
+  /// It uses a VoidNavigator (no tracking geometry), so it can reach target
+  /// surfaces that lie outside the tracking-geometry world volume. Material
+  /// between the tracker and the calorimeter is not accounted for (field-only).
+  using CaloFacePropagator = Acts::Propagator<Acts::EigenStepper<>, Acts::VoidNavigator>;
 
   using TrackResult =
       Acts::TrackContainer<Acts::VectorTrackContainer, Acts::VectorMultiTrajectory, std::shared_ptr>::TrackProxy;
@@ -104,5 +119,28 @@ namespace ACTSTracking {
  * \return Particle Hypothesis based on MCParticle PDG
  */
   Acts::ParticleHypothesis convertParticle(const edm4hep::MCParticle mcParticle);
+
+  //! Extrapolate track parameters to the calorimeter face.
+  /**
+ * Selects, among the calorimeter-face surfaces, the one the track reaches first
+ * (smallest positive path length with a valid, bounds-checked intersection) and
+ * propagates the given parameters to it. The barrel is a ring of planar
+ * surfaces (one per polygon side) and the endcaps are flat discs; intersecting
+ * all candidates naturally handles both the barrel-sector choice and the
+ * barrel/endcap transition.
+ *
+ * \param propagator Field-only propagator (VoidNavigator)
+ * \param start      Track parameters to extrapolate from (e.g. at the last hit)
+ * \param surfaces   Calorimeter-face surfaces from IActsGeoSvc
+ * \param gctx       Geometry context
+ * \param mctx       Magnetic-field context
+ *
+ * \return Bound track parameters at the calorimeter face, or std::nullopt if no
+ *         surface is reached or the propagation fails.
+ */
+  std::optional<Acts::BoundTrackParameters> extrapolateToCaloFace(
+      const CaloFacePropagator& propagator, const Acts::BoundTrackParameters& start,
+      const IActsGeoSvc::CaloFaceSurfaces& surfaces, const Acts::GeometryContext& gctx,
+      const Acts::MagneticFieldContext& mctx);
 
 }  // namespace ACTSTracking

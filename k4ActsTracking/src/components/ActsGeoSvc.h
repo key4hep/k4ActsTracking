@@ -53,6 +53,8 @@ public:
 
   std::shared_ptr<const Acts::MagneticFieldProvider> magneticField() const override;
 
+  const CaloFaceSurfaces& caloFaceSurfaces() const override { return m_caloFaceSurfaces; }
+
   ActsGeoSvc(const std::string& name, ISvcLocator* svcLoc);
 
   ~ActsGeoSvc() = default;
@@ -66,6 +68,9 @@ public:
   Gaudi::Property<std::string> m_encodingStringConstant{
       this, "EncodingStringVariable", "GlobalTrackerReadoutID",
       "Name of the DD4hep constant holding the CellID encoding string."};
+  Gaudi::Property<bool> m_buildCaloSurfaces{
+      this, "BuildCaloSurfaces", true,
+      "Whether to build the ECAL inner-face surfaces (for track extrapolation to the calorimeter face)."};
 
   const CellIDSurfaceMap& cellIdToSurfaceMap() const override { return m_cellIDToSurface; }
   std::string             cellIDEncodingString() const override { return m_cellIDEncodingString; }
@@ -75,12 +80,19 @@ private:
 
   using BlueprintPopulationFunc = void(const std::string&, Acts::Experimental::Blueprint&, BlueprintBuilder&);
 
+  /// Build the ECAL inner-face surfaces (m_caloFaceSurfaces) from the DD4hep
+  /// geometry. Surfaces are located via DetType flags and dimensioned from the
+  /// dd4hep::rec::LayeredCalorimeterData extension. Missing ECAL sub-detectors
+  /// or extensions are skipped with a warning rather than treated as an error.
+  void buildCaloFaceSurfaces();
+
   SmartIF<IGeoSvc>                                          m_geoSvc;
   std::shared_ptr<const Acts::TrackingGeometry>             m_trackingGeo{nullptr};
   std::shared_ptr<const Acts::MagneticFieldProvider>        m_magneticField{nullptr};
   std::unordered_map<dd4hep::CellID, const Acts::Surface*>  m_cellIDToSurface{};
   std::unordered_map<std::string, BlueprintPopulationFunc*> m_bluePrintPopulationFuncs{};
   std::string                                               m_cellIDEncodingString{};
+  CaloFaceSurfaces                                          m_caloFaceSurfaces{};
 };
 
 inline std::shared_ptr<const Acts::TrackingGeometry> ActsGeoSvc::trackingGeometry() const { return m_trackingGeo; }

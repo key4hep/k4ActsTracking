@@ -31,6 +31,12 @@
 // ACTS
 #include <Acts/EventData/ParticleHypothesis.hpp>
 #include <Acts/MagneticField/InterpolatedBFieldMap.hpp>
+#include <Acts/Propagator/PropagatorOptions.hpp>
+#include <Acts/Surfaces/BoundaryTolerance.hpp>
+#include <Acts/Surfaces/Surface.hpp>
+#include <Acts/Utilities/Intersection.hpp>
+
+#include <limits>
 
 // ACTSTracking
 #include "config.h.in"
@@ -232,6 +238,66 @@ namespace ACTSTracking {
     float                  mass = 0.0f;
     Acts::ChargeHypothesis charge_type{0.0f};
     return Acts::ParticleHypothesis{pdg, mass, charge_type};
+  }
+
+  std::optional<Acts::BoundTrackParameters> extrapolateToCaloFace(
+      const CaloFacePropagator& propagator, const Acts::BoundTrackParameters& start,
+      const IActsGeoSvc::CaloFaceSurfaces& surfaces, const Acts::GeometryContext& gctx,
+      const Acts::MagneticFieldContext& mctx) {
+    if (surfaces.empty()) {
+      return std::nullopt;
+    }
+
+    const Acts::Vector3 position  = start.position(gctx);
+    const Acts::Vector3 direction = start.direction();
+
+    // Allow a small slack at face edges / the barrel-endcap seam so tracks
+    // crossing right at a boundary are not lost.
+    constexpr double                tolerance = 1.0 * Acts::UnitConstants::mm;
+    const Acts::BoundaryTolerance   boundaryTolerance = Acts::BoundaryTolerance::AbsoluteEuclidean(tolerance);
+
+    // Build the candidate list: every barrel face plus the endcap disc on the
+    // side the track is heading towards.
+    std::vector<const Acts::Surface*> candidates;
+    candidates.reserve(surfaces.barrelFaces.size() + 1);
+    for (const auto& face : surfaces.barrelFaces) {
+      candidates.push_back(face.get());
+    }
+    const auto& endcap = (direction.z() >= 0) ? surfaces.endcapPos : surfaces.endcapNeg;
+    if (endcap) {
+      candidates.push_back(endcap.get());
+    }
+
+    // Pick the surface reached first along the track direction.
+    const Acts::Surface* target      = nullptr;
+    double               bestPath    = std::numeric_limits<double>::max();
+    constexpr double     minPath     = 1e-3;  // ignore intersections essentially at the start point
+    for (const Acts::Surface* surface : candidates) {
+      const auto multiIntersection = surface->intersect(gctx, position, direction, boundaryTolerance);
+      for (const auto& intersection : multiIntersection) {
+        if (!intersection.isValid()) {
+          continue;
+        }
+        const double path = intersection.pathLength();
+        if (path > minPath && path < bestPath) {
+          bestPath = path;
+          target   = surface;
+        }
+      }
+    }
+
+    if (target == nullptr) {
+      return std::nullopt;
+    }
+
+    Acts::PropagatorPlainOptions options{gctx, mctx};
+    options.maxSteps = 10000;
+
+    auto result = propagator.propagateToSurface(start, *target, options);
+    if (!result.ok()) {
+      return std::nullopt;
+    }
+    return result.value();
   }
 
 }  // namespace ACTSTracking
