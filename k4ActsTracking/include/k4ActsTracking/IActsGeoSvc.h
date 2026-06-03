@@ -22,8 +22,10 @@
 
 #include <GaudiKernel/IService.h>
 
-#include <cstdint>
+#include <DD4hep/Primitives.h>
+
 #include <memory>
+#include <string>
 #include <unordered_map>
 
 namespace dd4hep {
@@ -40,14 +42,15 @@ namespace Acts {
 
 class GAUDI_API IActsGeoSvc : virtual public IService {
 public:
-  using CellIDSurfaceMap = std::unordered_map<uint64_t, const Acts::Surface*>;
+  using CellIDSurfaceMap = std::unordered_map<dd4hep::CellID, const Acts::Surface*>;
 
 public:
   DeclareInterfaceID(IActsGeoSvc, 1, 0);
 
-  virtual std::shared_ptr<const Acts::TrackingGeometry>      trackingGeometry() const   = 0;
-  virtual std::shared_ptr<const Acts::MagneticFieldProvider> magneticField() const      = 0;
-  virtual const CellIDSurfaceMap&                            cellIdToSurfaceMap() const = 0;
+  virtual std::shared_ptr<const Acts::TrackingGeometry>      trackingGeometry() const     = 0;
+  virtual std::shared_ptr<const Acts::MagneticFieldProvider> magneticField() const        = 0;
+  virtual const CellIDSurfaceMap&                            cellIdToSurfaceMap() const   = 0;
+  virtual std::string                                        cellIDEncodingString() const = 0;
 
   virtual ~IActsGeoSvc() = default;
 };

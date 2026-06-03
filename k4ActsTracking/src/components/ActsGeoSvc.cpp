@@ -73,6 +73,9 @@ StatusCode ActsGeoSvc::initialize() {
   m_geoSvc = Gaudi::svcLocator()->service<IGeoSvc>("GeoSvc");
   K4_GAUDI_CHECK(m_geoSvc);
 
+  m_cellIDEncodingString = m_geoSvc->getDetector()->constantAsString(m_encodingStringConstant.value());
+  debug() << "CellID encoding string: " << m_cellIDEncodingString << endmsg;
+
   std::array<double, 3> magneticFieldVector = {0, 0, 0};
   std::array<double, 3> position            = {0, 0, 0};
   m_geoSvc->getDetector()->field().magneticField(position.data(), magneticFieldVector.data());
@@ -149,7 +152,7 @@ StatusCode ActsGeoSvc::initialize() {
   }
 
   if (m_dumpVisualization.value()) {
-    info() << "Creating visualiztion" << endmsg;
+    info() << "Creating visualization" << endmsg;
     // Adjust the scale here to make it easier to import in blender
     Acts::ObjVisualization3D vis{4, 0.001};
     m_trackingGeo->visualize(vis, gctxt);
