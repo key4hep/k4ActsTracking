@@ -138,9 +138,10 @@ namespace ACTSTracking {
  * \return Bound track parameters at the calorimeter face, or std::nullopt if no
  *         surface is reached or the propagation fails.
  */
-  std::optional<Acts::BoundTrackParameters> extrapolateToCaloFace(
-      const CaloFacePropagator& propagator, const Acts::BoundTrackParameters& start,
-      const IActsGeoSvc::CaloFaceSurfaces& surfaces, const Acts::GeometryContext& gctx,
-      const Acts::MagneticFieldContext& mctx);
+  std::optional<Acts::BoundTrackParameters> extrapolateToCaloFace(const CaloFacePropagator&            propagator,
+                                                                  const Acts::BoundTrackParameters&    start,
+                                                                  const IActsGeoSvc::CaloFaceSurfaces& surfaces,
+                                                                  const Acts::GeometryContext&         gctx,
+                                                                  const Acts::MagneticFieldContext&    mctx);
 
 }  // namespace ACTSTracking

@@ -189,15 +189,15 @@ private:
   /// @name Track-fit initial error estimates
   ///@{
   Gaudi::Property<double>  m_initialTrackError_pos{this, "InitialTrackError_Pos", 10 * Acts::UnitConstants::um,
-                                                  "Initial track error for local position."};
+                                                   "Initial track error for local position."};
   Gaudi::Property<double>  m_initialTrackError_phi{this, "InitialTrackError_Phi", 1 * Acts::UnitConstants::degree,
-                                                  "Initial track error for phi."};
+                                                   "Initial track error for phi."};
   Gaudi::Property<double>  m_initialTrackError_relP{this, "InitialTrackError_RelP", 0.25,
-                                                   "Initial track error for momentum (relative)."};
+                                                    "Initial track error for momentum (relative)."};
   Gaudi::Property<double>  m_initialTrackError_lambda{this, "InitialTrackError_Lambda", 1 * Acts::UnitConstants::degree,
-                                                     "Initial track error for lambda."};
+                                                      "Initial track error for lambda."};
   Gaudi::Property<double>  m_initialTrackError_time{this, "InitialTrackError_Time", 100 * Acts::UnitConstants::ns,
-                                                   "Initial track error for time."};
+                                                    "Initial track error for time."};
   Gaudi::Property<double>  m_CKF_chi2CutOff{this, "CKF_Chi2CutOff", 15, "Maximum local chi2 contribution."};
   Gaudi::Property<int32_t> m_CKF_numMeasurementsCutOff{this, "CKF_NumMeasurementsCutOff", 10,
                                                        "Maximum measurements on a single surface."};
@@ -671,8 +671,8 @@ StatusCode CKFTrackingAlg::tracking(const std::vector<Acts::BoundTrackParameters
           std::optional<Acts::BoundTrackParameters> startParams;
           for (const auto& state : trackTip.trackStatesReversed()) {
             if (state.hasSmoothed()) {
-              startParams.emplace(state.referenceSurface().getSharedPtr(), state.smoothed(),
-                                  state.smoothedCovariance(), trackTip.particleHypothesis());
+              startParams.emplace(state.referenceSurface().getSharedPtr(), state.smoothed(), state.smoothedCovariance(),
+                                  trackTip.particleHypothesis());
               break;
             }
           }
@@ -685,7 +685,8 @@ StatusCode CKFTrackingAlg::tracking(const std::vector<Acts::BoundTrackParameters
               const Acts::Vector3 caloPos  = caloParams->position(geoCtx);
               auto                fieldRes = m_actsGeoSvc->magneticField()->getField(caloPos, magCache);
               const double        Bz       = fieldRes.ok() ? (*fieldRes)[2] / Acts::UnitConstants::T : 0.0;
-              auto caloState = ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtCalorimeter, *caloParams, Bz);
+              auto                caloState =
+                  ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtCalorimeter, *caloParams, Bz);
               // The calo-face parameters are local to the target surface, so the
               // edm4hep D0/Z0 from the generic conversion are not meaningful here.
               // Express the state at the impact point instead: set the reference

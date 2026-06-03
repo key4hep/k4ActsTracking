@@ -240,10 +240,11 @@ namespace ACTSTracking {
     return Acts::ParticleHypothesis{pdg, mass, charge_type};
   }
 
-  std::optional<Acts::BoundTrackParameters> extrapolateToCaloFace(
-      const CaloFacePropagator& propagator, const Acts::BoundTrackParameters& start,
-      const IActsGeoSvc::CaloFaceSurfaces& surfaces, const Acts::GeometryContext& gctx,
-      const Acts::MagneticFieldContext& mctx) {
+  std::optional<Acts::BoundTrackParameters> extrapolateToCaloFace(const CaloFacePropagator&            propagator,
+                                                                  const Acts::BoundTrackParameters&    start,
+                                                                  const IActsGeoSvc::CaloFaceSurfaces& surfaces,
+                                                                  const Acts::GeometryContext&         gctx,
+                                                                  const Acts::MagneticFieldContext&    mctx) {
     if (surfaces.empty()) {
       return std::nullopt;
     }
@@ -253,8 +254,8 @@ namespace ACTSTracking {
 
     // Allow a small slack at face edges / the barrel-endcap seam so tracks
     // crossing right at a boundary are not lost.
-    constexpr double                tolerance = 1.0 * Acts::UnitConstants::mm;
-    const Acts::BoundaryTolerance   boundaryTolerance = Acts::BoundaryTolerance::AbsoluteEuclidean(tolerance);
+    constexpr double              tolerance         = 1.0 * Acts::UnitConstants::mm;
+    const Acts::BoundaryTolerance boundaryTolerance = Acts::BoundaryTolerance::AbsoluteEuclidean(tolerance);
 
     // Build the candidate list: every barrel face plus the endcap disc on the
     // side the track is heading towards.
@@ -269,9 +270,9 @@ namespace ACTSTracking {
     }
 
     // Pick the surface reached first along the track direction.
-    const Acts::Surface* target      = nullptr;
-    double               bestPath    = std::numeric_limits<double>::max();
-    constexpr double     minPath     = 1e-3;  // ignore intersections essentially at the start point
+    const Acts::Surface* target   = nullptr;
+    double               bestPath = std::numeric_limits<double>::max();
+    constexpr double     minPath  = 1e-3;  // ignore intersections essentially at the start point
     for (const Acts::Surface* surface : candidates) {
       const auto multiIntersection = surface->intersect(gctx, position, direction, boundaryTolerance);
       for (const auto& intersection : multiIntersection) {

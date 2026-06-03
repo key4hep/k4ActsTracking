@@ -190,8 +190,7 @@ void ActsGeoSvc::buildCaloFaceSurfaces() {
   // LayeredCalorimeterData extension (the same source Pandora uses).
   const auto ecalBarrel =
       dd4hepDet->detectors(DetType::CALORIMETER | DetType::ELECTROMAGNETIC | DetType::BARREL, DetType::FORWARD);
-  const auto ecalEndcap =
-      dd4hepDet->detectors(DetType::CALORIMETER | DetType::ELECTROMAGNETIC | DetType::ENDCAP, 0);
+  const auto ecalEndcap = dd4hepDet->detectors(DetType::CALORIMETER | DetType::ELECTROMAGNETIC | DetType::ENDCAP, 0);
 
   // Barrel circumradius (corner radius), needed both for the barrel faces and to
   // guarantee the endcap discs reach far enough to avoid hermeticity gaps at the
@@ -229,19 +228,19 @@ void ActsGeoSvc::buildCaloFaceSurfaces() {
 
         m_caloFaceSurfaces.barrelFaces.reserve(nSides);
         for (int i = 0; i < nSides; ++i) {
-          const double  phi    = phi0 + i * dPhi;
-          const double  cphi   = std::cos(phi);
-          const double  sphi   = std::sin(phi);
-          Acts::Vector3 normal{cphi, sphi, 0};               // local z (surface normal, radial)
-          Acts::Vector3 localX{-sphi, cphi, 0};              // tangential
-          Acts::Vector3 localY{0, 0, 1};                     // along global z
-          Acts::Vector3 center = apothem * normal;           // barrel centred on z = 0
+          const double  phi  = phi0 + i * dPhi;
+          const double  cphi = std::cos(phi);
+          const double  sphi = std::sin(phi);
+          Acts::Vector3 normal{cphi, sphi, 0};      // local z (surface normal, radial)
+          Acts::Vector3 localX{-sphi, cphi, 0};     // tangential
+          Acts::Vector3 localY{0, 0, 1};            // along global z
+          Acts::Vector3 center = apothem * normal;  // barrel centred on z = 0
 
           Acts::Transform3 transform = Acts::Transform3::Identity();
-          transform.linear().col(0) = localX;
-          transform.linear().col(1) = localY;
-          transform.linear().col(2) = normal;
-          transform.translation()   = center;
+          transform.linear().col(0)  = localX;
+          transform.linear().col(1)  = localY;
+          transform.linear().col(2)  = normal;
+          transform.translation()    = center;
 
           auto bounds = std::make_shared<Acts::RectangleBounds>(halfWidth, barrelHalfZ);
           m_caloFaceSurfaces.barrelFaces.push_back(Acts::Surface::makeShared<Acts::PlaneSurface>(transform, bounds));
