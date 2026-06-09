@@ -26,6 +26,8 @@ SET( ${PROJECT_NAME}_VERSION_PATCH 0 )
 
 SET( ${PROJECT_NAME}_VERSION  "${${PROJECT_NAME}_VERSION_MAJOR}.${${PROJECT_NAME}_VERSION_MINOR}.${${PROJECT_NAME}_VERSION_PATCH}" )
 
+include(cmake/MaybeBuildActs.cmake)
+
 find_package(EDM4HEP REQUIRED)
 find_package(k4FWCore REQUIRED)
 find_package(Acts REQUIRED COMPONENTS Core PluginDD4hep)
