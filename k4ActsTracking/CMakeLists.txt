@@ -54,6 +54,7 @@ gaudi_add_module(k4ActsTrackingPlugins
   Gaudi::GaudiKernel
   EDM4HEP::edm4hep
   k4FWCore::k4FWCore
+  k4FWCore::k4Interface
   DD4hep::DDCore DD4hep::DDRec
   k4ActsTracking
   Acts::Core
