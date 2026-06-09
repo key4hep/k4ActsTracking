@@ -36,6 +36,7 @@
 #include <regex>
 #include <stdexcept>
 
+using Acts::Experimental::BlueprintNode;
 using Acts::Experimental::ContainerBlueprintNode;
 using Acts::Experimental::CylinderContainerBlueprintNode;
 using Acts::Experimental::LayerBlueprintNode;
@@ -232,8 +233,12 @@ namespace Blueprints {
   /// the center of gravity for auto-sizing. This is useful for cases where the
   /// detectors have has an odd number of modules, which shifts them off the
   /// z-axis with the default sizing
-  std::shared_ptr<LayerBlueprintNode> unsetXYCoG(const std::optional<dd4hep::DetElement>&,
-                                                 std::shared_ptr<LayerBlueprintNode> layer) {
+  // Return type is the base BlueprintNodePtr (not the derived LayerBlueprintNode)
+  // so the callback satisfies acts' OnLayerReturnsNode concept, which requires
+  // the result to be exactly std::shared_ptr<BlueprintNode>. `return layer;`
+  // upcasts implicitly.
+  std::shared_ptr<BlueprintNode> unsetXYCoG(const std::optional<dd4hep::DetElement>&,
+                                            std::shared_ptr<LayerBlueprintNode> layer) {
     layer->setUseCenterOfGravity(false, false, true);
     return layer;
   }
