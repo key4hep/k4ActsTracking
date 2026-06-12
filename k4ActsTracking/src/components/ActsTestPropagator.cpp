@@ -25,9 +25,10 @@
 
 #include <podio/UserDataCollection.h>
 
+#include <Acts/EventData/BoundTrackParameters.hpp>
+#include <Acts/EventData/FreeTrackParameters.hpp>
 #include <Acts/EventData/GenericBoundTrackParameters.hpp>
 #include <Acts/EventData/ParticleHypothesis.hpp>
-#include <Acts/EventData/TrackParameters.hpp>
 #include <Acts/Geometry/GeometryContext.hpp>
 #include <Acts/MagneticField/ConstantBField.hpp>
 #include <Acts/MagneticField/MagneticFieldContext.hpp>

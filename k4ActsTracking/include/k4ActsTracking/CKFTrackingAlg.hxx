@@ -19,7 +19,9 @@
 #pragma once
 
 // ACTS
-#include <Acts/EventData/TrackParameters.hpp>
+#include <Acts/EventData/BoundTrackParameters.hpp>
+#include <Acts/EventData/FreeTrackParameters.hpp>
+#include <Acts/EventData/ParticleHypothesis.hpp>
 
 // Standard
 #include <cmath>
