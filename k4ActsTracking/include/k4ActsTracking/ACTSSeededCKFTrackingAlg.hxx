@@ -29,9 +29,11 @@
 
 // ACTS
 #include <Acts/Definitions/Units.hpp>
+#include <Acts/EventData/BoundTrackParameters.hpp>
+#include <Acts/EventData/FreeTrackParameters.hpp>
+#include <Acts/EventData/ParticleHypothesis.hpp>
 #include <Acts/EventData/SpacePointContainer.hpp>
 #include <Acts/EventData/TrackContainer.hpp>
-#include <Acts/EventData/TrackParameters.hpp>
 #include <Acts/EventData/VectorMultiTrajectory.hpp>
 #include <Acts/EventData/VectorTrackContainer.hpp>
 #include <Acts/Propagator/EigenStepper.hpp>

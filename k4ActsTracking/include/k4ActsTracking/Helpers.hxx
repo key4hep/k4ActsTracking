@@ -35,7 +35,9 @@
 #include <GaudiKernel/StatusCode.h>
 
 // ACTS
-#include <Acts/EventData/TrackParameters.hpp>
+#include <Acts/EventData/BoundTrackParameters.hpp>
+#include <Acts/EventData/FreeTrackParameters.hpp>
+#include <Acts/EventData/ParticleHypothesis.hpp>
 #include <Acts/EventData/VectorMultiTrajectory.hpp>
 #include <Acts/EventData/VectorTrackContainer.hpp>
 #include <Acts/Geometry/GeometryContext.hpp>
@@ -46,7 +48,6 @@
 #include <Acts/Propagator/VoidNavigator.hpp>
 #include <Acts/TrackFinding/CombinatorialKalmanFilter.hpp>
 #include <Acts/TrackFitting/KalmanFitter.hpp>
-#include "Acts/EventData/ParticleHypothesis.hpp"
 
 // ACTSTracking
 #include "k4ActsTracking/IActsGeoSvc.h"
