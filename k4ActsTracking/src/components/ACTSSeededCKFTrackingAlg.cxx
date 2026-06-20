@@ -265,7 +265,8 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
   gridCfg.bottomBinFinder.emplace(m_phiBottomBinLen.value(), m_zBottomBinLen.value(), 0);
   gridCfg.topBinFinder.emplace(m_phiTopBinLen.value(), m_zTopBinLen.value(), 0);
 
-  Acts::CylindricalSpacePointGrid2 grid(gridCfg, Acts::getDefaultLogger("SeededCKFSeedingGrid", Acts::Logging::WARNING));
+  Acts::CylindricalSpacePointGrid2 grid(gridCfg,
+                                        Acts::getDefaultLogger("SeededCKFSeedingGrid", Acts::Logging::WARNING));
 
   for (std::size_t i = 0; i < seedInputs.size(); ++i) {
     const SeedInput& sp = seedInputs[i];
@@ -477,8 +478,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
 
   // Run in parallel if more than one thread is requested
   if (m_numThreads > 1) {
-    arena.execute(
-        [&] { tbb::parallel_for(tbb::blocked_range<size_t>(0, groups.size()), parallelSeedingAndTracking); });
+    arena.execute([&] { tbb::parallel_for(tbb::blocked_range<size_t>(0, groups.size()), parallelSeedingAndTracking); });
   } else {  // Serial execution
     parallelSeedingAndTracking(tbb::blocked_range<size_t>(0, groups.size()));
   }
