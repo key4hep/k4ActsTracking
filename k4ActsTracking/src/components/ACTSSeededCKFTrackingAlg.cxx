@@ -480,7 +480,9 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
     if (!m_runCKF)
       return;
 
-    if (!tracking(paramseeds, trackFinder, ckfOptions, localMagCache, trackCollection).isSuccess()) {
+    if (!tracking(paramseeds, trackFinder, ckfOptions, extrapPropagator, *perigeeSurface, extrapOptions, localMagCache,
+                  trackCollection)
+             .isSuccess()) {
       warning() << "Tracking failed for this event" << endmsg;
     }
   };  // parallelSeedingAndTracking
