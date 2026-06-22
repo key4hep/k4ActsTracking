@@ -698,53 +698,91 @@ namespace MuColl {
 namespace FCCee {
   namespace ILD_FCCee_v01 {
     void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
-                           ActsPlugins::DD4hep::BlueprintBuilder&                builder,
-                           [[maybe_unused]] const IActsGeoSvc::CaloFaceSurfaces& calo) {
-      // TODO: integrate the calo face (see MAIA_v0); deferred until validated.
-      auto& outer = root.addCylinderContainer(detName, AxisR);
+                           ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo) {
+      // Build the tracker detectors as radial children of the supplied
+      // container.
+      auto buildTrackers = [&](ContainerBlueprintNode& outer) {
+        Blueprints::addCylindricalBeampipe(outer);
 
-      Blueprints::addCylindricalBeampipe(outer);
+        auto vtxBarrel = Blueprints::makeBarrel(builder, Blueprints::UngroupedDoubleBarrelLayerVertexSpec,
+                                                Blueprints::kBarrelEnvelope, Blueprints::doubleLayerKey);
+        auto vertex    = Blueprints::attachEndcaps(builder, std::move(vtxBarrel),
+                                                   Blueprints::UngroupedDoubleBarrelLayerVertexSpec, "Vertex");
 
-      auto vtxBarrel = Blueprints::makeBarrel(builder, Blueprints::UngroupedDoubleBarrelLayerVertexSpec,
-                                              Blueprints::kBarrelEnvelope, Blueprints::doubleLayerKey);
-      auto vertex    = Blueprints::attachEndcaps(builder, std::move(vtxBarrel),
-                                                 Blueprints::UngroupedDoubleBarrelLayerVertexSpec, "Vertex");
+        auto innerTrackerBarrel = Blueprints::makeBarrel(builder, Blueprints::UngroupedInnerTrackerSpec);
+        innerTrackerBarrel->addChild(vertex);
 
-      auto innerTrackerBarrel = Blueprints::makeBarrel(builder, Blueprints::UngroupedInnerTrackerSpec);
-      innerTrackerBarrel->addChild(vertex);
+        auto innerTrackerEndcap = Blueprints::attachEndcaps(
+            builder, std::move(innerTrackerBarrel), Blueprints::UngroupedInnerTrackerSpec, "InnerTrackerEndcap");
+        outer.addChild(innerTrackerEndcap);
 
-      auto innerTrackerEndcap = Blueprints::attachEndcaps(builder, std::move(innerTrackerBarrel),
-                                                          Blueprints::UngroupedInnerTrackerSpec, "InnerTrackerEndcap");
-      outer.addChild(innerTrackerEndcap);
+        // TODO: this is not yet properly working only part of the SET show up in
+        // the exporte .obj geometry. This usually indicates some issues with the
+        // AxisDirection, but that would mean that there are different
+        // AxisDirections in play for the SET geometry
+        auto set = Blueprints::makeBarrel(builder, Blueprints::SETSpec, Blueprints::kBarrelEnvelope,
+                                          Blueprints::doubleLayerKey);
+        outer.addChild(set);
+      };
 
-      // TODO: this is not yet properly working only part of the SET show up in
-      // the exporte .obj geometry. This usually indicates some issues with the
-      // AxisDirection, but that would mean that there are different
-      // AxisDirections in play for the SET geometry
-      auto set =
-          Blueprints::makeBarrel(builder, Blueprints::SETSpec, Blueprints::kBarrelEnvelope, Blueprints::doubleLayerKey);
-      outer.addChild(set);
+      if (calo.empty()) {
+        // No calorimeter face: keep the original purely-radial layout.
+        auto& outer = root.addCylinderContainer(detName, AxisR);
+        buildTrackers(outer);
+        return;
+      }
+
+      // The calorimeter wraps the tracker, so the top level is a z-stack
+      // [calo -endcap | central (tracker + calo barrel) | calo +endcap] (see
+      // MAIA_v0 for details).
+      auto& world = root.addCylinderContainer(detName, AxisZ);
+      Blueprints::addCaloEndcap(world, calo, /*positive=*/false);
+      auto& central = world.addCylinderContainer(detName + "Central", AxisR);
+      buildTrackers(central);
+      if (!calo.barrelFaces.empty()) {
+        Blueprints::addCaloBarrel(central, calo);
+      }
+      Blueprints::addCaloEndcap(world, calo, /*positive=*/true);
     }
   }  // namespace ILD_FCCee_v01
 
   namespace ILD_FCCee_v02 {
     void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
-                           ActsPlugins::DD4hep::BlueprintBuilder&                builder,
-                           [[maybe_unused]] const IActsGeoSvc::CaloFaceSurfaces& calo) {
-      // TODO: integrate the calo face (see MAIA_v0); deferred until validated.
-      auto& outer = root.addCylinderContainer(detName, AxisR);
+                           ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo) {
+      // Build the tracker detectors as radial children of the supplied
+      // container.
+      auto buildTrackers = [&](ContainerBlueprintNode& outer) {
+        Blueprints::addCylindricalBeampipe(outer);
+        auto vtxBarrel = Blueprints::makeBarrel(builder, Blueprints::UngroupedDoubleBarrelLayerVertexSpec,
+                                                Blueprints::kBarrelEnvelope, Blueprints::doubleLayerKey);
+        auto vertex    = Blueprints::attachEndcaps(builder, std::move(vtxBarrel),
+                                                   Blueprints::UngroupedDoubleBarrelLayerVertexSpec, "Vertex");
 
-      Blueprints::addCylindricalBeampipe(outer);
-      auto vtxBarrel = Blueprints::makeBarrel(builder, Blueprints::UngroupedDoubleBarrelLayerVertexSpec,
-                                              Blueprints::kBarrelEnvelope, Blueprints::doubleLayerKey);
-      auto vertex    = Blueprints::attachEndcaps(builder, std::move(vtxBarrel),
-                                                 Blueprints::UngroupedDoubleBarrelLayerVertexSpec, "Vertex");
+        auto innerTracker =
+            Blueprints::makeNestedInnerTracker(builder, std::move(vertex), Blueprints::UngroupedNestedInnerTrackerSpec);
+        outer.addChild(innerTracker);
 
-      auto innerTracker =
-          Blueprints::makeNestedInnerTracker(builder, std::move(vertex), Blueprints::UngroupedNestedInnerTrackerSpec);
-      outer.addChild(innerTracker);
+        // TODO: Add SET (see V01 for caveats)
+      };
 
-      // TODO: Add SET (see V01 for caveats)
+      if (calo.empty()) {
+        // No calorimeter face: keep the original purely-radial layout.
+        auto& outer = root.addCylinderContainer(detName, AxisR);
+        buildTrackers(outer);
+        return;
+      }
+
+      // The calorimeter wraps the tracker, so the top level is a z-stack
+      // [calo -endcap | central (tracker + calo barrel) | calo +endcap] (see
+      // MAIA_v0 for details).
+      auto& world = root.addCylinderContainer(detName, AxisZ);
+      Blueprints::addCaloEndcap(world, calo, /*positive=*/false);
+      auto& central = world.addCylinderContainer(detName + "Central", AxisR);
+      buildTrackers(central);
+      if (!calo.barrelFaces.empty()) {
+        Blueprints::addCaloBarrel(central, calo);
+      }
+      Blueprints::addCaloEndcap(world, calo, /*positive=*/true);
     }
   }  // namespace ILD_FCCee_v02
 
