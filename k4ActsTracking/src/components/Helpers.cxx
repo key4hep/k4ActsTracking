@@ -31,11 +31,14 @@
 // ACTS
 #include <Acts/EventData/ParticleHypothesis.hpp>
 #include <Acts/MagneticField/InterpolatedBFieldMap.hpp>
+#include <Acts/Propagator/ActorList.hpp>
 #include <Acts/Propagator/PropagatorOptions.hpp>
 #include <Acts/Surfaces/BoundaryTolerance.hpp>
 #include <Acts/Surfaces/Surface.hpp>
 #include <Acts/Utilities/Intersection.hpp>
+#include <Acts/Utilities/Logger.hpp>
 
+#include <algorithm>
 #include <limits>
 
 // ACTSTracking
@@ -240,65 +243,64 @@ namespace ACTSTracking {
     return Acts::ParticleHypothesis{pdg, mass, charge_type};
   }
 
-  std::optional<Acts::BoundTrackParameters> extrapolateToCaloFace(const CaloFacePropagator&            propagator,
-                                                                  const Acts::BoundTrackParameters&    start,
-                                                                  const IActsGeoSvc::CaloFaceSurfaces& surfaces,
-                                                                  const Acts::GeometryContext&         gctx,
-                                                                  const Acts::MagneticFieldContext&    mctx) {
-    if (surfaces.empty()) {
-      return std::nullopt;
-    }
+  namespace {
+    /// Abort condition for the calorimeter-face extrapolation: terminate the
+    /// propagation as soon as the navigator's current surface is one of the
+    /// calorimeter-face surfaces. Works with the geometry navigator, which sets
+    /// the current surface as it visits the calo volumes' passive surfaces.
+    struct CaloSurfaceReached {
+      const std::vector<Acts::GeometryIdentifier>* caloIds = nullptr;
 
-    const Acts::Vector3 position  = start.position(gctx);
-    const Acts::Vector3 direction = start.direction();
-
-    // Allow a small slack at face edges / the barrel-endcap seam so tracks
-    // crossing right at a boundary are not lost.
-    constexpr double              tolerance         = 1.0 * Acts::UnitConstants::mm;
-    const Acts::BoundaryTolerance boundaryTolerance = Acts::BoundaryTolerance::AbsoluteEuclidean(tolerance);
-
-    // Build the candidate list: every barrel face plus the endcap disc on the
-    // side the track is heading towards.
-    std::vector<const Acts::Surface*> candidates;
-    candidates.reserve(surfaces.barrelFaces.size() + 1);
-    for (const auto& face : surfaces.barrelFaces) {
-      candidates.push_back(face.get());
-    }
-    const auto& endcap = (direction.z() >= 0) ? surfaces.endcapPos : surfaces.endcapNeg;
-    if (endcap) {
-      candidates.push_back(endcap.get());
-    }
-
-    // Pick the surface reached first along the track direction.
-    const Acts::Surface* target   = nullptr;
-    double               bestPath = std::numeric_limits<double>::max();
-    constexpr double     minPath  = 1e-3;  // ignore intersections essentially at the start point
-    for (const Acts::Surface* surface : candidates) {
-      const auto multiIntersection = surface->intersect(gctx, position, direction, boundaryTolerance);
-      for (const auto& intersection : multiIntersection) {
-        if (!intersection.isValid()) {
-          continue;
+      template <typename propagator_state_t, typename stepper_t, typename navigator_t>
+      bool checkAbort(propagator_state_t& state, const stepper_t& /*stepper*/, const navigator_t& navigator,
+                      const Acts::Logger& /*logger*/) const {
+        if (caloIds == nullptr) {
+          return false;
         }
-        const double path = intersection.pathLength();
-        if (path > minPath && path < bestPath) {
-          bestPath = path;
-          target   = surface;
+        const Acts::Surface* current = navigator.currentSurface(state.navigation);
+        if (current == nullptr) {
+          return false;
         }
+        return std::find(caloIds->begin(), caloIds->end(), current->geometryId()) != caloIds->end();
       }
+    };
+  }  // namespace
+
+  CaloExtrapolationResult extrapolateToCaloFace(const CaloFacePropagator&                    propagator,
+                                                const Acts::BoundTrackParameters&            start,
+                                                const std::vector<Acts::GeometryIdentifier>& caloSurfaceGeoIds,
+                                                const Acts::GeometryContext&                 gctx,
+                                                const Acts::MagneticFieldContext&            mctx) {
+    if (caloSurfaceGeoIds.empty()) {
+      return {std::nullopt, CaloExtrapolationStatus::NoSurfaces};
     }
 
-    if (target == nullptr) {
-      return std::nullopt;
-    }
+    using ActorList = Acts::ActorList<CaloSurfaceReached>;
+    using Options   = CaloFacePropagator::Options<ActorList>;
 
-    Acts::PropagatorPlainOptions options{gctx, mctx};
-    options.maxSteps = 10000;
+    Options options{gctx, mctx};
+    options.maxSteps                                   = 10000;
+    options.actorList.get<CaloSurfaceReached>().caloIds = &caloSurfaceGeoIds;
 
-    auto result = propagator.propagateToSurface(start, *target, options);
+    auto result = propagator.propagate(start, options);
     if (!result.ok()) {
-      return std::nullopt;
+      return {std::nullopt, CaloExtrapolationStatus::PropagationError};
     }
-    return result.value();
+
+    const auto& output = result.value();
+    if (!output.endParameters.has_value()) {
+      return {std::nullopt, CaloExtrapolationStatus::NotReached};
+    }
+
+    // The propagation may also terminate at the world boundary; only treat it as
+    // a success if it actually finished on a calo-face surface.
+    const auto& endParams = output.endParameters.value();
+    const auto  endId     = endParams.referenceSurface().geometryId();
+    if (std::find(caloSurfaceGeoIds.begin(), caloSurfaceGeoIds.end(), endId) == caloSurfaceGeoIds.end()) {
+      return {std::nullopt, CaloExtrapolationStatus::NotReached};
+    }
+
+    return {endParams, CaloExtrapolationStatus::Ok};
   }
 
 }  // namespace ACTSTracking

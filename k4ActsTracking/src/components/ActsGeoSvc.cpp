@@ -106,6 +106,13 @@ StatusCode ActsGeoSvc::initialize() {
       {.dd4hepDetector = dd4hepDet, .lengthScale = Acts::UnitConstants::cm / dd4hep::cm, .gctx = gctxt},
       gaudiLogger->cloneWithSuffix("|BlpBld")};
 
+  // The calo-face surfaces are inserted into the tracking geometry as passive
+  // surfaces of dedicated calo volumes, so they must be built before the
+  // blueprint is populated and constructed.
+  if (m_buildCaloSurfaces.value()) {
+    buildCaloFaceSurfaces();
+  }
+
   using Acts::Experimental::Blueprint;
   using Acts::Experimental::BlueprintOptions;
   using namespace Acts::UnitLiterals;
@@ -120,7 +127,7 @@ StatusCode ActsGeoSvc::initialize() {
   debug() << fmt::format("Getting Blueprint construction function for detector: {}", detName) << endmsg;
   if (const auto it = m_bluePrintPopulationFuncs.find(detName); it != m_bluePrintPopulationFuncs.end()) {
     auto bluePrintFunc = it->second;
-    bluePrintFunc(detName, root, builder);
+    bluePrintFunc(detName, root, builder, m_caloFaceSurfaces);
   } else {
     error() << fmt::format("Cannot find a Blueprint construction function for detector: {}", detName) << endmsg;
     return StatusCode::FAILURE;
@@ -133,9 +140,15 @@ StatusCode ActsGeoSvc::initialize() {
 
   std::size_t nSurfaces = 0;
   m_trackingGeo->visitSurfaces([&](const Acts::Surface* surface) {
+    // Skip surfaces that are not backed by a DD4hep detector element, such as
+    // the passive calorimeter-face surfaces inserted by buildCaloFaceSurfaces.
+    const auto* actsDetElemPtr =
+        dynamic_cast<const ActsPlugins::DD4hepDetectorElement*>(surface->surfacePlacement());
+    if (actsDetElemPtr == nullptr) {
+      return;
+    }
     nSurfaces++;
-    const auto& actsDetElem = dynamic_cast<const ActsPlugins::DD4hepDetectorElement&>(*surface->surfacePlacement());
-    const auto& detElem     = actsDetElem.sourceElement();
+    const auto& detElem = actsDetElemPtr->sourceElement();
     verbose() << fmt::format("Adding Acts surface {} pointing to dd4hep DetElement {}", surface->geometryId(),
                              detElem.volumeID())
               << endmsg;
@@ -166,8 +179,22 @@ StatusCode ActsGeoSvc::initialize() {
     vis.write(m_objDumpFileName.value());
   }
 
+  // The calo-face surfaces are the very ones inserted into the calo volumes, so
+  // after construction they carry their assigned geometry identifiers. Collect
+  // them for the extrapolation aborter to recognise the calo face.
+  m_caloSurfaceGeoIds.clear();
   if (m_buildCaloSurfaces.value()) {
-    buildCaloFaceSurfaces();
+    auto collect = [&](const std::shared_ptr<Acts::Surface>& surface) {
+      if (surface) {
+        m_caloSurfaceGeoIds.push_back(surface->geometryId());
+      }
+    };
+    for (const auto& face : m_caloFaceSurfaces.barrelFaces) {
+      collect(face);
+    }
+    collect(m_caloFaceSurfaces.endcapPos);
+    collect(m_caloFaceSurfaces.endcapNeg);
+    info() << fmt::format("Collected {} calorimeter-face surface geometry ids.", m_caloSurfaceGeoIds.size()) << endmsg;
   }
 
   return StatusCode::SUCCESS;
@@ -192,107 +219,143 @@ void ActsGeoSvc::buildCaloFaceSurfaces() {
       dd4hepDet->detectors(DetType::CALORIMETER | DetType::ELECTROMAGNETIC | DetType::BARREL, DetType::FORWARD);
   const auto ecalEndcap = dd4hepDet->detectors(DetType::CALORIMETER | DetType::ELECTROMAGNETIC | DetType::ENDCAP, 0);
 
-  // Barrel circumradius (corner radius), needed both for the barrel faces and to
-  // guarantee the endcap discs reach far enough to avoid hermeticity gaps at the
-  // barrel/endcap junction.
+  // --- Pass 1: extract the barrel and endcap dimensions --------------------
+  // Surfaces are created in pass 2, after a corner-gap correction that needs
+  // both the barrel half-length and the endcap inner-face z.
+  bool   haveBarrel        = false;
+  int    nSides            = 0;
+  double apothem           = 0.0;
+  double barrelHalfZRaw    = 0.0;
+  double phi0              = 0.0;
   double barrelCircumradius = 0.0;
-  double barrelHalfZ        = 0.0;
+  double halfWidth         = 0.0;
 
-  // --- Barrel: one planar surface per polygon side --------------------------
   if (ecalBarrel.empty()) {
     warning() << "No electromagnetic barrel calorimeter found via DetType flags; "
                  "no barrel calo-face surfaces will be built."
               << endmsg;
+  } else if (const auto* caloData = ecalBarrel.front().extension<LayeredCalorimeterData>(false);
+             caloData == nullptr) {
+    warning() << "ECAL barrel DetElement has no LayeredCalorimeterData extension; "
+                 "skipping barrel calo-face surfaces."
+              << endmsg;
   } else {
-    const auto* caloData = ecalBarrel.front().extension<LayeredCalorimeterData>(false);
-    if (caloData == nullptr) {
-      warning() << "ECAL barrel DetElement has no LayeredCalorimeterData extension; "
-                   "skipping barrel calo-face surfaces."
+    nSides = caloData->inner_symmetry > 0 ? caloData->inner_symmetry : 0;
+    // For a BarrelLayout the calorimeter is centred on z = 0 and extent[] is
+    // {rmin, rmax, zmin=0, zmax=half_length}, so the half-length is extent[3].
+    apothem        = caloData->extent[0] * lengthScale;  // perpendicular distance to inner face
+    barrelHalfZRaw = caloData->extent[3] * lengthScale;  // barrel half-length
+    phi0           = caloData->inner_phi0;               // azimuth of first inner-face normal
+    if (nSides < 3) {
+      warning() << fmt::format("ECAL barrel has unusable inner_symmetry={}; skipping barrel faces.",
+                               caloData->inner_symmetry)
                 << endmsg;
     } else {
-      const int nSides = caloData->inner_symmetry > 0 ? caloData->inner_symmetry : 0;
-      // For a BarrelLayout the calorimeter is centred on z = 0 and extent[] is
-      // {rmin, rmax, zmin=0, zmax=half_length}, so the half-length is extent[3].
-      const double apothem = caloData->extent[0] * lengthScale;  // perpendicular distance to inner face
-      barrelHalfZ          = caloData->extent[3] * lengthScale;  // barrel half-length
-      const double phi0    = caloData->inner_phi0;               // azimuth of first inner-face normal
-
-      if (nSides < 3) {
-        warning() << fmt::format("ECAL barrel has unusable inner_symmetry={}; skipping barrel faces.",
-                                 caloData->inner_symmetry)
-                  << endmsg;
-      } else {
-        const double dPhi      = 2 * std::numbers::pi / nSides;
-        barrelCircumradius     = apothem / std::cos(std::numbers::pi / nSides);
-        const double halfWidth = apothem * std::tan(std::numbers::pi / nSides);
-
-        m_caloFaceSurfaces.barrelFaces.reserve(nSides);
-        for (int i = 0; i < nSides; ++i) {
-          const double  phi  = phi0 + i * dPhi;
-          const double  cphi = std::cos(phi);
-          const double  sphi = std::sin(phi);
-          Acts::Vector3 normal{cphi, sphi, 0};      // local z (surface normal, radial)
-          Acts::Vector3 localX{-sphi, cphi, 0};     // tangential
-          Acts::Vector3 localY{0, 0, 1};            // along global z
-          Acts::Vector3 center = apothem * normal;  // barrel centred on z = 0
-
-          Acts::Transform3 transform = Acts::Transform3::Identity();
-          transform.linear().col(0)  = localX;
-          transform.linear().col(1)  = localY;
-          transform.linear().col(2)  = normal;
-          transform.translation()    = center;
-
-          auto bounds = std::make_shared<Acts::RectangleBounds>(halfWidth, barrelHalfZ);
-          m_caloFaceSurfaces.barrelFaces.push_back(Acts::Surface::makeShared<Acts::PlaneSurface>(transform, bounds));
-        }
-        info() << fmt::format(
-                      "Built ECAL barrel calo face: {} planar faces, apothem={:.1f} mm, circumradius={:.1f} mm, "
-                      "halfZ={:.1f} mm, phi0={:.4f}",
-                      nSides, apothem / UC::mm, barrelCircumradius / UC::mm, barrelHalfZ / UC::mm, phi0)
-               << endmsg;
-      }
+      barrelCircumradius = apothem / std::cos(std::numbers::pi / nSides);
+      halfWidth          = apothem * std::tan(std::numbers::pi / nSides);
+      haveBarrel         = true;
     }
   }
 
-  // --- Endcaps: flat discs, widened to stay hermetic with the barrel --------
+  bool   haveEndcap = false;
+  double rMin       = 0.0;
+  double rMax       = 0.0;
+  double zEndcap    = 0.0;
+
   if (ecalEndcap.empty()) {
     warning() << "No electromagnetic endcap calorimeter found via DetType flags; "
                  "no endcap calo-face surfaces will be built."
               << endmsg;
+  } else if (const auto* caloData = ecalEndcap.front().extension<LayeredCalorimeterData>(false);
+             caloData == nullptr) {
+    warning() << "ECAL endcap DetElement has no LayeredCalorimeterData extension; "
+                 "skipping endcap calo-face surfaces."
+              << endmsg;
   } else {
-    const auto* caloData = ecalEndcap.front().extension<LayeredCalorimeterData>(false);
-    if (caloData == nullptr) {
-      warning() << "ECAL endcap DetElement has no LayeredCalorimeterData extension; "
-                   "skipping endcap calo-face surfaces."
+    rMin    = caloData->extent[0] * lengthScale;
+    rMax    = caloData->extent[1] * lengthScale;
+    zEndcap = caloData->extent[2] * lengthScale;  // inner-face z (zmin)
+    // Guarantee the disc reaches at least the barrel corner radius so there is
+    // no gap at the barrel/endcap junction.
+    if (barrelCircumradius > rMax) {
+      warning() << fmt::format(
+                       "ECAL endcap rMax ({:.1f} mm) is smaller than the barrel circumradius ({:.1f} mm); "
+                       "extending the endcap disc to close the hermeticity gap.",
+                       rMax / UC::mm, barrelCircumradius / UC::mm)
                 << endmsg;
-    } else {
-      const double rMin    = caloData->extent[0] * lengthScale;
-      double       rMax    = caloData->extent[1] * lengthScale;
-      const double zEndcap = caloData->extent[2] * lengthScale;  // inner-face z (zmin)
-
-      // Guarantee the disc reaches at least the barrel corner radius so there is
-      // no gap at the barrel/endcap junction.
-      if (barrelCircumradius > rMax) {
-        warning() << fmt::format(
-                         "ECAL endcap rMax ({:.1f} mm) is smaller than the barrel circumradius ({:.1f} mm); "
-                         "extending the endcap disc to close the hermeticity gap.",
-                         rMax / UC::mm, barrelCircumradius / UC::mm)
-                  << endmsg;
-        rMax = barrelCircumradius;
-      }
-
-      Acts::Transform3 tPos = Acts::Transform3::Identity();
-      tPos.translation()    = Acts::Vector3{0, 0, zEndcap};
-      Acts::Transform3 tNeg = Acts::Transform3::Identity();
-      tNeg.translation()    = Acts::Vector3{0, 0, -zEndcap};
-
-      m_caloFaceSurfaces.endcapPos = Acts::Surface::makeShared<Acts::DiscSurface>(tPos, rMin, rMax);
-      m_caloFaceSurfaces.endcapNeg = Acts::Surface::makeShared<Acts::DiscSurface>(tNeg, rMin, rMax);
-
-      info() << fmt::format("Built ECAL endcap calo faces: discs at z=+/-{:.1f} mm, rMin={:.1f} mm, rMax={:.1f} mm",
-                            zEndcap / UC::mm, rMin / UC::mm, rMax / UC::mm)
-             << endmsg;
+      rMax = barrelCircumradius;
     }
+    haveEndcap = true;
+  }
+
+  // The ECAL barrel inner face and the endcap inner face meet at a hermetic
+  // corner, so the barrel half-length and the endcap z are almost equal. When
+  // the calo surfaces are placed in the tracking geometry, the barrel volume
+  // and the endcap volume are stacked along z and must not overlap. Shorten the
+  // barrel face slightly so the endcap disc sits clearly beyond the barrel
+  // (z-)extent; tracks crossing the trimmed corner strip are still caught by the
+  // endcap disc.
+  constexpr double cornerGap   = 5.0 * UC::mm;
+  double           barrelHalfZ = barrelHalfZRaw;
+  if (haveBarrel && haveEndcap && (zEndcap - barrelHalfZRaw) < cornerGap) {
+    barrelHalfZ = std::max(0.0, zEndcap - cornerGap);
+    info() << fmt::format(
+                  "Shortening ECAL barrel face half-length from {:.1f} mm to {:.1f} mm to clear the endcap disc "
+                  "at z={:.1f} mm (corner gap {:.1f} mm).",
+                  barrelHalfZRaw / UC::mm, barrelHalfZ / UC::mm, zEndcap / UC::mm, cornerGap / UC::mm)
+           << endmsg;
+  }
+
+  // --- Pass 2: build the surfaces ------------------------------------------
+  if (haveBarrel) {
+    const double dPhi = 2 * std::numbers::pi / nSides;
+    m_caloFaceSurfaces.barrelFaces.reserve(nSides);
+    for (int i = 0; i < nSides; ++i) {
+      const double  phi  = phi0 + i * dPhi;
+      const double  cphi = std::cos(phi);
+      const double  sphi = std::sin(phi);
+      Acts::Vector3 normal{cphi, sphi, 0};      // local z (surface normal, radial)
+      Acts::Vector3 localX{-sphi, cphi, 0};     // tangential
+      Acts::Vector3 localY{0, 0, 1};            // along global z
+      Acts::Vector3 center = apothem * normal;  // barrel centred on z = 0
+
+      Acts::Transform3 transform = Acts::Transform3::Identity();
+      transform.linear().col(0)  = localX;
+      transform.linear().col(1)  = localY;
+      transform.linear().col(2)  = normal;
+      transform.translation()    = center;
+
+      auto bounds = std::make_shared<Acts::RectangleBounds>(halfWidth, barrelHalfZ);
+      m_caloFaceSurfaces.barrelFaces.push_back(Acts::Surface::makeShared<Acts::PlaneSurface>(transform, bounds));
+    }
+    // Bounding cylinder for the barrel calo volume: from the inner face
+    // (apothem) out to the polygon corners (circumradius), trimmed half-length.
+    m_caloFaceSurfaces.barrelRMin  = apothem;
+    m_caloFaceSurfaces.barrelRMax  = barrelCircumradius;
+    m_caloFaceSurfaces.barrelHalfZ = barrelHalfZ;
+    info() << fmt::format(
+                  "Built ECAL barrel calo face: {} planar faces, apothem={:.1f} mm, circumradius={:.1f} mm, "
+                  "halfZ={:.1f} mm, phi0={:.4f}",
+                  nSides, apothem / UC::mm, barrelCircumradius / UC::mm, barrelHalfZ / UC::mm, phi0)
+           << endmsg;
+  }
+
+  if (haveEndcap) {
+    Acts::Transform3 tPos = Acts::Transform3::Identity();
+    tPos.translation()    = Acts::Vector3{0, 0, zEndcap};
+    Acts::Transform3 tNeg = Acts::Transform3::Identity();
+    tNeg.translation()    = Acts::Vector3{0, 0, -zEndcap};
+
+    m_caloFaceSurfaces.endcapPos = Acts::Surface::makeShared<Acts::DiscSurface>(tPos, rMin, rMax);
+    m_caloFaceSurfaces.endcapNeg = Acts::Surface::makeShared<Acts::DiscSurface>(tNeg, rMin, rMax);
+
+    m_caloFaceSurfaces.endcapRMin = rMin;
+    m_caloFaceSurfaces.endcapRMax = rMax;
+    m_caloFaceSurfaces.endcapZ    = zEndcap;
+
+    info() << fmt::format("Built ECAL endcap calo faces: discs at z=+/-{:.1f} mm, rMin={:.1f} mm, rMax={:.1f} mm",
+                          zEndcap / UC::mm, rMin / UC::mm, rMax / UC::mm)
+           << endmsg;
   }
 
   info() << fmt::format("Calo-face surfaces built: {} barrel faces, {} endcap discs",

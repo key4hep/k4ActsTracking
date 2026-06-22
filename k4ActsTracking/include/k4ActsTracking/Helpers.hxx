@@ -43,9 +43,10 @@
 #include <Acts/Geometry/GeometryContext.hpp>
 #include <Acts/MagneticField/MagneticFieldContext.hpp>
 #include <Acts/MagneticField/MagneticFieldProvider.hpp>
+#include <Acts/Geometry/GeometryIdentifier.hpp>
 #include <Acts/Propagator/EigenStepper.hpp>
+#include <Acts/Propagator/Navigator.hpp>
 #include <Acts/Propagator/Propagator.hpp>
-#include <Acts/Propagator/VoidNavigator.hpp>
 #include <Acts/TrackFinding/CombinatorialKalmanFilter.hpp>
 #include <Acts/TrackFitting/KalmanFitter.hpp>
 
@@ -55,14 +56,15 @@
 
 // Standard
 #include <optional>
+#include <vector>
 
 namespace ACTSTracking {
 
-  /// Propagator used to extrapolate fitted tracks out to the calorimeter face.
-  /// It uses a VoidNavigator (no tracking geometry), so it can reach target
-  /// surfaces that lie outside the tracking-geometry world volume. Material
-  /// between the tracker and the calorimeter is not accounted for (field-only).
-  using CaloFacePropagator = Acts::Propagator<Acts::EigenStepper<>, Acts::VoidNavigator>;
+  /// Geometry-aware propagator used to extrapolate fitted tracks out to the
+  /// calorimeter face. It navigates the tracking geometry (which now includes
+  /// the passive calo volumes), so material along the way is accounted for and
+  /// the actual curved trajectory selects which calo surface is hit.
+  using CaloFacePropagator = Acts::Propagator<Acts::EigenStepper<>, Acts::Navigator>;
 
   using TrackResult =
       Acts::TrackContainer<Acts::VectorTrackContainer, Acts::VectorMultiTrajectory, std::shared_ptr>::TrackProxy;
@@ -121,28 +123,42 @@ namespace ACTSTracking {
  */
   Acts::ParticleHypothesis convertParticle(const edm4hep::MCParticle mcParticle);
 
+  //! Outcome of a calorimeter-face extrapolation.
+  enum class CaloExtrapolationStatus {
+    Ok,                ///< reached a calo-face surface
+    NoSurfaces,        ///< no calo-face surfaces are configured
+    NotReached,        ///< propagation finished without reaching a calo-face surface
+    PropagationError,  ///< the propagation itself failed
+  };
+
+  //! Result of a calorimeter-face extrapolation.
+  struct CaloExtrapolationResult {
+    std::optional<Acts::BoundTrackParameters> params{};
+    CaloExtrapolationStatus                   status{CaloExtrapolationStatus::NotReached};
+  };
+
   //! Extrapolate track parameters to the calorimeter face.
   /**
- * Selects, among the calorimeter-face surfaces, the one the track reaches first
- * (smallest positive path length with a valid, bounds-checked intersection) and
- * propagates the given parameters to it. The barrel is a ring of planar
- * surfaces (one per polygon side) and the endcaps are flat discs; intersecting
- * all candidates naturally handles both the barrel-sector choice and the
- * barrel/endcap transition.
+ * Propagates the given parameters through the tracking geometry (which contains
+ * the passive calo volumes) and terminates as soon as the actual trajectory
+ * reaches one of the calorimeter-face surfaces, identified by their geometry
+ * ids. Because the propagation follows the real curved trajectory through the
+ * geometry, no straight-line pre-selection of the target surface is needed and
+ * material handling integrates naturally once the calo volumes carry material.
  *
- * \param propagator Field-only propagator (VoidNavigator)
- * \param start      Track parameters to extrapolate from (e.g. at the last hit)
- * \param surfaces   Calorimeter-face surfaces from IActsGeoSvc
- * \param gctx       Geometry context
- * \param mctx       Magnetic-field context
+ * \param propagator        Geometry-aware propagator
+ * \param start             Track parameters to extrapolate from (e.g. at the last hit)
+ * \param caloSurfaceGeoIds Geometry ids of the calo-face surfaces (from IActsGeoSvc)
+ * \param gctx              Geometry context
+ * \param mctx              Magnetic-field context
  *
- * \return Bound track parameters at the calorimeter face, or std::nullopt if no
- *         surface is reached or the propagation fails.
+ * \return Bound track parameters at the calorimeter face together with a status
+ *         describing why the extrapolation succeeded or failed.
  */
-  std::optional<Acts::BoundTrackParameters> extrapolateToCaloFace(const CaloFacePropagator&            propagator,
-                                                                  const Acts::BoundTrackParameters&    start,
-                                                                  const IActsGeoSvc::CaloFaceSurfaces& surfaces,
-                                                                  const Acts::GeometryContext&         gctx,
-                                                                  const Acts::MagneticFieldContext&    mctx);
+  CaloExtrapolationResult extrapolateToCaloFace(const CaloFacePropagator&                    propagator,
+                                                const Acts::BoundTrackParameters&            start,
+                                                const std::vector<Acts::GeometryIdentifier>& caloSurfaceGeoIds,
+                                                const Acts::GeometryContext&                 gctx,
+                                                const Acts::MagneticFieldContext&            mctx);
 
 }  // namespace ACTSTracking

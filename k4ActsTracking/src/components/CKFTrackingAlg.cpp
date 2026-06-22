@@ -52,6 +52,7 @@
 #include <Acts/EventData/SpacePointContainer2.hpp>
 #include <Acts/EventData/TrackContainer.hpp>
 #include <Acts/EventData/VectorMultiTrajectory.hpp>
+#include <Acts/EventData/TrackStateType.hpp>
 #include <Acts/EventData/VectorTrackContainer.hpp>
 #include <Acts/Geometry/GeometryContext.hpp>
 #include <Acts/MagneticField/MagneticFieldContext.hpp>
@@ -59,7 +60,6 @@
 #include <Acts/Propagator/EigenStepper.hpp>
 #include <Acts/Propagator/Navigator.hpp>
 #include <Acts/Propagator/Propagator.hpp>
-#include <Acts/Propagator/VoidNavigator.hpp>
 #include <Acts/Seeding/EstimateTrackParamsFromSeed.hpp>
 #include <Acts/Seeding2/BroadTripletSeedFilter.hpp>
 #include <Acts/Seeding2/CylindricalSpacePointGrid2.hpp>
@@ -84,6 +84,7 @@
 #include <fmt/ostream.h>
 
 // Standard
+#include <atomic>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -121,6 +122,8 @@ struct CKFTrackingAlg final
   CKFTrackingAlg(const std::string& name, ISvcLocator* svcLoc);
 
   StatusCode initialize() override;
+
+  StatusCode finalize() override;
 
   std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> operator()(
       const edm4hep::TrackerHitPlaneCollection&             trackerHitCollection,
@@ -329,9 +332,11 @@ private:
   // once in initialize() and reused (read-only) across events and threads.
   std::optional<CKF> m_trackFinder{};
 
-  // Field-only propagator (no tracking geometry) used to extrapolate fitted
-  // tracks out to the calorimeter face, which lies outside the tracking
-  // geometry. Built once in initialize() and reused read-only across threads.
+  // Geometry-aware propagator used to extrapolate fitted tracks out to the
+  // calorimeter face. The calo inner-face surfaces are part of the tracking
+  // geometry (passive surfaces of dedicated calo volumes), so the propagation
+  // follows the real trajectory through the detector and terminates on the
+  // surface actually reached. Built once in initialize(), reused across threads.
   std::optional<ACTSTracking::CaloFacePropagator> m_caloPropagator{};
 
   // Propagator (with tracking-geometry navigator) used to extrapolate the
@@ -342,6 +347,15 @@ private:
   std::shared_ptr<Acts::PerigeeSurface> m_perigeeSurface{};
 
   k4ActsTracking::CellIDSelector m_seedSelector{};
+
+  // Calorimeter-face extrapolation monitoring. operator() is const and runs on
+  // many threads, so the counters are mutable and atomic. Summarised in
+  // finalize() to report the rate at which the extrapolation fails.
+  mutable std::atomic<std::size_t> m_caloAttempts{0};     ///< tracks with a usable start state
+  mutable std::atomic<std::size_t> m_caloNoStartState{0}; ///< tracks without a measured smoothed state
+  mutable std::atomic<std::size_t> m_caloNotReached{0};   ///< propagation did not reach a calo face
+  mutable std::atomic<std::size_t> m_caloPropFailed{0};   ///< propagation itself failed
+  mutable std::atomic<std::size_t> m_caloOk{0};           ///< reached a calo face
 
   mutable std::mutex m_seedMutex{};
   mutable std::mutex m_trackMutex{};
@@ -395,20 +409,46 @@ StatusCode CKFTrackingAlg::initialize() {
   m_extrapPropagator.emplace(std::move(extrapPropagator));
   m_perigeeSurface = Acts::Surface::makeShared<Acts::PerigeeSurface>(Acts::Vector3{0., 0., 0.});
 
-  // The calorimeter face lies outside the tracking geometry, so extrapolation
-  // there uses a geometry-free (VoidNavigator) propagator. Only build it when
+  // The calorimeter inner-face surfaces are part of the tracking geometry, so
+  // extrapolation there uses a geometry-aware propagator. The calo surfaces are
+  // passive, so the navigator must resolve passive surfaces. Only build it when
   // requested and when the geometry service actually provides calo surfaces.
   if (m_extrapolateToCalo) {
-    if (m_actsGeoSvc->caloFaceSurfaces().empty()) {
+    if (m_actsGeoSvc->caloSurfaceGeoIds().empty()) {
       warning() << "ExtrapolateToCalo requested but ActsGeoSvc provides no calorimeter-face surfaces; "
                    "no AtCalorimeter track states will be produced."
                 << endmsg;
     } else {
-      Acts::EigenStepper<> caloStepper(m_actsGeoSvc->magneticField());
-      m_caloPropagator.emplace(std::move(caloStepper), Acts::VoidNavigator{});
+      Navigator::Config caloNavigatorCfg{m_actsGeoSvc->trackingGeometry()};
+      caloNavigatorCfg.resolvePassive   = true;
+      caloNavigatorCfg.resolveMaterial  = true;
+      caloNavigatorCfg.resolveSensitive = true;
+
+      Stepper   caloStepper(m_actsGeoSvc->magneticField());
+      Navigator caloNavigator(caloNavigatorCfg);
+      m_caloPropagator.emplace(std::move(caloStepper), std::move(caloNavigator));
     }
   }
 
+  return StatusCode::SUCCESS;
+}
+
+StatusCode CKFTrackingAlg::finalize() {
+  if (m_extrapolateToCalo) {
+    const std::size_t attempts   = m_caloAttempts.load();
+    const std::size_t ok         = m_caloOk.load();
+    const std::size_t notReached = m_caloNotReached.load();
+    const std::size_t propFailed = m_caloPropFailed.load();
+    const std::size_t noStart    = m_caloNoStartState.load();
+    const std::size_t failed     = notReached + propFailed;
+    const double      failRate   = attempts > 0 ? static_cast<double>(failed) / static_cast<double>(attempts) : 0.0;
+
+    info() << fmt::format(
+                  "Calorimeter-face extrapolation summary: {} attempts, {} reached the face, {} failed "
+                  "({:.2f}%: {} not reached, {} propagation errors); {} tracks had no measured smoothed start state.",
+                  attempts, ok, failed, 100.0 * failRate, notReached, propFailed, noStart)
+           << endmsg;
+  }
   return StatusCode::SUCCESS;
 }
 
@@ -946,28 +986,40 @@ StatusCode CKFTrackingAlg::tracking(const std::vector<Acts::BoundTrackParameters
         auto track = ACTSTracking::ACTS2edm4hep_track(trackTip, m_actsGeoSvc->magneticField(), magCache);
 
         // Extrapolate the fitted track to the calorimeter face and add an
-        // AtCalorimeter track state for Pandora / ParticleFlow. Starts from the
-        // outermost smoothed state (closest to the calorimeter).
+        // AtCalorimeter track state for Pandora / ParticleFlow. Start from the
+        // outermost smoothed state that carries a real measurement (closest to
+        // the calorimeter), so the extrapolation begins from a genuine fitted
+        // hit rather than a hole, outlier or material-only state.
         if (m_caloPropagator) {
           std::optional<Acts::BoundTrackParameters> startParams;
           for (const auto& state : trackTip.trackStatesReversed()) {
-            if (state.hasSmoothed()) {
+            const auto flags = state.typeFlags();
+            if (state.hasSmoothed() && flags.test(Acts::TrackStateFlag::HasMeasurement) &&
+                !flags.test(Acts::TrackStateFlag::IsOutlier)) {
               startParams.emplace(state.referenceSurface().getSharedPtr(), state.smoothed(), state.smoothedCovariance(),
                                   trackTip.particleHypothesis());
               break;
             }
           }
 
-          if (startParams) {
+          if (!startParams) {
+            ++m_caloNoStartState;
+            debug() << "No measured smoothed state available; no AtCalorimeter state added for this track." << endmsg;
+          } else {
+            ++m_caloAttempts;
             const Acts::MagneticFieldContext magCtx{};
-            auto caloParams = ACTSTracking::extrapolateToCaloFace(*m_caloPropagator, *startParams,
-                                                                  m_actsGeoSvc->caloFaceSurfaces(), geoCtx, magCtx);
-            if (caloParams) {
-              const Acts::Vector3 caloPos  = caloParams->position(geoCtx);
+            const auto caloResult = ACTSTracking::extrapolateToCaloFace(
+                *m_caloPropagator, *startParams, m_actsGeoSvc->caloSurfaceGeoIds(), geoCtx, magCtx);
+
+            using ACTSTracking::CaloExtrapolationStatus;
+            switch (caloResult.status) {
+            case CaloExtrapolationStatus::Ok: {
+              ++m_caloOk;
+              const Acts::Vector3 caloPos  = caloResult.params->position(geoCtx);
               auto                fieldRes = m_actsGeoSvc->magneticField()->getField(caloPos, magCache);
               const double        Bz       = fieldRes.ok() ? (*fieldRes)[2] / Acts::UnitConstants::T : 0.0;
               auto                caloState =
-                  ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtCalorimeter, *caloParams, Bz);
+                  ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtCalorimeter, *caloResult.params, Bz);
               // The calo-face parameters are local to the target surface, so the
               // edm4hep D0/Z0 from the generic conversion are not meaningful here.
               // Express the state at the impact point instead: set the reference
@@ -976,10 +1028,21 @@ StatusCode CKFTrackingAlg::tracking(const std::vector<Acts::BoundTrackParameters
               caloState.D0             = 0;
               caloState.Z0             = 0;
               track.addToTrackStates(caloState);
-            } else {
+              break;
+            }
+            case CaloExtrapolationStatus::NotReached:
+            case CaloExtrapolationStatus::NoSurfaces:
+              ++m_caloNotReached;
               debug() << "Extrapolation to the calorimeter face did not reach a surface; "
                          "no AtCalorimeter state added for this track."
                       << endmsg;
+              break;
+            case CaloExtrapolationStatus::PropagationError:
+              ++m_caloPropFailed;
+              debug() << "Extrapolation to the calorimeter face failed during propagation; "
+                         "no AtCalorimeter state added for this track."
+                      << endmsg;
+              break;
             }
           }
         }

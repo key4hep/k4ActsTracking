@@ -55,6 +55,8 @@ public:
 
   const CaloFaceSurfaces& caloFaceSurfaces() const override { return m_caloFaceSurfaces; }
 
+  const std::vector<Acts::GeometryIdentifier>& caloSurfaceGeoIds() const override { return m_caloSurfaceGeoIds; }
+
   ActsGeoSvc(const std::string& name, ISvcLocator* svcLoc);
 
   ~ActsGeoSvc() = default;
@@ -78,12 +80,15 @@ public:
 private:
   using BlueprintBuilder = ActsPlugins::DD4hep::BlueprintBuilder;
 
-  using BlueprintPopulationFunc = void(const std::string&, Acts::Experimental::Blueprint&, BlueprintBuilder&);
+  using BlueprintPopulationFunc =
+      void(const std::string&, Acts::Experimental::Blueprint&, BlueprintBuilder&, const CaloFaceSurfaces&);
 
   /// Build the ECAL inner-face surfaces (m_caloFaceSurfaces) from the DD4hep
   /// geometry. Surfaces are located via DetType flags and dimensioned from the
   /// dd4hep::rec::LayeredCalorimeterData extension. Missing ECAL sub-detectors
   /// or extensions are skipped with a warning rather than treated as an error.
+  /// Must run before the blueprint is constructed, since the surfaces are
+  /// inserted into the tracking geometry as passive calo volumes.
   void buildCaloFaceSurfaces();
 
   SmartIF<IGeoSvc>                                          m_geoSvc;
@@ -93,6 +98,7 @@ private:
   std::unordered_map<std::string, BlueprintPopulationFunc*> m_bluePrintPopulationFuncs{};
   std::string                                               m_cellIDEncodingString{};
   CaloFaceSurfaces                                          m_caloFaceSurfaces{};
+  std::vector<Acts::GeometryIdentifier>                     m_caloSurfaceGeoIds{};
 };
 
 inline std::shared_ptr<const Acts::TrackingGeometry> ActsGeoSvc::trackingGeometry() const { return m_trackingGeo; }

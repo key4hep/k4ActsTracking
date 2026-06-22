@@ -24,6 +24,8 @@
 
 #include <DD4hep/Primitives.h>
 
+#include <Acts/Geometry/GeometryIdentifier.hpp>
+
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -46,17 +48,27 @@ public:
   using CellIDSurfaceMap = std::unordered_map<dd4hep::CellID, const Acts::Surface*>;
 
   /// Surfaces approximating the inner face of the electromagnetic calorimeter,
-  /// derived from the DD4hep geometry. These live outside the tracking-geometry
-  /// world volume and are meant as target surfaces for a geometry-free
-  /// extrapolation (see ACTSTracking::extrapolateToCaloFace).
+  /// derived from the DD4hep geometry. They are inserted into the tracking
+  /// geometry as passive surfaces of dedicated calo volumes, so that the
+  /// standard geometry-aware propagation can navigate to them (see
+  /// ACTSTracking::extrapolateToCaloFace).
   ///
   /// The barrel is a regular polygon, so its inner face is modelled as one
   /// planar surface per polygon side rather than a cylinder. The endcaps are
-  /// flat discs at constant z.
+  /// flat discs at constant z. The struct also carries the bounding cylinder
+  /// dimensions used to build the enclosing TrackingVolumes (ACTS units).
   struct CaloFaceSurfaces {
-    std::vector<std::shared_ptr<const Acts::Surface>> barrelFaces;  ///< one plane per polygon side
-    std::shared_ptr<const Acts::Surface>              endcapPos;    ///< disc at +z, may be null
-    std::shared_ptr<const Acts::Surface>              endcapNeg;    ///< disc at -z, may be null
+    std::vector<std::shared_ptr<Acts::Surface>> barrelFaces;  ///< one plane per polygon side
+    std::shared_ptr<Acts::Surface>              endcapPos;    ///< disc at +z, may be null
+    std::shared_ptr<Acts::Surface>              endcapNeg;    ///< disc at -z, may be null
+
+    // Bounding-cylinder dimensions for the enclosing TrackingVolumes.
+    double barrelRMin  = 0;  ///< inner radius of the barrel calo volume (~apothem)
+    double barrelRMax  = 0;  ///< outer radius of the barrel calo volume (~circumradius)
+    double barrelHalfZ = 0;  ///< barrel half-length along z
+    double endcapRMin  = 0;  ///< inner radius of the endcap disc volumes
+    double endcapRMax  = 0;  ///< outer radius of the endcap disc volumes
+    double endcapZ     = 0;  ///< |z| of the endcap inner face
 
     bool empty() const { return barrelFaces.empty() && !endcapPos && !endcapNeg; }
   };
@@ -69,6 +81,11 @@ public:
   virtual const CellIDSurfaceMap&                            cellIdToSurfaceMap() const   = 0;
   virtual std::string                                        cellIDEncodingString() const = 0;
   virtual const CaloFaceSurfaces&                            caloFaceSurfaces() const     = 0;
+
+  /// Geometry identifiers of the calorimeter-face surfaces, valid after the
+  /// tracking geometry has been constructed. Used by the extrapolation to
+  /// recognise when the propagation has reached the calo face.
+  virtual const std::vector<Acts::GeometryIdentifier>& caloSurfaceGeoIds() const = 0;
 
   virtual ~IActsGeoSvc() = default;
 };
