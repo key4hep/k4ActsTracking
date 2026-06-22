@@ -603,10 +603,9 @@ namespace Blueprints {
   /// avoids picking a SurfaceArray binning for a non-cylindrical polygon; it is
   /// not a workaround for any missing layer type.
   void addCaloBarrel(BlueprintNode& parent, const IActsGeoSvc::CaloFaceSurfaces& calo) {
-    constexpr double pad = 1_mm;
-    auto             bounds =
-        std::make_shared<Acts::CylinderVolumeBounds>(std::max(0.0, calo.barrelRMin - pad), calo.barrelRMax + pad,
-                                                     calo.barrelHalfZ + pad);
+    constexpr double pad    = 1_mm;
+    auto             bounds = std::make_shared<Acts::CylinderVolumeBounds>(std::max(0.0, calo.barrelRMin - pad),
+                                                                           calo.barrelRMax + pad, calo.barrelHalfZ + pad);
     auto vol = std::make_unique<Acts::TrackingVolume>(Acts::Transform3::Identity(), std::move(bounds), "CaloBarrel");
     for (const auto& face : calo.barrelFaces) {
       vol->addSurface(face);
@@ -641,7 +640,7 @@ namespace Blueprints {
     Acts::Transform3 transform = Acts::Transform3::Identity();
     transform.translation()    = Acts::Vector3{0, 0, positive ? zc : -zc};
     auto vol                   = std::make_unique<Acts::TrackingVolume>(transform, std::move(bounds),
-                                                                        positive ? "CaloEndcapPos" : "CaloEndcapNeg");
+                                                      positive ? "CaloEndcapPos" : "CaloEndcapNeg");
     vol->addSurface(disc);
     parent.addStaticVolume(std::move(vol)).setNavigationPolicyFactory(makeCaloNavigationPolicyFactory());
   }
@@ -662,8 +661,8 @@ namespace MuColl {
         // cylindrical volumes are overlapping otherwise
         auto vertexBarrel = Blueprints::makeGroupedBarrel(builder, "VertexBarrel", std::regex{"layer_\\d"}, "ZYX",
                                                           Blueprints::kTightBarrelEnvelope);
-        auto vertex = Blueprints::attachEndcaps(builder, std::move(vertexBarrel),
-                                                Blueprints::DoubleBarrelLayerVertexSpec, "Vertex");
+        auto vertex       = Blueprints::attachEndcaps(builder, std::move(vertexBarrel),
+                                                      Blueprints::DoubleBarrelLayerVertexSpec, "Vertex");
 
         auto innerTracker = Blueprints::makeNestedInnerTracker(builder, std::move(vertex));
         outer.addChild(innerTracker);
@@ -699,7 +698,7 @@ namespace MuColl {
 namespace FCCee {
   namespace ILD_FCCee_v01 {
     void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
-                           ActsPlugins::DD4hep::BlueprintBuilder&        builder,
+                           ActsPlugins::DD4hep::BlueprintBuilder&                builder,
                            [[maybe_unused]] const IActsGeoSvc::CaloFaceSurfaces& calo) {
       // TODO: integrate the calo face (see MAIA_v0); deferred until validated.
       auto& outer = root.addCylinderContainer(detName, AxisR);
@@ -730,7 +729,7 @@ namespace FCCee {
 
   namespace ILD_FCCee_v02 {
     void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
-                           ActsPlugins::DD4hep::BlueprintBuilder&        builder,
+                           ActsPlugins::DD4hep::BlueprintBuilder&                builder,
                            [[maybe_unused]] const IActsGeoSvc::CaloFaceSurfaces& calo) {
       // TODO: integrate the calo face (see MAIA_v0); deferred until validated.
       auto& outer = root.addCylinderContainer(detName, AxisR);
@@ -751,7 +750,7 @@ namespace FCCee {
 
   namespace CLD_o2_v07 {
     void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
-                           ActsPlugins::DD4hep::BlueprintBuilder&        builder,
+                           ActsPlugins::DD4hep::BlueprintBuilder&                builder,
                            [[maybe_unused]] const IActsGeoSvc::CaloFaceSurfaces& calo) {
       // TODO: integrate the calo face (see MAIA_v0); deferred until validated.
       auto& outer = root.addCylinderContainer(detName, AxisR);
@@ -775,7 +774,7 @@ namespace FCCee {
 namespace LUXE {
   namespace LUXE_v0 {
     void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
-                           ActsPlugins::DD4hep::BlueprintBuilder&        builder,
+                           ActsPlugins::DD4hep::BlueprintBuilder&                builder,
                            [[maybe_unused]] const IActsGeoSvc::CaloFaceSurfaces& calo) {
       // No electromagnetic calorimeter face integration for LUXE.
       auto& tracker = root.addCuboidContainer(detName, AxisZ);

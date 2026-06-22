@@ -142,8 +142,7 @@ StatusCode ActsGeoSvc::initialize() {
   m_trackingGeo->visitSurfaces([&](const Acts::Surface* surface) {
     // Skip surfaces that are not backed by a DD4hep detector element, such as
     // the passive calorimeter-face surfaces inserted by buildCaloFaceSurfaces.
-    const auto* actsDetElemPtr =
-        dynamic_cast<const ActsPlugins::DD4hepDetectorElement*>(surface->surfacePlacement());
+    const auto* actsDetElemPtr = dynamic_cast<const ActsPlugins::DD4hepDetectorElement*>(surface->surfacePlacement());
     if (actsDetElemPtr == nullptr) {
       return;
     }
@@ -222,20 +221,19 @@ void ActsGeoSvc::buildCaloFaceSurfaces() {
   // --- Pass 1: extract the barrel and endcap dimensions --------------------
   // Surfaces are created in pass 2, after a corner-gap correction that needs
   // both the barrel half-length and the endcap inner-face z.
-  bool   haveBarrel        = false;
-  int    nSides            = 0;
-  double apothem           = 0.0;
-  double barrelHalfZRaw    = 0.0;
-  double phi0              = 0.0;
+  bool   haveBarrel         = false;
+  int    nSides             = 0;
+  double apothem            = 0.0;
+  double barrelHalfZRaw     = 0.0;
+  double phi0               = 0.0;
   double barrelCircumradius = 0.0;
-  double halfWidth         = 0.0;
+  double halfWidth          = 0.0;
 
   if (ecalBarrel.empty()) {
     warning() << "No electromagnetic barrel calorimeter found via DetType flags; "
                  "no barrel calo-face surfaces will be built."
               << endmsg;
-  } else if (const auto* caloData = ecalBarrel.front().extension<LayeredCalorimeterData>(false);
-             caloData == nullptr) {
+  } else if (const auto* caloData = ecalBarrel.front().extension<LayeredCalorimeterData>(false); caloData == nullptr) {
     warning() << "ECAL barrel DetElement has no LayeredCalorimeterData extension; "
                  "skipping barrel calo-face surfaces."
               << endmsg;
@@ -266,8 +264,7 @@ void ActsGeoSvc::buildCaloFaceSurfaces() {
     warning() << "No electromagnetic endcap calorimeter found via DetType flags; "
                  "no endcap calo-face surfaces will be built."
               << endmsg;
-  } else if (const auto* caloData = ecalEndcap.front().extension<LayeredCalorimeterData>(false);
-             caloData == nullptr) {
+  } else if (const auto* caloData = ecalEndcap.front().extension<LayeredCalorimeterData>(false); caloData == nullptr) {
     warning() << "ECAL endcap DetElement has no LayeredCalorimeterData extension; "
                  "skipping endcap calo-face surfaces."
               << endmsg;

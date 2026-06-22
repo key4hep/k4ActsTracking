@@ -279,7 +279,7 @@ namespace ACTSTracking {
     using Options   = CaloFacePropagator::Options<ActorList>;
 
     Options options{gctx, mctx};
-    options.maxSteps                                   = 10000;
+    options.maxSteps                                    = 10000;
     options.actorList.get<CaloSurfaceReached>().caloIds = &caloSurfaceGeoIds;
 
     auto result = propagator.propagate(start, options);

@@ -51,8 +51,8 @@
 #include <Acts/EventData/SeedContainer2.hpp>
 #include <Acts/EventData/SpacePointContainer2.hpp>
 #include <Acts/EventData/TrackContainer.hpp>
-#include <Acts/EventData/VectorMultiTrajectory.hpp>
 #include <Acts/EventData/TrackStateType.hpp>
+#include <Acts/EventData/VectorMultiTrajectory.hpp>
 #include <Acts/EventData/VectorTrackContainer.hpp>
 #include <Acts/Geometry/GeometryContext.hpp>
 #include <Acts/MagneticField/MagneticFieldContext.hpp>
@@ -351,11 +351,11 @@ private:
   // Calorimeter-face extrapolation monitoring. operator() is const and runs on
   // many threads, so the counters are mutable and atomic. Summarised in
   // finalize() to report the rate at which the extrapolation fails.
-  mutable std::atomic<std::size_t> m_caloAttempts{0};     ///< tracks with a usable start state
-  mutable std::atomic<std::size_t> m_caloNoStartState{0}; ///< tracks without a measured smoothed state
-  mutable std::atomic<std::size_t> m_caloNotReached{0};   ///< propagation did not reach a calo face
-  mutable std::atomic<std::size_t> m_caloPropFailed{0};   ///< propagation itself failed
-  mutable std::atomic<std::size_t> m_caloOk{0};           ///< reached a calo face
+  mutable std::atomic<std::size_t> m_caloAttempts{0};      ///< tracks with a usable start state
+  mutable std::atomic<std::size_t> m_caloNoStartState{0};  ///< tracks without a measured smoothed state
+  mutable std::atomic<std::size_t> m_caloNotReached{0};    ///< propagation did not reach a calo face
+  mutable std::atomic<std::size_t> m_caloPropFailed{0};    ///< propagation itself failed
+  mutable std::atomic<std::size_t> m_caloOk{0};            ///< reached a calo face
 
   mutable std::mutex m_seedMutex{};
   mutable std::mutex m_trackMutex{};
@@ -1008,41 +1008,41 @@ StatusCode CKFTrackingAlg::tracking(const std::vector<Acts::BoundTrackParameters
           } else {
             ++m_caloAttempts;
             const Acts::MagneticFieldContext magCtx{};
-            const auto caloResult = ACTSTracking::extrapolateToCaloFace(
+            const auto                       caloResult = ACTSTracking::extrapolateToCaloFace(
                 *m_caloPropagator, *startParams, m_actsGeoSvc->caloSurfaceGeoIds(), geoCtx, magCtx);
 
             using ACTSTracking::CaloExtrapolationStatus;
             switch (caloResult.status) {
-            case CaloExtrapolationStatus::Ok: {
-              ++m_caloOk;
-              const Acts::Vector3 caloPos  = caloResult.params->position(geoCtx);
-              auto                fieldRes = m_actsGeoSvc->magneticField()->getField(caloPos, magCache);
-              const double        Bz       = fieldRes.ok() ? (*fieldRes)[2] / Acts::UnitConstants::T : 0.0;
-              auto                caloState =
-                  ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtCalorimeter, *caloResult.params, Bz);
-              // The calo-face parameters are local to the target surface, so the
-              // edm4hep D0/Z0 from the generic conversion are not meaningful here.
-              // Express the state at the impact point instead: set the reference
-              // point to the global calo-face position (D0 = Z0 = 0 there).
-              caloState.referencePoint = edm4hep::Vector3f(caloPos.x(), caloPos.y(), caloPos.z());
-              caloState.D0             = 0;
-              caloState.Z0             = 0;
-              track.addToTrackStates(caloState);
-              break;
-            }
-            case CaloExtrapolationStatus::NotReached:
-            case CaloExtrapolationStatus::NoSurfaces:
-              ++m_caloNotReached;
-              debug() << "Extrapolation to the calorimeter face did not reach a surface; "
-                         "no AtCalorimeter state added for this track."
-                      << endmsg;
-              break;
-            case CaloExtrapolationStatus::PropagationError:
-              ++m_caloPropFailed;
-              debug() << "Extrapolation to the calorimeter face failed during propagation; "
-                         "no AtCalorimeter state added for this track."
-                      << endmsg;
-              break;
+              case CaloExtrapolationStatus::Ok: {
+                ++m_caloOk;
+                const Acts::Vector3 caloPos  = caloResult.params->position(geoCtx);
+                auto                fieldRes = m_actsGeoSvc->magneticField()->getField(caloPos, magCache);
+                const double        Bz       = fieldRes.ok() ? (*fieldRes)[2] / Acts::UnitConstants::T : 0.0;
+                auto                caloState =
+                    ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtCalorimeter, *caloResult.params, Bz);
+                // The calo-face parameters are local to the target surface, so the
+                // edm4hep D0/Z0 from the generic conversion are not meaningful here.
+                // Express the state at the impact point instead: set the reference
+                // point to the global calo-face position (D0 = Z0 = 0 there).
+                caloState.referencePoint = edm4hep::Vector3f(caloPos.x(), caloPos.y(), caloPos.z());
+                caloState.D0             = 0;
+                caloState.Z0             = 0;
+                track.addToTrackStates(caloState);
+                break;
+              }
+              case CaloExtrapolationStatus::NotReached:
+              case CaloExtrapolationStatus::NoSurfaces:
+                ++m_caloNotReached;
+                debug() << "Extrapolation to the calorimeter face did not reach a surface; "
+                           "no AtCalorimeter state added for this track."
+                        << endmsg;
+                break;
+              case CaloExtrapolationStatus::PropagationError:
+                ++m_caloPropFailed;
+                debug() << "Extrapolation to the calorimeter face failed during propagation; "
+                           "no AtCalorimeter state added for this track."
+                        << endmsg;
+                break;
             }
           }
         }

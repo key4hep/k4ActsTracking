@@ -80,8 +80,8 @@ public:
 private:
   using BlueprintBuilder = ActsPlugins::DD4hep::BlueprintBuilder;
 
-  using BlueprintPopulationFunc =
-      void(const std::string&, Acts::Experimental::Blueprint&, BlueprintBuilder&, const CaloFaceSurfaces&);
+  using BlueprintPopulationFunc = void(const std::string&, Acts::Experimental::Blueprint&, BlueprintBuilder&,
+                                       const CaloFaceSurfaces&);
 
   /// Build the ECAL inner-face surfaces (m_caloFaceSurfaces) from the DD4hep
   /// geometry. Surfaces are located via DetType flags and dimensioned from the
