@@ -238,7 +238,7 @@ Acts::GeometryIdentifier GeometryIdMappingTool::getGeometryID(uint32_t systemID,
   switch (signSystemID) {
     case VertexBarrel:
       if (det_type == GeometryIdMappingTool::DetSchema::MAIA_v0) {
-        uint32_t my_layer_ID;
+        uint32_t my_layer_ID = 0;
         switch (layerID) {
           case 0:
             my_layer_ID = 0;
