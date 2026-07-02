@@ -46,6 +46,7 @@ set(_plugin_sources
   src/components/ActsTestPropagator.cpp
   src/components/DD4hepBlueprintConstruction.cpp
   src/components/CKFTrackingAlg.cpp
+  src/components/CKFTrackingFromSeedsAlg.cpp
 )
 
 gaudi_add_module(k4ActsTrackingPlugins
