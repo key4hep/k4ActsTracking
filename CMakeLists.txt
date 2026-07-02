@@ -28,9 +28,11 @@ SET( ${PROJECT_NAME}_VERSION  "${${PROJECT_NAME}_VERSION_MAJOR}.${${PROJECT_NAME
 
 find_package(EDM4HEP REQUIRED)
 find_package(k4FWCore REQUIRED)
-find_package(Acts REQUIRED COMPONENTS Core PluginDD4hep)
+find_package(Acts REQUIRED COMPONENTS Core PluginDD4hep PluginGnn)
 find_package(DD4hep REQUIRED COMPONENTS DDCore DDRec)
 find_package(TBB REQUIRED)
+find_package(onnxruntime REQUIRED)
+find_package(Torch REQUIRED)
 
 include(cmake/Key4hepConfig.cmake)
 
@@ -41,6 +43,7 @@ include(GNUInstallDirs)
 include(CTest)
 
 add_subdirectory(k4ActsTracking)
+add_subdirectory(GNNTrackFinding)
 add_subdirectory(data)
 if (BUILD_TESTING)
   add_subdirectory(test)

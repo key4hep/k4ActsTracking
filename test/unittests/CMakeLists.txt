@@ -75,3 +75,17 @@ catch_discover_tests(unittest_k4ActsTracking
   WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
   TEST_PREFIX "UT_" # make it possible to filter easily with -R ^UT
 )
+
+# GNN track finding: unit tests for the mlutils helpers in ONNXInferenceModel.h.
+# The GNNTrackingONNXInferenceModels usage requirements provide the
+# GNNTrackFinding/include directory, so no extra include path is needed here.
+add_executable(unittest_gnntrackfinding ONNXInferenceModelTests.cpp)
+target_link_libraries(unittest_gnntrackfinding
+  PUBLIC GNNTrackingONNXInferenceModels
+  PRIVATE Catch2::Catch2WithMain)
+target_compile_options(unittest_gnntrackfinding PRIVATE -Wno-c2y-extensions)
+
+catch_discover_tests(unittest_gnntrackfinding
+  WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+  TEST_PREFIX "UT_" # make it possible to filter easily with -R ^UT
+)
