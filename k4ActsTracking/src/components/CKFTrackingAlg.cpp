@@ -18,7 +18,7 @@
  */
 
 // k4ActsTracking
-#include "k4ActsTracking/CKFTrackingAlg.hxx"
+#include "k4ActsTracking/CKFRunner.hxx"
 #include "k4ActsTracking/CellIDSelector.h"
 #include "k4ActsTracking/Helpers.hxx"
 #include "k4ActsTracking/IActsGeoSvc.h"
@@ -111,14 +111,6 @@ template <> struct fmt::formatter<podio::ObjectID> : fmt::ostream_formatter {};
 struct CKFTrackingAlg final
     : k4FWCore::MultiTransformer<std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection>(
           const edm4hep::TrackerHitPlaneCollection&, const edm4hep::TrackerHitSimTrackerHitLinkCollection&)> {
-  using TrackContainer = Acts::TrackContainer<Acts::VectorTrackContainer, Acts::VectorMultiTrajectory, std::shared_ptr>;
-  using TrackFinderOptions = Acts::CombinatorialKalmanFilterOptions<TrackContainer>;
-
-  using Stepper    = Acts::EigenStepper<>;
-  using Navigator  = Acts::Navigator;
-  using Propagator = Acts::Propagator<Stepper, Navigator>;
-  using CKF        = Acts::CombinatorialKalmanFilter<Propagator, TrackContainer>;
-
   CKFTrackingAlg(const std::string& name, ISvcLocator* svcLoc);
 
   StatusCode initialize() override;
@@ -138,10 +130,6 @@ private:
                                                             const Acts::SpacePointContainer2&   spacePoints,
                                                             edm4hep::TrackCollection&           seedCollection,
                                                             Acts::MagneticFieldProvider::Cache& magCache) const;
-
-  StatusCode tracking(const std::vector<Acts::BoundTrackParameters>& paramseeds, std::size_t begin, std::size_t end,
-                      const CKF& trackFinder, const TrackFinderOptions& ckfOptions,
-                      Acts::MagneticFieldProvider::Cache& magCache, edm4hep::TrackCollection& trackCollection) const;
 
   // ----- Gaudi properties --------------------------------------------------
 
@@ -328,34 +316,16 @@ private:
 
   SmartIF<IActsGeoSvc> m_actsGeoSvc;
 
-  // Track finder (propagator) is geometry/field dependent only, so it is built
-  // once in initialize() and reused (read-only) across events and threads.
-  std::optional<CKF> m_trackFinder{};
-
-  // Geometry-aware propagator used to extrapolate fitted tracks out to the
-  // calorimeter face. The calo inner-face surfaces are part of the tracking
-  // geometry (passive surfaces of dedicated calo volumes), so the propagation
-  // follows the real trajectory through the detector and terminates on the
-  // surface actually reached. Built once in initialize(), reused across threads.
-  std::optional<ACTSTracking::CaloFacePropagator> m_caloPropagator{};
-
-  // Propagator (with tracking-geometry navigator) used to extrapolate the
-  // fitted track back to the perigee surface at the IP, so the track parameters
-  // (in particular D0/Z0) are expressed there. Built once in initialize() and
-  // reused read-only across threads.
-  std::optional<Propagator>             m_extrapPropagator{};
-  std::shared_ptr<Acts::PerigeeSurface> m_perigeeSurface{};
-
   k4ActsTracking::CellIDSelector m_seedSelector{};
 
-  // Calorimeter-face extrapolation monitoring. operator() is const and runs on
-  // many threads, so the counters are mutable and atomic. Summarised in
-  // finalize() to report the rate at which the extrapolation fails.
-  mutable std::atomic<std::size_t> m_caloAttempts{0};      ///< tracks with a usable start state
-  mutable std::atomic<std::size_t> m_caloNoStartState{0};  ///< tracks without a measured smoothed state
-  mutable std::atomic<std::size_t> m_caloNotReached{0};    ///< propagation did not reach a calo face
-  mutable std::atomic<std::size_t> m_caloPropFailed{0};    ///< propagation itself failed
-  mutable std::atomic<std::size_t> m_caloOk{0};            ///< reached a calo face
+  // Shared Combinatorial Kalman Filter, built once in initialize() (the
+  // propagators/CKF depend only on geometry+field) and reused read-only across
+  // events and threads.
+  std::optional<ACTSTracking::CKFRunner> m_ckfRunner{};
+
+  // Calorimeter-face extrapolation monitoring, updated by the shared CKFRunner
+  // and summarised in finalize().
+  ACTSTracking::CaloExtrapMonitor m_caloMonitor{};
 
   mutable std::mutex m_seedMutex{};
   mutable std::mutex m_trackMutex{};
@@ -388,66 +358,28 @@ StatusCode CKFTrackingAlg::initialize() {
   if (m_seedFinding_deltaRMaxBottom == 0.f)
     m_seedFinding_deltaRMaxBottom = m_seedFinding_deltaRMax;
 
-  // The propagator and CKF only depend on the tracking geometry and magnetic
-  // field, both available here, so build them once instead of per event.
-  Navigator::Config navigatorCfg{m_actsGeoSvc->trackingGeometry()};
-  navigatorCfg.resolvePassive   = false;
-  navigatorCfg.resolveMaterial  = true;
-  navigatorCfg.resolveSensitive = true;
-
-  Stepper    stepper(m_actsGeoSvc->magneticField());
-  Navigator  navigator(navigatorCfg);
-  Propagator propagator(std::move(stepper), std::move(navigator));
-  m_trackFinder.emplace(std::move(propagator));
-
-  // Build the propagator used to extrapolate fitted tracks back to the IP
-  // perigee surface. It shares the tracking-geometry navigator configuration
-  // with the CKF so it can navigate through the detector to the beam line.
-  Stepper    extrapStepper(m_actsGeoSvc->magneticField());
-  Navigator  extrapNavigator(navigatorCfg);
-  Propagator extrapPropagator(std::move(extrapStepper), std::move(extrapNavigator));
-  m_extrapPropagator.emplace(std::move(extrapPropagator));
-  m_perigeeSurface = Acts::Surface::makeShared<Acts::PerigeeSurface>(Acts::Vector3{0., 0., 0.});
-
-  // The calorimeter inner-face surfaces are part of the tracking geometry, so
-  // extrapolation there uses a geometry-aware propagator. The calo surfaces are
-  // passive, so the navigator must resolve passive surfaces. Only build it when
-  // requested and when the geometry service actually provides calo surfaces.
-  if (m_extrapolateToCalo) {
-    if (m_actsGeoSvc->caloSurfaceGeoIds().empty()) {
-      warning() << "ExtrapolateToCalo requested but ActsGeoSvc provides no calorimeter-face surfaces; "
-                   "no AtCalorimeter track states will be produced."
-                << endmsg;
-    } else {
-      Navigator::Config caloNavigatorCfg{m_actsGeoSvc->trackingGeometry()};
-      caloNavigatorCfg.resolvePassive   = true;
-      caloNavigatorCfg.resolveMaterial  = true;
-      caloNavigatorCfg.resolveSensitive = true;
-
-      Stepper   caloStepper(m_actsGeoSvc->magneticField());
-      Navigator caloNavigator(caloNavigatorCfg);
-      m_caloPropagator.emplace(std::move(caloStepper), std::move(caloNavigator));
-    }
+  // The CKF, IP-perigee and calorimeter-face propagators are built per event by
+  // the shared ACTSTracking::CKFRunner (they are cheap to wire up and bind to
+  // the event-local measurements/source links). Warn once here if calorimeter
+  // extrapolation was requested but the geometry provides no calo-face surfaces.
+  if (m_extrapolateToCalo && m_actsGeoSvc->caloSurfaceGeoIds().empty()) {
+    warning() << "ExtrapolateToCalo requested but ActsGeoSvc provides no calorimeter-face surfaces; "
+                 "no AtCalorimeter track states will be produced."
+              << endmsg;
   }
+
+  m_ckfRunner.emplace(*m_actsGeoSvc,
+                      ACTSTracking::CKFRunner::Config{.chi2CutOff            = m_CKF_chi2CutOff,
+                                                      .numMeasurementsCutOff = m_CKF_numMeasurementsCutOff,
+                                                      .propagateBackward     = m_propagateBackward,
+                                                      .extrapolateToCalo     = m_extrapolateToCalo});
 
   return StatusCode::SUCCESS;
 }
 
 StatusCode CKFTrackingAlg::finalize() {
   if (m_extrapolateToCalo) {
-    const std::size_t attempts   = m_caloAttempts.load();
-    const std::size_t ok         = m_caloOk.load();
-    const std::size_t notReached = m_caloNotReached.load();
-    const std::size_t propFailed = m_caloPropFailed.load();
-    const std::size_t noStart    = m_caloNoStartState.load();
-    const std::size_t failed     = notReached + propFailed;
-    const double      failRate   = attempts > 0 ? static_cast<double>(failed) / static_cast<double>(attempts) : 0.0;
-
-    info() << fmt::format(
-                  "Calorimeter-face extrapolation summary: {} attempts, {} reached the face, {} failed "
-                  "({:.2f}%: {} not reached, {} propagation errors); {} tracks had no measured smoothed start state.",
-                  attempts, ok, failed, 100.0 * failRate, notReached, propFailed, noStart)
-           << endmsg;
+    info() << m_caloMonitor.summary() << endmsg;
   }
   return StatusCode::SUCCESS;
 }
@@ -461,11 +393,6 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
   // Default-construct ACTS contexts
   const Acts::GeometryContext      geoCtx = Acts::GeometryContext::dangerouslyDefaultConstruct();
   const Acts::MagneticFieldContext magCtx{};
-  const Acts::CalibrationContext   calCtx{};
-
-  const auto& cellIdToSurface = m_actsGeoSvc->cellIdToSurfaceMap();
-
-  dd4hep::DDSegmentation::BitFieldCoder decoder{m_actsGeoSvc->cellIDEncodingString()};
 
   // Minimal per-hit information needed to build the seeding space points. The
   // global position and rho/z variances are computed during the hit loop and
@@ -476,97 +403,44 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
     ACTSTracking::SourceLink sourceLink;
   };
 
-  std::vector<std::pair<Acts::GeometryIdentifier, edm4hep::TrackerHitPlane>> sortedHits;
-  ACTSTracking::SourceLinkContainer                                          sourceLinks;
-  ACTSTracking::MeasurementContainer                                         measurements;
-  std::vector<SeedInput>                                                     seedInputs;
+  ACTSTracking::SourceLinkContainer  sourceLinks;
+  ACTSTracking::MeasurementContainer measurements;
+  std::vector<SeedInput>             seedInputs;
 
-  sortedHits.reserve(trackerHitCollection.size());
+  // Build measurements + source links for all hits (shared with the other CKF
+  // algorithms); for seed-selected surfaces also record a seeding space point
+  // (global position + rho/z variance) for the triplet seeder.
+  ACTSTracking::prepareTrackerHits(
+      *this, *m_actsGeoSvc, geoCtx, trackerHitCollection, measurements, sourceLinks, m_numThreads.value(),
+      [&](const edm4hep::TrackerHitPlane& hit, const ACTSTracking::SourceLink& sourceLink,
+          const Acts::Vector3& globalPos, const Acts::Surface& surface, const Acts::SquareMatrix2& localCov) {
+        if (!m_seedSelector.accept(hit.getCellID())) {
+          return;
+        }
+        Acts::RotationMatrix3 rotLocalToGlobal = surface.referenceFrame(geoCtx, globalPos, {0, 0, 0});
 
-  for (const auto& hit : trackerHitCollection) {
-    verbose() << fmt::format("Adding hit {} with cell id {:x}", hit.id(), hit.getCellID()) << endmsg;
-    auto it = cellIdToSurface.find(hit.getCellID());
-    if (it == cellIdToSurface.end()) {
-      warning() << "No surface found for cellID " << hit.getCellID() << ". skipping hit for tracking." << endmsg;
-      continue;
-    }
-    sortedHits.push_back({it->second->geometryId(), hit});
-  }
-  debug() << "Working with " << sortedHits.size() << " hits." << endmsg;
+        // Jacobian from global (x,y,z) to (rho, z)
+        double             x            = globalPos[Acts::ePos0];
+        double             y            = globalPos[Acts::ePos1];
+        double             scale        = 2 / std::hypot(x, y);
+        Acts::Matrix<2, 3> jacXyzToRhoZ = Acts::Matrix<2, 3>::Zero();
+        jacXyzToRhoZ(0, Acts::ePos0)    = scale * x;
+        jacXyzToRhoZ(0, Acts::ePos1)    = scale * y;
+        jacXyzToRhoZ(1, Acts::ePos2)    = 1;
+        const auto jac                  = jacXyzToRhoZ * rotLocalToGlobal.block<3, 2>(Acts::ePos0, Acts::ePos0);
+        const auto var                  = (jac * localCov * jac.transpose()).diagonal();
 
-  // Sort hits by geometry ID for efficient SourceLink multiset insertion
-  auto            compare = [](const auto& a, const auto& b) { return a.first < b.first; };
-  tbb::task_arena arena(m_numThreads.value());
-  if (m_numThreads > 1) {
-    arena.execute([&] { tbb::parallel_sort(sortedHits.begin(), sortedHits.end(), compare); });
-  } else {
-    std::sort(sortedHits.begin(), sortedHits.end(), compare);
-  }
-
-  sourceLinks.reserve(sortedHits.size());
-
-  for (const auto& hitPair : sortedHits) {
-    const Acts::Surface* surface = m_actsGeoSvc->trackingGeometry()->findSurface(hitPair.first);
-    if (surface == nullptr) {
-      warning() << "Surface with geoID " << hitPair.first
-                << " not found in tracking geometry. Skipping hit for tracking." << endmsg;
-      continue;
-    }
-
-    const edm4hep::Vector3d& edmGlobalPos = hitPair.second.getPosition();
-    Acts::Vector3            globalPos    = {edmGlobalPos.x, edmGlobalPos.y, edmGlobalPos.z};
-
-    verbose() << "Converting hit " << hitPair.second.id() << " to local position (pos = " << edmGlobalPos
-              << ") using surface with geoId " << hitPair.first << endmsg;
-
-    Acts::Result<Acts::Vector2> lpResult = surface->globalToLocal(geoCtx, globalPos, {0, 0, 0}, 0.5_um);
-    if (!lpResult.ok()) {
-      warning() << "Global to local transformation did not succeed for hit. Skipping it in tracking." << endmsg;
-      continue;
-    }
-
-    Acts::Vector2 loc = lpResult.value();
-
-    Acts::SquareMatrix2            localCov = Acts::SquareMatrix2::Zero();
-    const edm4hep::TrackerHitPlane hitplane = hitPair.second;
-    localCov(0, 0)                          = std::pow(hitplane.getDu() * Acts::UnitConstants::mm, 2);
-    localCov(1, 1)                          = std::pow(hitplane.getDv() * Acts::UnitConstants::mm, 2);
-
-    ACTSTracking::SourceLink  sourceLink(surface->geometryId(), measurements.size(), hitPair.second);
-    Acts::SourceLink          srcWrap{sourceLink};
-    ACTSTracking::Measurement meas =
-        ACTSTracking::makeMeasurement(srcWrap, loc, localCov, Acts::eBoundLoc0, Acts::eBoundLoc1);
-
-    measurements.push_back(meas);
-    sourceLinks.emplace_hint(sourceLinks.end(), sourceLink);
-
-    // Create space point for seeding if this surface is selected
-    if (m_seedSelector.accept(hitPair.second.getCellID())) {
-      Acts::RotationMatrix3 rotLocalToGlobal = surface->referenceFrame(geoCtx, globalPos, {0, 0, 0});
-
-      // Jacobian from global (x,y,z) to (rho, z)
-      double             x            = globalPos[Acts::ePos0];
-      double             y            = globalPos[Acts::ePos1];
-      double             scale        = 2 / std::hypot(x, y);
-      Acts::Matrix<2, 3> jacXyzToRhoZ = Acts::Matrix<2, 3>::Zero();
-      jacXyzToRhoZ(0, Acts::ePos0)    = scale * x;
-      jacXyzToRhoZ(0, Acts::ePos1)    = scale * y;
-      jacXyzToRhoZ(1, Acts::ePos2)    = 1;
-      const auto jac                  = jacXyzToRhoZ * rotLocalToGlobal.block<3, 2>(Acts::ePos0, Acts::ePos0);
-      const auto var                  = (jac * localCov * jac.transpose()).diagonal();
-
-      SeedInput sp;
-      sp.x          = static_cast<float>(globalPos[Acts::ePos0]);
-      sp.y          = static_cast<float>(globalPos[Acts::ePos1]);
-      sp.z          = static_cast<float>(globalPos[Acts::ePos2]);
-      sp.r          = std::hypot(sp.x, sp.y);
-      sp.phi        = std::atan2(sp.y, sp.x);
-      sp.varR       = static_cast<float>(var[0]);
-      sp.varZ       = static_cast<float>(var[1]);
-      sp.sourceLink = sourceLink;
-      seedInputs.push_back(sp);
-    }
-  }
+        SeedInput sp;
+        sp.x          = static_cast<float>(globalPos[Acts::ePos0]);
+        sp.y          = static_cast<float>(globalPos[Acts::ePos1]);
+        sp.z          = static_cast<float>(globalPos[Acts::ePos2]);
+        sp.r          = std::hypot(sp.x, sp.y);
+        sp.phi        = std::atan2(sp.y, sp.x);
+        sp.varR       = static_cast<float>(var[0]);
+        sp.varZ       = static_cast<float>(var[1]);
+        sp.sourceLink = sourceLink;
+        seedInputs.push_back(sp);
+      });
 
   debug() << fmt::format("Created {} sourceLinks and {} space points for seeding", sourceLinks.size(),
                          seedInputs.size())
@@ -749,41 +623,6 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
   }
 
   // -------------------------------------------------------------------------
-  // Combinatorial Kalman filter track-finding objects. These are read-only
-  // during track finding and therefore shared across threads.
-  // -------------------------------------------------------------------------
-  const CKF& trackFinder = *m_trackFinder;
-
-  Acts::MeasurementSelector::Config measurementSelectorCfg = {
-      {Acts::GeometryIdentifier(), {{}, {m_CKF_chi2CutOff}, {(std::size_t)(m_CKF_numMeasurementsCutOff)}}}};
-
-  Acts::PropagatorPlainOptions pOptions{geoCtx, magCtx};
-  pOptions.maxSteps = 10000;
-  if (m_propagateBackward) {
-    pOptions.direction = Acts::Direction::Backward();
-  }
-
-  Acts::GainMatrixUpdater             kfUpdater;
-  Acts::MeasurementSelector           measSel{measurementSelectorCfg};
-  ACTSTracking::MeasurementCalibrator measCal{measurements};
-
-  ACTSTracking::SourceLinkAccessor slAccessor;
-  slAccessor.container = &sourceLinks;
-
-  using TrackStateCreatorType = Acts::TrackStateCreator<ACTSTracking::SourceLinkAccessor::Iterator, TrackContainer>;
-  TrackStateCreatorType trackStateCreator;
-  trackStateCreator.sourceLinkAccessor.template connect<&ACTSTracking::SourceLinkAccessor::range>(&slAccessor);
-  trackStateCreator.calibrator.template connect<&ACTSTracking::MeasurementCalibrator::calibrate>(&measCal);
-  trackStateCreator.measurementSelector
-      .template connect<&Acts::MeasurementSelector::select<Acts::VectorMultiTrajectory>>(&measSel);
-
-  Acts::CombinatorialKalmanFilterExtensions<TrackContainer> extensions;
-  extensions.updater.connect<&Acts::GainMatrixUpdater::operator()<Acts::VectorMultiTrajectory>>(&kfUpdater);
-  extensions.createTrackStates.template connect<&TrackStateCreatorType::createTrackStates>(&trackStateCreator);
-
-  TrackFinderOptions ckfOptions = TrackFinderOptions(geoCtx, magCtx, calCtx, extensions, pOptions);
-
-  // -------------------------------------------------------------------------
   // Seeding and CKF track finding, parallelised over the grid groups. Each
   // task owns its seeder cache, seed filter (with its own state/cache), seed
   // container and magnetic-field cache; the shared edm4hep collections are
@@ -833,12 +672,11 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
     if (!m_runCKF)
       return;
 
-    if (!tracking(paramseeds, 0, paramseeds.size(), trackFinder, ckfOptions, localMagCache, trackCollection)
-             .isSuccess()) {
-      warning() << "Tracking failed for this event" << endmsg;
-    }
+    m_ckfRunner->findTracks(*this, measurements, sourceLinks, paramseeds, localMagCache, trackCollection, m_trackMutex,
+                            &m_caloMonitor);
   };
 
+  tbb::task_arena arena(m_numThreads.value());
   if (m_numThreads > 1) {
     arena.execute([&] { tbb::parallel_for(tbb::blocked_range<size_t>(0, groups.size()), parallelSeedingAndTracking); });
   } else {
@@ -875,50 +713,22 @@ std::vector<Acts::BoundTrackParameters> CKFTrackingAlg::seedsToParameters(
     const Acts::ConstSpacePointProxy2 topSp    = spacePoints[spIndices[2]];
 
     const ACTSTracking::SourceLink& bottomSL = sourceLinkOf(bottomSp);
-    const Acts::GeometryIdentifier  geoId    = bottomSL.geometryId();
-    const Acts::Surface*            surface  = m_actsGeoSvc->trackingGeometry()->findSurface(geoId);
+    const Acts::Surface*            surface  = m_actsGeoSvc->trackingGeometry()->findSurface(bottomSL.geometryId());
     if (surface == nullptr) {
-      warning() << "Surface with geoID " << geoId << " not found in tracking geometry" << endmsg;
+      warning() << "Surface with geoID " << bottomSL.geometryId() << " not found in tracking geometry" << endmsg;
       continue;
     }
 
-    const Acts::Vector3 bottomPos = position(bottomSp);
-    const Acts::Vector3 middlePos = position(middleSp);
-    const Acts::Vector3 topPos    = position(topSp);
-    const double        t0        = bottomSL.edm4hepHit().getTime();
-
-    // Magnetic field at the seed (bottom space point) position
-    Acts::Result<Acts::Vector3> seedField = m_actsGeoSvc->magneticField()->getField(bottomPos, magCache);
-    if (!seedField.ok()) {
-      throw std::runtime_error("Field lookup error: " + std::to_string(seedField.error().value()));
-    }
-
-    Acts::Result<Acts::BoundVector> optParams =
-        Acts::estimateTrackParamsFromSeed(geoCtx, *surface, bottomPos, t0, middlePos, topPos, *seedField);
-    if (!optParams.ok()) {
-      debug() << "Failed estimation of track parameters for seed." << endmsg;
+    std::optional<Acts::BoundTrackParameters> paramseed = ACTSTracking::estimateSeedParameters(
+        *this, *m_actsGeoSvc, geoCtx, *surface, position(bottomSp), position(middleSp), position(topSp),
+        bottomSL.edm4hepHit().getTime(), magCache, m_initialTrackError_pos, m_initialTrackError_phi,
+        m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time);
+    if (!paramseed) {
       continue;
     }
+    paramseeds.push_back(*paramseed);
 
-    const Acts::BoundVector& params = *optParams;
-    float                    p      = std::abs(1.f / params[Acts::eBoundQOverP]);
-
-    Acts::BoundMatrix cov = ACTSTracking::makeInitialCovariance(p, m_initialTrackError_pos, m_initialTrackError_phi,
-                                                                m_initialTrackError_lambda, m_initialTrackError_relP,
-                                                                m_initialTrackError_time);
-
-    Acts::BoundTrackParameters paramseed(surface->getSharedPtr(), params, cov, Acts::ParticleHypothesis::pion());
-    paramseeds.push_back(paramseed);
-
-    Acts::Vector3 globalPos =
-        surface->localToGlobal(geoCtx, {params[Acts::eBoundLoc0], params[Acts::eBoundLoc1]}, {0, 0, 0});
-    Acts::Result<Acts::Vector3> hitField = m_actsGeoSvc->magneticField()->getField(globalPos, magCache);
-    if (!hitField.ok()) {
-      throw std::runtime_error("Field lookup error: " + std::to_string(hitField.error().value()));
-    }
-
-    auto seedTrackState = ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtFirstHit, paramseed,
-                                                                (*hitField)[2] / Acts::UnitConstants::T);
+    auto seedTrackState = ACTSTracking::makeSeedTrackState(*this, *m_actsGeoSvc, geoCtx, *paramseed, magCache);
 
     {
       std::lock_guard<std::mutex> lock(m_seedMutex);
@@ -929,135 +739,11 @@ std::vector<Acts::BoundTrackParameters> CKFTrackingAlg::seedsToParameters(
       seedTrack.addToTrackStates(seedTrackState);
     }
 
-    debug() << "Seed Parameters" << std::endl << paramseed << endmsg;
+    debug() << "Seed Parameters" << std::endl << *paramseed << endmsg;
   }
 
   debug() << "Seeds found: " << paramseeds.size() << endmsg;
   return paramseeds;
-}
-
-StatusCode CKFTrackingAlg::tracking(const std::vector<Acts::BoundTrackParameters>& paramseeds, std::size_t begin,
-                                    std::size_t end, const CKF& trackFinder, const TrackFinderOptions& ckfOptions,
-                                    Acts::MagneticFieldProvider::Cache& magCache,
-                                    edm4hep::TrackCollection&           trackCollection) const {
-  const Acts::GeometryContext geoCtx = Acts::GeometryContext::dangerouslyDefaultConstruct();
-
-  debug() << "Starting CKF track finding on " << (end - begin) << " seeds." << endmsg;
-
-  auto           trackContainer      = std::make_shared<Acts::VectorTrackContainer>();
-  auto           trackStateContainer = std::make_shared<Acts::VectorMultiTrajectory>();
-  TrackContainer tracks(trackContainer, trackStateContainer);
-
-  for (std::size_t iseed = begin; iseed < end; ++iseed) {
-    tracks.clear();
-    auto result = trackFinder.findTracks(paramseeds.at(iseed), ckfOptions, tracks);
-    if (result.ok()) {
-      const auto& fitOutput = result.value();
-      for (const TrackContainer::TrackProxy& trackItem : fitOutput) {
-        auto trackTip = tracks.makeTrack();
-        trackTip.copyFrom(trackItem);
-        auto smoothResult = Acts::smoothTrack(geoCtx, trackTip);
-        if (!smoothResult.ok()) {
-          warning() << "Track smoothing error: " << smoothResult.error() << endmsg;
-          continue;
-        }
-
-        // Extrapolate the fitted track back to the perigee surface at the IP so
-        // that the track parameters (in particular D0 and Z0) are expressed
-        // there. This reproduces the TrackStateAtIP behaviour from older ACTS
-        // and must happen before ACTS2edm4hep_track, which fills the AtIP state
-        // from the track-level parameters.
-        if (m_extrapPropagator) {
-          const Acts::MagneticFieldContext magCtx{};
-          Propagator::Options<>            extrapOptions{geoCtx, magCtx};
-          extrapOptions.maxSteps = 10000;
-          if (m_propagateBackward) {
-            extrapOptions.direction = Acts::Direction::Backward();
-          }
-          auto extrapResult =
-              Acts::extrapolateTrackToReferenceSurface(trackTip, *m_perigeeSurface, *m_extrapPropagator, extrapOptions,
-                                                       Acts::TrackExtrapolationStrategy::firstOrLast);
-          if (!extrapResult.ok()) {
-            warning() << "Track extrapolation to perigee failed: " << extrapResult.error() << endmsg;
-            continue;
-          }
-        }
-
-        auto track = ACTSTracking::ACTS2edm4hep_track(trackTip, m_actsGeoSvc->magneticField(), magCache);
-
-        // Extrapolate the fitted track to the calorimeter face and add an
-        // AtCalorimeter track state for Pandora / ParticleFlow. Start from the
-        // outermost smoothed state that carries a real measurement (closest to
-        // the calorimeter), so the extrapolation begins from a genuine fitted
-        // hit rather than a hole, outlier or material-only state.
-        if (m_caloPropagator) {
-          std::optional<Acts::BoundTrackParameters> startParams;
-          for (const auto& state : trackTip.trackStatesReversed()) {
-            const auto flags = state.typeFlags();
-            if (state.hasSmoothed() && flags.test(Acts::TrackStateFlag::HasMeasurement) &&
-                !flags.test(Acts::TrackStateFlag::IsOutlier)) {
-              startParams.emplace(state.referenceSurface().getSharedPtr(), state.smoothed(), state.smoothedCovariance(),
-                                  trackTip.particleHypothesis());
-              break;
-            }
-          }
-
-          if (!startParams) {
-            ++m_caloNoStartState;
-            debug() << "No measured smoothed state available; no AtCalorimeter state added for this track." << endmsg;
-          } else {
-            ++m_caloAttempts;
-            const Acts::MagneticFieldContext magCtx{};
-            const auto                       caloResult = ACTSTracking::extrapolateToCaloFace(
-                *m_caloPropagator, *startParams, m_actsGeoSvc->caloSurfaceGeoIds(), geoCtx, magCtx);
-
-            using ACTSTracking::CaloExtrapolationStatus;
-            switch (caloResult.status) {
-              case CaloExtrapolationStatus::Ok: {
-                ++m_caloOk;
-                const Acts::Vector3 caloPos  = caloResult.params->position(geoCtx);
-                auto                fieldRes = m_actsGeoSvc->magneticField()->getField(caloPos, magCache);
-                const double        Bz       = fieldRes.ok() ? (*fieldRes)[2] / Acts::UnitConstants::T : 0.0;
-                auto                caloState =
-                    ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtCalorimeter, *caloResult.params, Bz);
-                // The calo-face parameters are local to the target surface, so the
-                // edm4hep D0/Z0 from the generic conversion are not meaningful here.
-                // Express the state at the impact point instead: set the reference
-                // point to the global calo-face position (D0 = Z0 = 0 there).
-                caloState.referencePoint = edm4hep::Vector3f(caloPos.x(), caloPos.y(), caloPos.z());
-                caloState.D0             = 0;
-                caloState.Z0             = 0;
-                track.addToTrackStates(caloState);
-                break;
-              }
-              case CaloExtrapolationStatus::NotReached:
-              case CaloExtrapolationStatus::NoSurfaces:
-                ++m_caloNotReached;
-                debug() << "Extrapolation to the calorimeter face did not reach a surface; "
-                           "no AtCalorimeter state added for this track."
-                        << endmsg;
-                break;
-              case CaloExtrapolationStatus::PropagationError:
-                ++m_caloPropFailed;
-                debug() << "Extrapolation to the calorimeter face failed during propagation; "
-                           "no AtCalorimeter state added for this track."
-                        << endmsg;
-                break;
-            }
-          }
-        }
-
-        {
-          std::lock_guard lock{m_trackMutex};
-          trackCollection.push_back(track);
-        }
-      }
-    } else {
-      warning() << "Track fit error: " << result.error() << endmsg;
-    }
-  }
-
-  return StatusCode::SUCCESS;
 }
 
 DECLARE_COMPONENT(CKFTrackingAlg);
