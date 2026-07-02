@@ -31,6 +31,15 @@
 // ACTS
 #include <Acts/EventData/ParticleHypothesis.hpp>
 #include <Acts/MagneticField/InterpolatedBFieldMap.hpp>
+#include <Acts/Propagator/ActorList.hpp>
+#include <Acts/Propagator/PropagatorOptions.hpp>
+#include <Acts/Surfaces/BoundaryTolerance.hpp>
+#include <Acts/Surfaces/Surface.hpp>
+#include <Acts/Utilities/Intersection.hpp>
+#include <Acts/Utilities/Logger.hpp>
+
+#include <algorithm>
+#include <limits>
 
 // ACTSTracking
 #include "config.h.in"
@@ -232,6 +241,66 @@ namespace ACTSTracking {
     float                  mass = 0.0f;
     Acts::ChargeHypothesis charge_type{0.0f};
     return Acts::ParticleHypothesis{pdg, mass, charge_type};
+  }
+
+  namespace {
+    /// Abort condition for the calorimeter-face extrapolation: terminate the
+    /// propagation as soon as the navigator's current surface is one of the
+    /// calorimeter-face surfaces. Works with the geometry navigator, which sets
+    /// the current surface as it visits the calo volumes' passive surfaces.
+    struct CaloSurfaceReached {
+      const std::vector<Acts::GeometryIdentifier>* caloIds = nullptr;
+
+      template <typename propagator_state_t, typename stepper_t, typename navigator_t>
+      bool checkAbort(propagator_state_t& state, const stepper_t& /*stepper*/, const navigator_t& navigator,
+                      const Acts::Logger& /*logger*/) const {
+        if (caloIds == nullptr) {
+          return false;
+        }
+        const Acts::Surface* current = navigator.currentSurface(state.navigation);
+        if (current == nullptr) {
+          return false;
+        }
+        return std::find(caloIds->begin(), caloIds->end(), current->geometryId()) != caloIds->end();
+      }
+    };
+  }  // namespace
+
+  CaloExtrapolationResult extrapolateToCaloFace(const CaloFacePropagator&                    propagator,
+                                                const Acts::BoundTrackParameters&            start,
+                                                const std::vector<Acts::GeometryIdentifier>& caloSurfaceGeoIds,
+                                                const Acts::GeometryContext&                 gctx,
+                                                const Acts::MagneticFieldContext&            mctx) {
+    if (caloSurfaceGeoIds.empty()) {
+      return {std::nullopt, CaloExtrapolationStatus::NoSurfaces};
+    }
+
+    using ActorList = Acts::ActorList<CaloSurfaceReached>;
+    using Options   = CaloFacePropagator::Options<ActorList>;
+
+    Options options{gctx, mctx};
+    options.maxSteps                                    = 10000;
+    options.actorList.get<CaloSurfaceReached>().caloIds = &caloSurfaceGeoIds;
+
+    auto result = propagator.propagate(start, options);
+    if (!result.ok()) {
+      return {std::nullopt, CaloExtrapolationStatus::PropagationError};
+    }
+
+    const auto& output = result.value();
+    if (!output.endParameters.has_value()) {
+      return {std::nullopt, CaloExtrapolationStatus::NotReached};
+    }
+
+    // The propagation may also terminate at the world boundary; only treat it as
+    // a success if it actually finished on a calo-face surface.
+    const auto& endParams = output.endParameters.value();
+    const auto  endId     = endParams.referenceSurface().geometryId();
+    if (std::find(caloSurfaceGeoIds.begin(), caloSurfaceGeoIds.end(), endId) == caloSurfaceGeoIds.end()) {
+      return {std::nullopt, CaloExtrapolationStatus::NotReached};
+    }
+
+    return {endParams, CaloExtrapolationStatus::Ok};
   }
 
 }  // namespace ACTSTracking
