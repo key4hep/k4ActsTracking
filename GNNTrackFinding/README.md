@@ -25,6 +25,16 @@ this is to move this wholesale into
 [k4ActsTracking](https://github.com/key4hep/k4ActsTracking) once it has matured
 enough.
 
+## Building
+This subpackage is **not** built by default. Because it pulls in Torch,
+onnxruntime and the Acts Gnn plugin, it is guarded behind a CMake option and
+has to be enabled explicitly when configuring `k4ActsTracking`:
+```
+-DK4ACTSTRACKING_BUILD_GNN=ON
+```
+When the option is `OFF` (the default) none of the dependencies below are
+required and the rest of `k4ActsTracking` builds without them.
+
 ## Dependencies
 In order to build this package you need a couple of dependencies that are not
 yet found in the Key4hep stack. Specifically, you need
