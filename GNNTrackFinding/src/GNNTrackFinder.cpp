@@ -16,7 +16,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "ExaTrkGNNTrackFinder.h"
+#include "GNNTrackFinder.h"
 
 #include "OnnxMetricLearning.h"
 
@@ -98,11 +98,11 @@ namespace {
   }
 }  // namespace
 
-ExaTrkGNNTrackFinder::ExaTrkGNNTrackFinder(const std::string& name, ISvcLocator* svcLoc)
+GNNTrackFinder::GNNTrackFinder(const std::string& name, ISvcLocator* svcLoc)
     : Transformer(name, svcLoc, {KeyValues("InputHitCollections", {"populate-me-properly"})},
-                  {KeyValues("OutputTrackCandidates", {"ExaTrkGNNTrackCands"})}) {}
+                  {KeyValues("OutputTrackCandidates", {"GNNTrackCands"})}) {}
 
-StatusCode ExaTrkGNNTrackFinder::initialize() {
+StatusCode GNNTrackFinder::initialize() {
   m_logger = makeActsGaudiLogger(this);
   m_monitoringHist.createHistogram(*this);
 
@@ -149,7 +149,7 @@ StatusCode ExaTrkGNNTrackFinder::initialize() {
   return StatusCode::SUCCESS;
 }
 
-edm4hep::TrackCollection ExaTrkGNNTrackFinder::operator()(
+edm4hep::TrackCollection GNNTrackFinder::operator()(
     std::vector<const edm4hep::TrackerHitPlaneCollection*> const& inputTrackerHits) const {
   const auto allHits = [&inputTrackerHits]() {
     edm4hep::TrackerHitPlaneCollection hits{};
@@ -264,4 +264,4 @@ edm4hep::TrackCollection ExaTrkGNNTrackFinder::operator()(
   return trackCands;
 }
 
-DECLARE_COMPONENT(ExaTrkGNNTrackFinder)
+DECLARE_COMPONENT(GNNTrackFinder)

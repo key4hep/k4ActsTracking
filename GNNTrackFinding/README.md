@@ -63,7 +63,7 @@ implementation. I keep this list here as a reminder for later
 - Generalize `mlutils::{flatten,getDimensions,totalSize}` to also handle
   `std::vector<std::array>` which would probably offer better performance due to
   the better memory layout.
-  - Switch to use that in the `ExaTrkGNNTrackFinder`
+  - Switch to use that in the `GNNTrackFinder`
 - Make the `ONNXInferenceModel::runInference` thread-safe such that it can be
   marked as `const` to avoid the `mutable` statements in `operator()` of
   Functional algorithms

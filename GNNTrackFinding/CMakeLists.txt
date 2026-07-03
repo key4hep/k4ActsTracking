@@ -37,7 +37,7 @@ install(TARGETS GNNTrackingONNXInferenceModels
 )
 
 set(sources
-    src/ExaTrkGNNTrackFinder.cpp
+    src/GNNTrackFinder.cpp
     src/OnnxMetricLearning.cpp
 )
 

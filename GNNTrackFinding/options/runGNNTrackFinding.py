@@ -22,7 +22,7 @@ from pathlib import Path
 
 from k4FWCore import IOSvc, ApplicationMgr
 from k4FWCore.parseArgs import parser
-from Configurables import EventDataSvc, ExaTrkGNNTrackFinder
+from Configurables import EventDataSvc, GNNTrackFinder
 from Configurables import Gaudi__Histograming__Sink__Root as RootHistoSink
 
 from Gaudi.Configuration import DEBUG, VERBOSE
@@ -49,7 +49,7 @@ io_svc = IOSvc()
 io_svc.Input = "edm4hep.root"
 io_svc.Output = "track_candidates.root"
 
-TrackFinder = ExaTrkGNNTrackFinder(
+TrackFinder = GNNTrackFinder(
     "GNNTrackFinder",
     EdgeClassifierModelPath=str(args.modelBase / "edge_classifier-InteractionGNN.onnx"),
     EdgeClassifierCut=0.5,

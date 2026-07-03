@@ -47,9 +47,9 @@ namespace ActsPlugins {
 #include <string>
 #include <vector>
 
-struct ExaTrkGNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
-                                  std::vector<const edm4hep::TrackerHitPlaneCollection*> const&)> {
-  ExaTrkGNNTrackFinder(const std::string& name, ISvcLocator* svcLoc);
+struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
+                            std::vector<const edm4hep::TrackerHitPlaneCollection*> const&)> {
+  GNNTrackFinder(const std::string& name, ISvcLocator* svcLoc);
 
   StatusCode initialize() override;
 
