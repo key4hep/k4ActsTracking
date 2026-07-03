@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2014-2024 Key4hep-Project.
+ *
+ * This file is part of Key4hep.
+ * See https://key4hep.github.io/key4hep-doc/ for further info.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 #pragma once
 
 #include <k4FWCore/Transformer.h>
@@ -13,9 +31,9 @@
 #else
 #include <Acts/Plugins/Gnn/GnnPipeline.hpp>
 namespace ActsPlugins {
-using GnnPipeline = Acts::Pipeline;
-using Device = Acts::Device;
-}
+  using GnnPipeline = Acts::Pipeline;
+  using Device      = Acts::Device;
+}  // namespace ActsPlugins
 #endif
 
 #include <Gaudi/Accumulators/RootHistogram.h>
@@ -31,7 +49,6 @@ using Device = Acts::Device;
 
 struct ExaTrkGNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
                                   std::vector<const edm4hep::TrackerHitPlaneCollection*> const&)> {
-
   ExaTrkGNNTrackFinder(const std::string& name, ISvcLocator* svcLoc);
 
   StatusCode initialize() override;
@@ -49,7 +66,7 @@ struct ExaTrkGNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollect
 
   Gaudi::Property<std::string> m_edgeClassifierModelPath{this, "EdgeClassifierModelPath",
                                                          "Path to the ONNX model file for the edge classifier GNN"};
-  Gaudi::Property<float> m_edgeClassifierCut{this, "EdgeClassifierCut", 0.5f,
+  Gaudi::Property<float>       m_edgeClassifierCut{this, "EdgeClassifierCut", 0.5f,
                                              "Cut value to use for the edge classifier GNN"};
 
   Gaudi::Property<uint32_t> m_minHitsPerTrk{this, "MinHitsPerTrack", 3,
@@ -77,8 +94,8 @@ struct ExaTrkGNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollect
 
 private:
   std::unique_ptr<ActsPlugins::GnnPipeline> m_pipeline{nullptr};
-  std::unique_ptr<const Acts::Logger> m_logger{nullptr};
-  ActsPlugins::Device m_runDevice{ActsPlugins::Device::Type::eCPU, 0};
+  std::unique_ptr<const Acts::Logger>       m_logger{nullptr};
+  ActsPlugins::Device                       m_runDevice{ActsPlugins::Device::Type::eCPU, 0};
 
   SmartIF<IActsGeoSvc> m_actsGeoSvc{nullptr};
 

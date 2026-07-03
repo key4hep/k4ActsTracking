@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2014-2024 Key4hep-Project.
+ *
+ * This file is part of Key4hep.
+ * See https://key4hep.github.io/key4hep-doc/ for further info.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 #include "catch2/catch_test_macros.hpp"
 #include "catch2/matchers/catch_matchers_vector.hpp"
 
@@ -22,25 +40,25 @@ TEST_CASE("flatten") {
 
   SECTION("1D vector") {
     std::vector<float> input{1.5f, 2.5f, 3.5f};
-    auto output = mlutils::flatten(input);
+    auto               output = mlutils::flatten(input);
     REQUIRE_THAT(output, Catch::Matchers::Equals(std::vector<float>{1.5f, 2.5f, 3.5f}));
   }
 
   SECTION("empty vector") {
     std::vector<int> input{};
-    auto output = mlutils::flatten(input);
+    auto             output = mlutils::flatten(input);
     REQUIRE(output.empty());
   }
 
   SECTION("2D vector") {
     std::vector<std::vector<int>> input{{1, 2}, {3, 4, 5}};
-    auto output = mlutils::flatten(input);
+    auto                          output = mlutils::flatten(input);
     REQUIRE_THAT(output, Catch::Matchers::Equals(std::vector<int>{1, 2, 3, 4, 5}));
   }
 
   SECTION("3D vector") {
     std::vector<std::vector<std::vector<float>>> input{{{1.0f, 2.0f}, {3.0f}}, {{4.0f, 5.0f, 6.0f}}};
-    auto output = mlutils::flatten(input);
+    auto                                         output = mlutils::flatten(input);
     REQUIRE_THAT(output, Catch::Matchers::Equals(std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f}));
   }
 }
@@ -53,32 +71,32 @@ TEST_CASE("getDimensions") {
 
   SECTION("1D vector") {
     std::vector<float> input{1.5f, 2.5f, 3.5f};
-    auto dims = mlutils::getDimensions(input);
+    auto               dims = mlutils::getDimensions(input);
     REQUIRE_THAT(dims, Catch::Matchers::Equals(std::vector<int64_t>{3}));
   }
 
   SECTION("empty vector") {
     std::vector<int> input{};
-    auto dims = mlutils::getDimensions(input);
+    auto             dims = mlutils::getDimensions(input);
     REQUIRE_THAT(dims, Catch::Matchers::Equals(std::vector<int64_t>{0}));
   }
 
   SECTION("2D vector - rectangular") {
     std::vector<std::vector<int>> input{{1, 2, 3}, {4, 5, 6}};
-    auto dims = mlutils::getDimensions(input);
+    auto                          dims = mlutils::getDimensions(input);
     REQUIRE_THAT(dims, Catch::Matchers::Equals(std::vector<int64_t>{2, 3}));
   }
 
   SECTION("2D vector - jagged") {
     std::vector<std::vector<int>> input{{1, 2}, {3, 4, 5}};
-    auto dims = mlutils::getDimensions(input);
+    auto                          dims = mlutils::getDimensions(input);
     // NOTE here the "unexpected expected" result, due to the lack of validation
     REQUIRE_THAT(dims, Catch::Matchers::Equals(std::vector<int64_t>{2, 2}));
   }
 
   SECTION("3D vector") {
     std::vector<std::vector<std::vector<float>>> input{{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}};
-    auto dims = mlutils::getDimensions(input);
+    auto                                         dims = mlutils::getDimensions(input);
     REQUIRE_THAT(dims, Catch::Matchers::Equals(std::vector<int64_t>{2, 2, 2}));
   }
 }

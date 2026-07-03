@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2014-2024 Key4hep-Project.
+ *
+ * This file is part of Key4hep.
+ * See https://key4hep.github.io/key4hep-doc/ for further info.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 #include "ExaTrkGNNTrackFinder.h"
 
 #include "OnnxMetricLearning.h"
@@ -13,12 +31,12 @@
 #include <Acts/Plugins/Gnn/OnnxEdgeClassifier.hpp>
 #include <Acts/Plugins/Gnn/Stages.hpp>
 namespace ActsPlugins {
-using BoostTrackBuilding = Acts::BoostTrackBuilding;
-using Device = Acts::Device;
-using EdgeClassificationBase = Acts::EdgeClassificationBase;
-using GnnPipeline = Acts::GnnPipeline;
-using OnnxEdgeClassifier = Acts::OnnxEdgeClassifier;
-} // namespace ActsPlugins
+  using BoostTrackBuilding     = Acts::BoostTrackBuilding;
+  using Device                 = Acts::Device;
+  using EdgeClassificationBase = Acts::EdgeClassificationBase;
+  using GnnPipeline            = Acts::GnnPipeline;
+  using OnnxEdgeClassifier     = Acts::OnnxEdgeClassifier;
+}  // namespace ActsPlugins
 #endif
 
 #include <k4ActsTracking/ActsGaudiLogger.h>
@@ -47,38 +65,38 @@ using OnnxEdgeClassifier = Acts::OnnxEdgeClassifier;
 #include <vector>
 
 namespace {
-std::vector<float> extractHitInformation(const edm4hep::TrackerHitPlaneCollection& hits) {
-  // Could use a std::array here, but that would make switching between 3D and
-  // 4D a bit more cumbersome
-  std::vector<std::vector<float>> embeddingInputs{};
-  embeddingInputs.reserve(hits.size());
+  std::vector<float> extractHitInformation(const edm4hep::TrackerHitPlaneCollection& hits) {
+    // Could use a std::array here, but that would make switching between 3D and
+    // 4D a bit more cumbersome
+    std::vector<std::vector<float>> embeddingInputs{};
+    embeddingInputs.reserve(hits.size());
 
-  for (const auto hit : hits) {
-    const auto position = ROOT::Math::XYZPointF(hit.getPosition().x, hit.getPosition().y, hit.getPosition().z);
+    for (const auto hit : hits) {
+      const auto position = ROOT::Math::XYZPointF(hit.getPosition().x, hit.getPosition().y, hit.getPosition().z);
 
-    std::vector<float> hitInfo = {position.r(), position.phi(), position.z(), hit.getTime()};
-    embeddingInputs.emplace_back(std::move(hitInfo));
+      std::vector<float> hitInfo = {position.r(), position.phi(), position.z(), hit.getTime()};
+      embeddingInputs.emplace_back(std::move(hitInfo));
+    }
+    return mlutils::flatten(embeddingInputs);
   }
-  return mlutils::flatten(embeddingInputs);
-}
 
-/// Parse a device string ("cpu", "cuda", "cuda:<index>") into an Acts Device.
-/// Throws std::invalid_argument on an unrecognised value.
-ActsPlugins::Device parseDevice(std::string spec) {
-  std::transform(spec.begin(), spec.end(), spec.begin(), [](unsigned char c) { return std::tolower(c); });
+  /// Parse a device string ("cpu", "cuda", "cuda:<index>") into an Acts Device.
+  /// Throws std::invalid_argument on an unrecognised value.
+  ActsPlugins::Device parseDevice(std::string spec) {
+    std::transform(spec.begin(), spec.end(), spec.begin(), [](unsigned char c) { return std::tolower(c); });
 
-  if (spec == "cpu") {
-    return ActsPlugins::Device::Cpu();
+    if (spec == "cpu") {
+      return ActsPlugins::Device::Cpu();
+    }
+    if (spec == "cuda") {
+      return ActsPlugins::Device::Cuda();
+    }
+    if (spec.rfind("cuda:", 0) == 0) {
+      return ActsPlugins::Device::Cuda(static_cast<std::size_t>(std::stoul(spec.substr(5))));
+    }
+    throw std::invalid_argument(fmt::format("Unknown device '{}', expected 'cpu', 'cuda' or 'cuda:<index>'", spec));
   }
-  if (spec == "cuda") {
-    return ActsPlugins::Device::Cuda();
-  }
-  if (spec.rfind("cuda:", 0) == 0) {
-    return ActsPlugins::Device::Cuda(static_cast<std::size_t>(std::stoul(spec.substr(5))));
-  }
-  throw std::invalid_argument(fmt::format("Unknown device '{}', expected 'cpu', 'cuda' or 'cuda:<index>'", spec));
-}
-} // namespace
+}  // namespace
 
 ExaTrkGNNTrackFinder::ExaTrkGNNTrackFinder(const std::string& name, ISvcLocator* svcLoc)
     : Transformer(name, svcLoc, {KeyValues("InputHitCollections", {"populate-me-properly"})},
@@ -100,17 +118,17 @@ StatusCode ExaTrkGNNTrackFinder::initialize() {
   info() << fmt::format("Running GNN pipeline on device '{}'", m_device.value()) << endmsg;
 
   auto graphConstructor =
-      std::make_shared<OnnxMetricLearning>(OnnxMetricLearning::Config{.modelPath = m_nodeEmbeddingModelPath.value(),
+      std::make_shared<OnnxMetricLearning>(OnnxMetricLearning::Config{.modelPath    = m_nodeEmbeddingModelPath.value(),
                                                                       .embeddingDim = m_embeddingDim.value(),
-                                                                      .rVal = m_edgeBuildingRadius.value(),
-                                                                      .knnVal = m_edgeBuildingKnn.value(),
-                                                                      .device = m_runDevice},
+                                                                      .rVal         = m_edgeBuildingRadius.value(),
+                                                                      .knnVal       = m_edgeBuildingKnn.value(),
+                                                                      .device       = m_runDevice},
                                            m_logger->clone(name() + ".MetricLearning"));
 
   std::vector<std::shared_ptr<ActsPlugins::EdgeClassificationBase>> edgeClassifiers{
       std::make_shared<ActsPlugins::OnnxEdgeClassifier>(
           ActsPlugins::OnnxEdgeClassifier::Config{.modelPath = m_edgeClassifierModelPath.value(),
-                                                  .cut = m_edgeClassifierCut.value(),
+                                                  .cut       = m_edgeClassifierCut.value(),
                                                   // The Acts Config defaults to Device::Cuda(); use the configured
                                                   // device (default "cpu") since the onnxruntime build may not have a
                                                   // CUDA execution provider.
@@ -131,8 +149,8 @@ StatusCode ExaTrkGNNTrackFinder::initialize() {
   return StatusCode::SUCCESS;
 }
 
-edm4hep::TrackCollection
-ExaTrkGNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*> const& inputTrackerHits) const {
+edm4hep::TrackCollection ExaTrkGNNTrackFinder::operator()(
+    std::vector<const edm4hep::TrackerHitPlaneCollection*> const& inputTrackerHits) const {
   const auto allHits = [&inputTrackerHits]() {
     edm4hep::TrackerHitPlaneCollection hits{};
     hits.setSubsetCollection(true);
@@ -159,8 +177,8 @@ ExaTrkGNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneColle
 
   // Build the ACTS measurements / source links for all GNN input hits, keeping the
   // source link of each hit so each candidate can be turned into a fit seed.
-  ACTSTracking::SourceLinkContainer                          sourceLinks;
-  ACTSTracking::MeasurementContainer                         measurements;
+  ACTSTracking::SourceLinkContainer                           sourceLinks;
+  ACTSTracking::MeasurementContainer                          measurements;
   std::unordered_map<std::uint64_t, ACTSTracking::SourceLink> slByHit;
   slByHit.reserve(allHits.size());
 
@@ -228,9 +246,9 @@ ExaTrkGNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneColle
     }
 
     std::optional<Acts::BoundTrackParameters> startParams = ACTSTracking::estimateSeedParameters(
-        *this, *m_actsGeoSvc, geoCtx, *bottomSurface, bottom.pos, middle.pos, top.pos,
-        bottom.sl.edm4hepHit().getTime(), magCache, m_initialTrackError_pos, m_initialTrackError_phi,
-        m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time);
+        *this, *m_actsGeoSvc, geoCtx, *bottomSurface, bottom.pos, middle.pos, top.pos, bottom.sl.edm4hepHit().getTime(),
+        magCache, m_initialTrackError_pos, m_initialTrackError_phi, m_initialTrackError_lambda,
+        m_initialTrackError_relP, m_initialTrackError_time);
     if (!startParams) {
       continue;
     }
