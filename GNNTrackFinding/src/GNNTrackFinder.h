@@ -58,16 +58,34 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
   Gaudi::Property<std::string> m_nodeEmbeddingModelPath{
       this, "NodeEmbeddingModelPath",
       "Path to the ONNX model file for the node embedding / graph construction metric model"};
-  Gaudi::Property<float> m_edgeBuildingRadius{this, "EdgeBuildingRadius", 0.1f,
+  Gaudi::Property<float>       m_edgeBuildingRadius{this, "EdgeBuildingRadius", 0.1f,
                                               "The radius parameter for the KD-Tree that is used in edge building"};
-  Gaudi::Property<float> m_edgeBuildingKnn{this, "EdgeBuildingKnn", 100.f,
+  Gaudi::Property<float>       m_edgeBuildingKnn{this, "EdgeBuildingKnn", 100.f,
                                            "The KNN parameter for the KD-Tree that is used in edge building"};
+  Gaudi::Property<std::string> m_inputFeaturesEmbedding{
+      this, "InputFeaturesEmbedding", "r,phi,z,t",
+      "Comma-separated list of hit features for the node embedding model."};
+  Gaudi::Property<std::string> m_inputScalesEmbedding{
+      this, "InputScalesEmbedding", "1,1,1,1",
+      "Comma-separated list of scales for the hit features for the node embedding model. "
+      "Must be same size as InputFeaturesEmbedding."};
   Gaudi::Property<int> m_embeddingDim{this, "EmbeddingDim", 4, "The embedding dimension for the node embedding model"};
 
-  Gaudi::Property<std::string> m_edgeClassifierModelPath{this, "EdgeClassifierModelPath",
-                                                         "Path to the ONNX model file for the edge classifier GNN"};
-  Gaudi::Property<float>       m_edgeClassifierCut{this, "EdgeClassifierCut", 0.5f,
-                                             "Cut value to use for the edge classifier GNN"};
+  Gaudi::Property<std::vector<std::string>> m_edgeClassifierModelPath{
+      this, "EdgeClassifierModelPath", {}, "List of paths to ONNX model files for edge classifier(s)."};
+  Gaudi::Property<std::vector<std::string>> m_inputFeaturesEdgeClassifier{
+      this,
+      "InputFeaturesEdgeClassifier",
+      {"r,phi,z,t"},
+      "List of comma-separated lists of node features for the edge classifier models."};
+  Gaudi::Property<std::vector<std::string>> m_inputScalesEdgeClassifier{
+      this,
+      "InputScalesEdgeClassifier",
+      {"1,1,1,1"},
+      "List of comma-separated lists of scales for the node features for the edge classifier models. "
+      "Must be same size as InputFeaturesEdgeClassifier."};
+  Gaudi::Property<std::vector<float>> m_edgeClassifierCut{
+      this, "EdgeClassifierCut", {0.5f}, "List of cut values to use for the edge classifiers"};
 
   Gaudi::Property<uint32_t> m_minHitsPerTrk{this, "MinHitsPerTrack", 3,
                                             "Minimum number of hits per track for it to be considered for the output"};
@@ -93,6 +111,9 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
       "CUDA-enabled onnxruntime/torch build for \"cuda\"."};
 
 private:
+  std::vector<std::string>                  m_allHitFeatures{};
+  std::vector<int>                          m_embeddingFeatureIndices{};
+  std::vector<std::vector<int>>             m_edgeClassifierFeatureIndices{};
   std::unique_ptr<ActsPlugins::GnnPipeline> m_pipeline{nullptr};
   std::unique_ptr<const Acts::Logger>       m_logger{nullptr};
   ActsPlugins::Device                       m_runDevice{ActsPlugins::Device::Type::eCPU, 0};

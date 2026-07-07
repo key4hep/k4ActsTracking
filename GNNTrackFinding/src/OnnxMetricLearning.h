@@ -37,6 +37,7 @@ namespace ActsPlugins {
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 // Implementing this class close to what Acts does for Torch in a way that would
 // make it somewhat straight forward to move it to Acts once it has matured
@@ -44,11 +45,13 @@ namespace ActsPlugins {
 class OnnxMetricLearning final : public ActsPlugins::GraphConstructionBase {
 public:
   struct Config {
-    std::string modelPath{};
-    int         embeddingDim{4};
-    float       rVal{1.6};                 // Same as TorchMetricLearning
-    float       knnVal{500.};              // Same as TorchMetricLearning
-    bool        shuffleDirections{false};  // Same as TorchMetricLearning
+    std::string        modelPath{};
+    std::vector<int>   selectedFeatures{};  // If empty, use all features
+    std::vector<float> featureScales{};     // Must be same size as selectedFeatures
+    int                embeddingDim{4};
+    float              rVal{1.6};                 // Same as TorchMetricLearning
+    float              knnVal{500.};              // Same as TorchMetricLearning
+    bool               shuffleDirections{false};  // Same as TorchMetricLearning
 
     // For edge features
     float phiScale = 3.141592654;  // Same as TorchmetricLearning

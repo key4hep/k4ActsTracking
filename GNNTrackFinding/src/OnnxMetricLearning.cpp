@@ -108,10 +108,44 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
                                                             const ActsPlugins::ExecutionContext& execContext) {
   assert(inputValues.size() % numNodes == 0);
   std::vector inputShape = {static_cast<int64_t>(numNodes), static_cast<int64_t>(inputValues.size() / numNodes)};
+
+  // only use selected features given in cfg.selectedFeatures
+  const std::size_t fullNumFeatures = inputValues.size() / numNodes;
+  // By default we use the original inputValues. If selectedFeatures is
+  // non-empty, build a compact buffer containing only those features and
+  // pass that to the ONNX model.
+  std::vector<float>* inferenceValues = &inputValues;
+  std::vector<float>  selectedValues;
+  if (!config().selectedFeatures.empty()) {
+    selectedValues.reserve(numNodes * config().selectedFeatures.size());
+    for (std::size_t n = 0; n < numNodes; ++n) {
+      for (int idx : config().selectedFeatures) {
+        if (idx < 0 || static_cast<std::size_t>(idx) >= fullNumFeatures) {
+          throw std::runtime_error("Selected feature index out of range");
+        }
+        selectedValues.push_back(inputValues[n * fullNumFeatures + static_cast<std::size_t>(idx)]);
+      }
+    }
+    // Update the feature dimension for the inference input shape
+    inputShape[1]   = static_cast<int64_t>(config().selectedFeatures.size());
+    inferenceValues = &selectedValues;
+  }
   ACTS_DEBUG(fmt::format("Embedding input tensor shape: {}", inputShape));
   ACTS_DEBUG(fmt::format("First input space point: {}", std::span(inputValues.data(), inputShape[1])));
 
-  const auto outputs = m_model.runInference(inputValues, inputShape);
+  // Scale features if featureScales is given in cfg
+  if (!config().featureScales.empty()) {
+    if (config().featureScales.size() != static_cast<std::size_t>(inputShape[1])) {
+      throw std::runtime_error("featureScales size must match the number of input features");
+    }
+    for (std::size_t n = 0; n < numNodes; ++n) {
+      for (std::size_t f = 0; f < static_cast<std::size_t>(inputShape[1]); ++f) {
+        (*inferenceValues)[n * static_cast<std::size_t>(inputShape[1]) + f] *= config().featureScales[f];
+      }
+    }
+  }
+
+  const auto outputs = m_model.runInference(*inferenceValues, inputShape);
   // The ONNX session returns its outputs in host memory. Move the embedding to
   // the pipeline's target device so that the edge building below (buildEdges
   // dispatches FRNN/CUDA vs KD-Tree/CPU based on the tensor's device) runs on
@@ -133,6 +167,8 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
   ACTS_VERBOSE(fmt::format("Slice of edgeList: {}", fmt::streamed(edgeList.slice(1, 0, 5))));
 
   return {ActsPlugins::detail::torchToActsTensor<float>(
-              ActsPlugins::detail::vectorToTensor2D(inputValues, inputShape[1]), execContext),
+              // Return the original full-feature node tensor to the pipeline
+              // (do not reduce the node features returned to the pipeline).
+              ActsPlugins::detail::vectorToTensor2D(inputValues, fullNumFeatures), execContext),
           ActsPlugins::detail::torchToActsTensor<int64_t>(edgeList, execContext), std::nullopt, std::nullopt};
 }

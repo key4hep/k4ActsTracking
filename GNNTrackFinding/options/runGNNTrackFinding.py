@@ -51,8 +51,8 @@ io_svc.Output = "track_candidates.root"
 
 TrackFinder = GNNTrackFinder(
     "GNNTrackFinder",
-    EdgeClassifierModelPath=str(args.modelBase / "edge_classifier-InteractionGNN.onnx"),
-    EdgeClassifierCut=0.5,
+    EdgeClassifierModelPath=[str(args.modelBase / "edge_classifier-InteractionGNN.onnx")],
+    EdgeClassifierCut=[0.5],
     NodeEmbeddingModelPath=str(
         args.modelBase / "graph_construction-MetricLearning.onnx"
     ),

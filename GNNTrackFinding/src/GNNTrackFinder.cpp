@@ -53,6 +53,8 @@ namespace ActsPlugins {
 
 #include <Math/PositionVector3D.h>
 
+#include <DDSegmentation/BitFieldCoder.h>
+
 #include <fmt/format.h>
 
 #include <algorithm>
@@ -65,16 +67,54 @@ namespace ActsPlugins {
 #include <vector>
 
 namespace {
-  std::vector<float> extractHitInformation(const edm4hep::TrackerHitPlaneCollection& hits) {
+  std::vector<float> extractHitInformation(const edm4hep::TrackerHitPlaneCollection& hits,
+                                           const std::vector<std::string>&           features,
+                                           const std::string&                        cellIDEncoding) {
     // Could use a std::array here, but that would make switching between 3D and
     // 4D a bit more cumbersome
     std::vector<std::vector<float>> embeddingInputs{};
     embeddingInputs.reserve(hits.size());
 
+    // CellID decoder
+    dd4hep::DDSegmentation::BitFieldCoder decoder{cellIDEncoding};
+
     for (const auto hit : hits) {
       const auto position = ROOT::Math::XYZPointF(hit.getPosition().x, hit.getPosition().y, hit.getPosition().z);
 
-      std::vector<float> hitInfo = {position.r(), position.phi(), position.z(), hit.getTime()};
+      std::vector<float> hitInfo{};
+      hitInfo.reserve(features.size());
+      const auto cellID = hit.getCellID();
+
+      for (const auto& f : features) {
+        std::string key = f;
+        std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c) { return std::tolower(c); });
+        try {
+          if (key == "x") {
+            hitInfo.push_back(position.x());
+          } else if (key == "y") {
+            hitInfo.push_back(position.y());
+          } else if (key == "z") {
+            hitInfo.push_back(position.z());
+          } else if (key == "r") {
+            hitInfo.push_back(position.r());
+          } else if (key == "phi") {
+            hitInfo.push_back(position.phi());
+          } else if (key == "t" || key == "time") {
+            hitInfo.push_back(hit.getTime());
+          } else if (key == "module_id") {
+            hitInfo.push_back(static_cast<float>(decoder.get(cellID, decoder.index("module"))));
+          } else if (key == "layer_id") {
+            hitInfo.push_back(static_cast<float>(decoder.get(cellID, decoder.index("layer"))));
+          } else if (key == "system_id" || key == "volume_id") {
+            hitInfo.push_back(static_cast<float>(decoder.get(cellID, decoder.index("system"))));
+          } else {
+            throw std::runtime_error(fmt::format("Unknown hit feature '{}'", f));
+          }
+        } catch (const std::exception& ex) {
+          throw std::runtime_error(
+              fmt::format("Error extracting feature '{}' for hit with CellID {}: {}", f, cellID, ex.what()));
+        }
+      }
       embeddingInputs.emplace_back(std::move(hitInfo));
     }
     return mlutils::flatten(embeddingInputs);
@@ -117,23 +157,76 @@ StatusCode GNNTrackFinder::initialize() {
   }
   info() << fmt::format("Running GNN pipeline on device '{}'", m_device.value()) << endmsg;
 
-  auto graphConstructor =
-      std::make_shared<OnnxMetricLearning>(OnnxMetricLearning::Config{.modelPath    = m_nodeEmbeddingModelPath.value(),
-                                                                      .embeddingDim = m_embeddingDim.value(),
-                                                                      .rVal         = m_edgeBuildingRadius.value(),
-                                                                      .knnVal       = m_edgeBuildingKnn.value(),
-                                                                      .device       = m_runDevice},
-                                           m_logger->clone(name() + ".MetricLearning"));
+  // Build the list of all hit features, and separately for the embedding model
+  // and the edge classifiers.
+  const auto& embeddingFeatures = mlutils::parseList<std::string>(m_inputFeaturesEmbedding.value());
+  m_allHitFeatures.insert(m_allHitFeatures.end(), embeddingFeatures.begin(), embeddingFeatures.end());
+  const auto& edgeClassifierFeaturesList = mlutils::parseMultiList<std::string>(m_inputFeaturesEdgeClassifier.value());
+  for (const auto& edgeClassifierFeatures : edgeClassifierFeaturesList) {
+    m_allHitFeatures.insert(m_allHitFeatures.end(), edgeClassifierFeatures.begin(), edgeClassifierFeatures.end());
+  }
+  m_allHitFeatures.erase(std::unique(m_allHitFeatures.begin(), m_allHitFeatures.end()), m_allHitFeatures.end());
 
-  std::vector<std::shared_ptr<ActsPlugins::EdgeClassificationBase>> edgeClassifiers{
-      std::make_shared<ActsPlugins::OnnxEdgeClassifier>(
-          ActsPlugins::OnnxEdgeClassifier::Config{.modelPath = m_edgeClassifierModelPath.value(),
-                                                  .cut       = m_edgeClassifierCut.value(),
-                                                  // The Acts Config defaults to Device::Cuda(); use the configured
-                                                  // device (default "cpu") since the onnxruntime build may not have a
-                                                  // CUDA execution provider.
-                                                  .device = m_runDevice},
-          m_logger->clone(name() + ".EdgeClassifier"))};
+  // Translate the lists of input features into lists of indices into the full
+  // per-hit feature vector for each model.
+  const auto& allFeatures = m_allHitFeatures;
+  m_embeddingFeatureIndices.clear();
+  m_edgeClassifierFeatureIndices.clear();
+  for (const auto& f : embeddingFeatures) {
+    auto it = std::find(allFeatures.begin(), allFeatures.end(), f);
+    if (it != allFeatures.end()) {
+      m_embeddingFeatureIndices.push_back(static_cast<int>(std::distance(allFeatures.begin(), it)));
+    }
+  }
+  for (const auto& edgeClassifierFeatures : edgeClassifierFeaturesList) {
+    std::vector<int> featureIndices;
+    featureIndices.reserve(edgeClassifierFeatures.size());
+    for (const auto& f : edgeClassifierFeatures) {
+      auto it = std::find(allFeatures.begin(), allFeatures.end(), f);
+      if (it != allFeatures.end()) {
+        featureIndices.push_back(static_cast<int>(std::distance(allFeatures.begin(), it)));
+      }
+    }
+    m_edgeClassifierFeatureIndices.push_back(std::move(featureIndices));
+  }
+
+  // Check that the embedding dimension matches the number of features selected
+  // for the graph construction model (if specified).
+  if (m_embeddingDim.value() > 0 && !embeddingFeatures.empty() &&
+      (static_cast<std::size_t>(m_embeddingDim.value()) != embeddingFeatures.size() ||
+       static_cast<std::size_t>(m_embeddingDim.value()) != m_embeddingFeatureIndices.size())) {
+    error() << fmt::format(
+                   "Embedding dimension {} does not match the number of selected features {} for the graph "
+                   "construction model",
+                   m_embeddingDim.value(), embeddingFeatures.size())
+            << endmsg;
+    return StatusCode::FAILURE;
+  }
+
+  auto graphConstructor = std::make_shared<OnnxMetricLearning>(
+      OnnxMetricLearning::Config{.modelPath        = m_nodeEmbeddingModelPath.value(),
+                                 .selectedFeatures = m_embeddingFeatureIndices,
+                                 .featureScales    = mlutils::parseList<float>(m_inputScalesEmbedding.value()),
+                                 .embeddingDim     = m_embeddingDim.value(),
+                                 .rVal             = m_edgeBuildingRadius.value(),
+                                 .knnVal           = m_edgeBuildingKnn.value(),
+                                 .device           = m_runDevice},
+      m_logger->clone(name() + ".MetricLearning"));
+
+  std::vector<std::shared_ptr<ActsPlugins::EdgeClassificationBase>> edgeClassifiers{};
+  for (size_t i = 0; i < m_edgeClassifierModelPath.size(); ++i) {
+    edgeClassifiers.push_back(std::make_shared<ActsPlugins::OnnxEdgeClassifier>(
+        ActsPlugins::OnnxEdgeClassifier::Config{
+            .modelPath        = m_edgeClassifierModelPath[i],
+            .selectedFeatures = m_edgeClassifierFeatureIndices[i],
+            .featureScales    = mlutils::parseList<float>(m_inputScalesEdgeClassifier[i]),
+            .cut              = m_edgeClassifierCut[i],
+            // The Acts Config defaults to Device::Cuda(); use the configured
+            // device (default "cpu") since the onnxruntime build may not have a
+            // CUDA execution provider.
+            .device = m_runDevice},
+        m_logger->clone(name() + fmt::format(".EdgeClassifier{}", i))));
+  }
 
   auto trackBuilder = std::make_shared<ActsPlugins::BoostTrackBuilding>(ActsPlugins::BoostTrackBuilding::Config{},
                                                                         m_logger->clone(name() + ".TrackBuilder"));
@@ -161,8 +254,8 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
     return hits;
   }();
   debug() << fmt::format("Collected {} hits from {} collections", allHits.size(), inputTrackerHits.size()) << endmsg;
-  auto embeddingInputs = extractHitInformation(allHits);
-  assert(embeddingInputs.size() == allHits.size() * 4);
+  auto embeddingInputs = extractHitInformation(allHits, m_allHitFeatures, m_actsGeoSvc->cellIDEncodingString());
+  assert(embeddingInputs.size() == allHits.size() * m_allHitFeatures.size());
   // Give hits their position in the global hits collection as index
   std::vector<int> hitIdcs(allHits.size());
   std::iota(hitIdcs.begin(), hitIdcs.end(), 0);
