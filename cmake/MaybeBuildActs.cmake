@@ -1,5 +1,5 @@
 # The setup below allows optionally building ACTS directly with the k4ActsTracking build.
-# This avoids having to run separate build and install steps, and also allows getting a 
+# This avoids having to run separate build and install steps, and also allows getting a
 # combined compilation database out.
 if(IS_DIRECTORY ${ACTS_SOURCE_DIR})
   message(STATUS "Using ACTS from: ${ACTS_SOURCE_DIR}")
