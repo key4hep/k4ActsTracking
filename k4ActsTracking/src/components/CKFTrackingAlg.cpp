@@ -18,15 +18,13 @@
  */
 
 // k4ActsTracking
-#include "k4ActsTracking/CKFTrackingAlg.hxx"
+#include "k4ActsTracking/CKFRunner.hxx"
 #include "k4ActsTracking/CellIDSelector.h"
 #include "k4ActsTracking/Helpers.hxx"
 #include "k4ActsTracking/IActsGeoSvc.h"
 #include "k4ActsTracking/Measurement.hxx"
 #include "k4ActsTracking/MeasurementCalibrator.hxx"
-#include "k4ActsTracking/SeedSpacePoint.hxx"
 #include "k4ActsTracking/SourceLink.hxx"
-#include "k4ActsTracking/SpacePointContainer.hxx"
 
 // k4FWCore
 #include <k4FWCore/GaudiChecks.h>
@@ -50,8 +48,10 @@
 #include <Acts/EventData/BoundTrackParameters.hpp>
 #include <Acts/EventData/FreeTrackParameters.hpp>
 #include <Acts/EventData/ParticleHypothesis.hpp>
-#include <Acts/EventData/SpacePointContainer.hpp>
+#include <Acts/EventData/SeedContainer2.hpp>
+#include <Acts/EventData/SpacePointContainer2.hpp>
 #include <Acts/EventData/TrackContainer.hpp>
+#include <Acts/EventData/TrackStateType.hpp>
 #include <Acts/EventData/VectorMultiTrajectory.hpp>
 #include <Acts/EventData/VectorTrackContainer.hpp>
 #include <Acts/Geometry/GeometryContext.hpp>
@@ -61,15 +61,19 @@
 #include <Acts/Propagator/Navigator.hpp>
 #include <Acts/Propagator/Propagator.hpp>
 #include <Acts/Seeding/EstimateTrackParamsFromSeed.hpp>
-#include <Acts/Seeding/SeedFinder.hpp>
-#include <Acts/Seeding/SpacePointGrid.hpp>
-#include <Acts/Seeding/detail/CylindricalSpacePointGrid.hpp>
+#include <Acts/Seeding2/BroadTripletSeedFilter.hpp>
+#include <Acts/Seeding2/CylindricalSpacePointGrid2.hpp>
+#include <Acts/Seeding2/DoubletSeedFinder.hpp>
+#include <Acts/Seeding2/TripletSeedFinder.hpp>
+#include <Acts/Seeding2/TripletSeeder.hpp>
 #include <Acts/Surfaces/PerigeeSurface.hpp>
 #include <Acts/TrackFinding/CombinatorialKalmanFilter.hpp>
 #include <Acts/TrackFinding/MeasurementSelector.hpp>
 #include <Acts/TrackFinding/TrackStateCreator.hpp>
 #include <Acts/TrackFitting/GainMatrixUpdater.hpp>
+#include <Acts/Utilities/Logger.hpp>
 #include <Acts/Utilities/RangeXD.hpp>
+#include <Acts/Utilities/TrackHelpers.hpp>
 
 // TBB
 #include <tbb/blocked_range.h>
@@ -80,10 +84,13 @@
 #include <fmt/ostream.h>
 
 // Standard
+#include <atomic>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -104,23 +111,11 @@ template <> struct fmt::formatter<podio::ObjectID> : fmt::ostream_formatter {};
 struct CKFTrackingAlg final
     : k4FWCore::MultiTransformer<std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection>(
           const edm4hep::TrackerHitPlaneCollection&, const edm4hep::TrackerHitSimTrackerHitLinkCollection&)> {
-  using TrackContainer = Acts::TrackContainer<Acts::VectorTrackContainer, Acts::VectorMultiTrajectory, std::shared_ptr>;
-  using TrackFinderOptions = Acts::CombinatorialKalmanFilterOptions<TrackContainer>;
-
-  using SSPoint = typename Acts::SpacePointContainer<
-      ACTSTracking::SpacePointContainer<std::vector<const ACTSTracking::SeedSpacePoint*>>,
-      Acts::detail::RefHolder>::SpacePointProxyType;
-
-  using SSPointGrid = Acts::CylindricalSpacePointGrid<SSPoint>;
-
-  using Stepper    = Acts::EigenStepper<>;
-  using Navigator  = Acts::Navigator;
-  using Propagator = Acts::Propagator<Stepper, Navigator>;
-  using CKF        = Acts::CombinatorialKalmanFilter<Propagator, TrackContainer>;
-
   CKFTrackingAlg(const std::string& name, ISvcLocator* svcLoc);
 
   StatusCode initialize() override;
+
+  StatusCode finalize() override;
 
   std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> operator()(
       const edm4hep::TrackerHitPlaneCollection&             trackerHitCollection,
@@ -128,16 +123,13 @@ struct CKFTrackingAlg final
 
   // ----- private helpers ---------------------------------------------------
 private:
-  std::vector<Acts::BoundTrackParameters> findSeeds(const Acts::SeedFinder<SSPoint, SSPointGrid>& finder,
-                                                    const Acts::SeedFinderOptions&                finderOpts,
-                                                    const auto& spacePointGroup, const SSPointGrid& grid,
-                                                    Acts::Range1D<float> middleSpRange, std::size_t mutSpDataSize,
-                                                    edm4hep::TrackCollection&           seedCollection,
-                                                    Acts::MagneticFieldProvider::Cache& magCache) const;
-
-  StatusCode tracking(const std::vector<Acts::BoundTrackParameters>& paramseeds, const CKF& trackFinder,
-                      const TrackFinderOptions& ckfOptions, Acts::MagneticFieldProvider::Cache& magCache,
-                      edm4hep::TrackCollection& trackCollection) const;
+  /// Convert the seeds found by the triplet seeder into ACTS bound track
+  /// parameters and create the corresponding edm4hep seed tracks. The space
+  /// point indices stored in @p seeds reference @p spacePoints.
+  std::vector<Acts::BoundTrackParameters> seedsToParameters(const Acts::SeedContainer2&         seeds,
+                                                            const Acts::SpacePointContainer2&   spacePoints,
+                                                            edm4hep::TrackCollection&           seedCollection,
+                                                            Acts::MagneticFieldProvider::Cache& magCache) const;
 
   // ----- Gaudi properties --------------------------------------------------
 
@@ -145,6 +137,9 @@ private:
   ///@{
   Gaudi::Property<bool> m_runCKF{this, "RunCKF", true, "Run tracking using CKF. False means stop at seeding."};
   Gaudi::Property<bool> m_propagateBackward{this, "PropagateBackward", false, "Extrapolates tracks towards beamline."};
+  Gaudi::Property<bool> m_extrapolateToCalo{
+      this, "ExtrapolateToCalo", true,
+      "Extrapolate fitted tracks to the calorimeter face and add an AtCalorimeter track state."};
   ///@}
 
   /// @name Seed-finding configuration
@@ -182,6 +177,110 @@ private:
   Gaudi::Property<int> m_phiTopBinLen{this, "SeedFinding_phiTopBinLen", 1, "Number of top bins along phi for seeding."};
   Gaudi::Property<int> m_phiBottomBinLen{this, "SeedFinding_phiBottomBinLen", 1,
                                          "Number of bottom bins along phi for seeding."};
+
+  Gaudi::Property<float> m_seedFinding_deltaRMiddleMinSPRange{
+      this, "SeedFinding_DeltaRMiddleMinSPRange", 10 * Acts::UnitConstants::mm,
+      "Lower offset added to the rounded minimum radius when computing the variable middle space-point range."};
+  Gaudi::Property<float> m_seedFinding_deltaRMiddleMaxSPRange{
+      this, "SeedFinding_DeltaRMiddleMaxSPRange", 10 * Acts::UnitConstants::mm,
+      "Upper offset subtracted from the rounded maximum radius when computing the variable middle space-point range."};
+  ///@}
+
+  /// @name Seed filter configuration
+  ///@{
+  Gaudi::Property<float> m_seedFilter_deltaInvHelixDiameter{
+      this, "SeedFilter_DeltaInvHelixDiameter", 0.00003 * (1 / Acts::UnitConstants::mm),
+      "Allowed difference in curvature (inverted seed radii) between two compatible seeds."};
+  Gaudi::Property<float> m_seedFilter_compatSeedWeight{
+      this, "SeedFilter_CompatSeedWeight", 200, "Weight added to a seed when a compatible seed is found (c1 factor)."};
+  Gaudi::Property<float> m_seedFilter_impactWeightFactor{
+      this, "SeedFilter_ImpactWeightFactor", 1,
+      "Factor multiplying the transverse impact parameter d0, subtracted from the seed weight (c2 factor)."};
+  Gaudi::Property<float> m_seedFilter_zOriginWeightFactor{
+      this, "SeedFilter_ZOriginWeightFactor", 1,
+      "Factor multiplying the longitudinal impact parameter z0, subtracted from the seed weight (c3 factor)."};
+  Gaudi::Property<unsigned int> m_seedFilter_maxSeedsPerSpM{
+      this, "SeedFilter_MaxSeedsPerSpM", 1, "Maximum number (minus one) of accepted seeds per middle space-point."};
+  Gaudi::Property<unsigned int> m_seedFilter_compatSeedLimit{
+      this, "SeedFilter_CompatSeedLimit", 2,
+      "Maximum number of compatible space-points used in the score calculation."};
+  Gaudi::Property<float> m_seedFilter_seedWeightIncrement{
+      this, "SeedFilter_SeedWeightIncrement", 0,
+      "Weight increment applied when the number of compatible seeds exceeds NumSeedIncrement."};
+  Gaudi::Property<float> m_seedFilter_numSeedIncrement{
+      this, "SeedFilter_NumSeedIncrement", std::numeric_limits<float>::max(),
+      "Number of compatible seeds above which SeedWeightIncrement is applied (default: effectively disabled)."};
+  Gaudi::Property<float> m_seedFilter_absDeltaEtaWeightFactor{
+      this, "SeedFilter_AbsDeltaEtaWeightFactor", 0,
+      "Weight factor for the abs(delta-eta) penalty between seed direction and beamspot-to-pca vector (0 disables)."};
+  Gaudi::Property<float> m_seedFilter_absDeltaEtaMinImpact{
+      this, "SeedFilter_AbsDeltaEtaMinImpact", 2 * Acts::UnitConstants::mm,
+      "Minimum impact parameter required to apply the abs(delta-eta) weight."};
+  Gaudi::Property<bool> m_seedFilter_seedConfirmation{
+      this, "SeedFilter_SeedConfirmation", false,
+      "Enable quality seed confirmation, defined per (r, z) detector region by the seed confirmation ranges."};
+  Gaudi::Property<unsigned int> m_seedFilter_maxSeedsPerSpMConf{
+      this, "SeedFilter_MaxSeedsPerSpMConf", 5,
+      "Maximum number of normal-quality seeds per middle space-point in seed confirmation."};
+  Gaudi::Property<unsigned int> m_seedFilter_maxQualitySeedsPerSpMConf{
+      this, "SeedFilter_MaxQualitySeedsPerSpMConf", 5,
+      "Maximum number of high-quality seeds per inner-middle space-point doublet in seed confirmation."};
+  Gaudi::Property<bool> m_seedFilter_useDeltaRinsteadOfTopRadius{
+      this, "SeedFilter_UseDeltaRinsteadOfTopRadius", false,
+      "Use deltaR between top and middle space-point instead of the top radius to search for compatible SPs."};
+  ///@}
+
+  /// @name Seed confirmation ranges (only used when SeedFilter_SeedConfirmation is true)
+  ///@{
+  Gaudi::Property<float> m_centralSeedConf_zMin{
+      this, "SeedFilter_CentralSeedConf_ZMin", std::numeric_limits<float>::lowest(),
+      "Central region: minimum z of the middle space-point splitting the seed confirmation region."};
+  Gaudi::Property<float> m_centralSeedConf_zMax{
+      this, "SeedFilter_CentralSeedConf_ZMax", std::numeric_limits<float>::max(),
+      "Central region: maximum z of the middle space-point splitting the seed confirmation region."};
+  Gaudi::Property<float> m_centralSeedConf_rMax{
+      this, "SeedFilter_CentralSeedConf_RMax", std::numeric_limits<float>::max(),
+      "Central region: inner space-point radius splitting the seed confirmation region."};
+  Gaudi::Property<unsigned int> m_centralSeedConf_nTopForLargeR{
+      this, "SeedFilter_CentralSeedConf_NTopForLargeR", 0,
+      "Central region: minimum compatible outer SPs required if the inner SP radius is larger than RMax."};
+  Gaudi::Property<unsigned int> m_centralSeedConf_nTopForSmallR{
+      this, "SeedFilter_CentralSeedConf_NTopForSmallR", 0,
+      "Central region: minimum compatible outer SPs required if the inner SP radius is smaller than RMax."};
+  Gaudi::Property<float> m_centralSeedConf_minBottomRadius{
+      this, "SeedFilter_CentralSeedConf_MinBottomRadius", 60 * Acts::UnitConstants::mm,
+      "Central region: minimum radius for the inner seed component in quality seed confirmation."};
+  Gaudi::Property<float> m_centralSeedConf_maxZOrigin{
+      this, "SeedFilter_CentralSeedConf_MaxZOrigin", 150 * Acts::UnitConstants::mm,
+      "Central region: maximum longitudinal impact parameter of the seed in quality seed confirmation."};
+  Gaudi::Property<float> m_centralSeedConf_minImpact{
+      this, "SeedFilter_CentralSeedConf_MinImpact", 1 * Acts::UnitConstants::mm,
+      "Central region: minimum impact parameter of the seed in quality seed confirmation."};
+
+  Gaudi::Property<float> m_forwardSeedConf_zMin{
+      this, "SeedFilter_ForwardSeedConf_ZMin", std::numeric_limits<float>::lowest(),
+      "Forward region: minimum z of the middle space-point splitting the seed confirmation region."};
+  Gaudi::Property<float> m_forwardSeedConf_zMax{
+      this, "SeedFilter_ForwardSeedConf_ZMax", std::numeric_limits<float>::max(),
+      "Forward region: maximum z of the middle space-point splitting the seed confirmation region."};
+  Gaudi::Property<float> m_forwardSeedConf_rMax{
+      this, "SeedFilter_ForwardSeedConf_RMax", std::numeric_limits<float>::max(),
+      "Forward region: inner space-point radius splitting the seed confirmation region."};
+  Gaudi::Property<unsigned int> m_forwardSeedConf_nTopForLargeR{
+      this, "SeedFilter_ForwardSeedConf_NTopForLargeR", 0,
+      "Forward region: minimum compatible outer SPs required if the inner SP radius is larger than RMax."};
+  Gaudi::Property<unsigned int> m_forwardSeedConf_nTopForSmallR{
+      this, "SeedFilter_ForwardSeedConf_NTopForSmallR", 0,
+      "Forward region: minimum compatible outer SPs required if the inner SP radius is smaller than RMax."};
+  Gaudi::Property<float> m_forwardSeedConf_minBottomRadius{
+      this, "SeedFilter_ForwardSeedConf_MinBottomRadius", 60 * Acts::UnitConstants::mm,
+      "Forward region: minimum radius for the inner seed component in quality seed confirmation."};
+  Gaudi::Property<float> m_forwardSeedConf_maxZOrigin{
+      this, "SeedFilter_ForwardSeedConf_MaxZOrigin", 150 * Acts::UnitConstants::mm,
+      "Forward region: maximum longitudinal impact parameter of the seed in quality seed confirmation."};
+  Gaudi::Property<float> m_forwardSeedConf_minImpact{
+      this, "SeedFilter_ForwardSeedConf_MinImpact", 1 * Acts::UnitConstants::mm,
+      "Forward region: minimum impact parameter of the seed in quality seed confirmation."};
   ///@}
 
   /// @name Track-fit initial error estimates
@@ -217,11 +316,16 @@ private:
 
   SmartIF<IActsGeoSvc> m_actsGeoSvc;
 
-  // Track finder (propagator) is geometry/field dependent only, so it is built
-  // once in initialize() and reused (read-only) across events and threads.
-  std::optional<CKF> m_trackFinder{};
-
   k4ActsTracking::CellIDSelector m_seedSelector{};
+
+  // Shared Combinatorial Kalman Filter, built once in initialize() (the
+  // propagators/CKF depend only on geometry+field) and reused read-only across
+  // events and threads.
+  std::optional<ACTSTracking::CKFRunner> m_ckfRunner{};
+
+  // Calorimeter-face extrapolation monitoring, updated by the shared CKFRunner
+  // and summarised in finalize().
+  ACTSTracking::CaloExtrapMonitor m_caloMonitor{};
 
   mutable std::mutex m_seedMutex{};
   mutable std::mutex m_trackMutex{};
@@ -254,18 +358,29 @@ StatusCode CKFTrackingAlg::initialize() {
   if (m_seedFinding_deltaRMaxBottom == 0.f)
     m_seedFinding_deltaRMaxBottom = m_seedFinding_deltaRMax;
 
-  // The propagator and CKF only depend on the tracking geometry and magnetic
-  // field, both available here, so build them once instead of per event.
-  Navigator::Config navigatorCfg{m_actsGeoSvc->trackingGeometry()};
-  navigatorCfg.resolvePassive   = false;
-  navigatorCfg.resolveMaterial  = true;
-  navigatorCfg.resolveSensitive = true;
+  // The CKF, IP-perigee and calorimeter-face propagators are built per event by
+  // the shared ACTSTracking::CKFRunner (they are cheap to wire up and bind to
+  // the event-local measurements/source links). Warn once here if calorimeter
+  // extrapolation was requested but the geometry provides no calo-face surfaces.
+  if (m_extrapolateToCalo && m_actsGeoSvc->caloSurfaceGeoIds().empty()) {
+    warning() << "ExtrapolateToCalo requested but ActsGeoSvc provides no calorimeter-face surfaces; "
+                 "no AtCalorimeter track states will be produced."
+              << endmsg;
+  }
 
-  Stepper    stepper(m_actsGeoSvc->magneticField());
-  Navigator  navigator(navigatorCfg);
-  Propagator propagator(std::move(stepper), std::move(navigator));
-  m_trackFinder.emplace(std::move(propagator));
+  m_ckfRunner.emplace(*m_actsGeoSvc,
+                      ACTSTracking::CKFRunner::Config{.chi2CutOff            = m_CKF_chi2CutOff,
+                                                      .numMeasurementsCutOff = m_CKF_numMeasurementsCutOff,
+                                                      .propagateBackward     = m_propagateBackward,
+                                                      .extrapolateToCalo     = m_extrapolateToCalo});
 
+  return StatusCode::SUCCESS;
+}
+
+StatusCode CKFTrackingAlg::finalize() {
+  if (m_extrapolateToCalo) {
+    info() << m_caloMonitor.summary() << endmsg;
+  }
   return StatusCode::SUCCESS;
 }
 
@@ -278,146 +393,87 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
   // Default-construct ACTS contexts
   const Acts::GeometryContext      geoCtx = Acts::GeometryContext::dangerouslyDefaultConstruct();
   const Acts::MagneticFieldContext magCtx{};
-  const Acts::CalibrationContext   calCtx{};
 
-  const auto& cellIdToSurface = m_actsGeoSvc->cellIdToSurfaceMap();
+  // Minimal per-hit information needed to build the seeding space points. The
+  // global position and rho/z variances are computed during the hit loop and
+  // later transferred (in grid-bin order) into an Acts::SpacePointContainer2.
+  struct SeedInput {
+    float                    x, y, z, r, phi;
+    float                    varR, varZ;
+    ACTSTracking::SourceLink sourceLink;
+  };
 
-  dd4hep::DDSegmentation::BitFieldCoder decoder{m_actsGeoSvc->cellIDEncodingString()};
+  ACTSTracking::SourceLinkContainer  sourceLinks;
+  ACTSTracking::MeasurementContainer measurements;
+  std::vector<SeedInput>             seedInputs;
 
-  std::vector<std::pair<Acts::GeometryIdentifier, edm4hep::TrackerHitPlane>> sortedHits;
-  ACTSTracking::SourceLinkContainer                                          sourceLinks;
-  ACTSTracking::MeasurementContainer                                         measurements;
-  ACTSTracking::SeedSpacePointContainer                                      spacePoints;
+  // Build measurements + source links for all hits (shared with the other CKF
+  // algorithms); for seed-selected surfaces also record a seeding space point
+  // (global position + rho/z variance) for the triplet seeder.
+  ACTSTracking::prepareTrackerHits(
+      *this, *m_actsGeoSvc, geoCtx, trackerHitCollection, measurements, sourceLinks, m_numThreads.value(),
+      [&](const edm4hep::TrackerHitPlane& hit, const ACTSTracking::SourceLink& sourceLink,
+          const Acts::Vector3& globalPos, const Acts::Surface& surface, const Acts::SquareMatrix2& localCov) {
+        if (!m_seedSelector.accept(hit.getCellID())) {
+          return;
+        }
+        Acts::RotationMatrix3 rotLocalToGlobal = surface.referenceFrame(geoCtx, globalPos, {0, 0, 0});
 
-  sortedHits.reserve(trackerHitCollection.size());
+        // Jacobian from global (x,y,z) to (rho, z)
+        double             x            = globalPos[Acts::ePos0];
+        double             y            = globalPos[Acts::ePos1];
+        double             scale        = 2 / std::hypot(x, y);
+        Acts::Matrix<2, 3> jacXyzToRhoZ = Acts::Matrix<2, 3>::Zero();
+        jacXyzToRhoZ(0, Acts::ePos0)    = scale * x;
+        jacXyzToRhoZ(0, Acts::ePos1)    = scale * y;
+        jacXyzToRhoZ(1, Acts::ePos2)    = 1;
+        const auto jac                  = jacXyzToRhoZ * rotLocalToGlobal.block<3, 2>(Acts::ePos0, Acts::ePos0);
+        const auto var                  = (jac * localCov * jac.transpose()).diagonal();
 
-  for (const auto& hit : trackerHitCollection) {
-    verbose() << fmt::format("Adding hit {} with cell id {:x}", hit.id(), hit.getCellID()) << endmsg;
-    auto it = cellIdToSurface.find(hit.getCellID());
-    if (it == cellIdToSurface.end()) {
-      warning() << "No surface found for cellID " << hit.getCellID() << ". skipping hit for tracking." << endmsg;
-      continue;
-    }
-    sortedHits.push_back({it->second->geometryId(), hit});
-  }
-  debug() << "Working with " << sortedHits.size() << " hits." << endmsg;
-
-  // Sort hits by geometry ID for efficient SourceLink multiset insertion
-  auto            compare = [](const auto& a, const auto& b) { return a.first < b.first; };
-  tbb::task_arena arena(m_numThreads.value());
-  if (m_numThreads > 1) {
-    arena.execute([&] { tbb::parallel_sort(sortedHits.begin(), sortedHits.end(), compare); });
-  } else {
-    std::sort(sortedHits.begin(), sortedHits.end(), compare);
-  }
-
-  sourceLinks.reserve(sortedHits.size());
-
-  for (const auto& hitPair : sortedHits) {
-    const Acts::Surface* surface = m_actsGeoSvc->trackingGeometry()->findSurface(hitPair.first);
-    if (surface == nullptr) {
-      warning() << "Surface with geoID " << hitPair.first
-                << " not found in tracking geometry. Skipping hit for tracking." << endmsg;
-      continue;
-    }
-
-    const edm4hep::Vector3d& edmGlobalPos = hitPair.second.getPosition();
-    Acts::Vector3            globalPos    = {edmGlobalPos.x, edmGlobalPos.y, edmGlobalPos.z};
-
-    verbose() << "Converting hit " << hitPair.second.id() << " to local position (pos = " << edmGlobalPos
-              << ") using surface with geoId " << hitPair.first << endmsg;
-
-    Acts::Result<Acts::Vector2> lpResult = surface->globalToLocal(geoCtx, globalPos, {0, 0, 0}, 0.5_um);
-    if (!lpResult.ok()) {
-      warning() << "Global to local transformation did not succeed for hit. Skipping it in tracking." << endmsg;
-      continue;
-    }
-
-    Acts::Vector2 loc = lpResult.value();
-
-    Acts::SquareMatrix2            localCov = Acts::SquareMatrix2::Zero();
-    const edm4hep::TrackerHitPlane hitplane = hitPair.second;
-    localCov(0, 0)                          = std::pow(hitplane.getDu() * Acts::UnitConstants::mm, 2);
-    localCov(1, 1)                          = std::pow(hitplane.getDv() * Acts::UnitConstants::mm, 2);
-
-    ACTSTracking::SourceLink  sourceLink(surface->geometryId(), measurements.size(), hitPair.second);
-    Acts::SourceLink          srcWrap{sourceLink};
-    ACTSTracking::Measurement meas =
-        ACTSTracking::makeMeasurement(srcWrap, loc, localCov, Acts::eBoundLoc0, Acts::eBoundLoc1);
-
-    measurements.push_back(meas);
-    sourceLinks.emplace_hint(sourceLinks.end(), sourceLink);
-
-    // Create space point for seeding if this surface is selected
-    if (m_seedSelector.accept(hitPair.second.getCellID())) {
-      Acts::RotationMatrix3 rotLocalToGlobal = surface->referenceFrame(geoCtx, globalPos, {0, 0, 0});
-
-      // Jacobian from global (x,y,z) to (rho, z)
-      double             x            = globalPos[Acts::ePos0];
-      double             y            = globalPos[Acts::ePos1];
-      double             scale        = 2 / std::hypot(x, y);
-      Acts::Matrix<2, 3> jacXyzToRhoZ = Acts::Matrix<2, 3>::Zero();
-      jacXyzToRhoZ(0, Acts::ePos0)    = scale * x;
-      jacXyzToRhoZ(0, Acts::ePos1)    = scale * y;
-      jacXyzToRhoZ(1, Acts::ePos2)    = 1;
-      const auto jac                  = jacXyzToRhoZ * rotLocalToGlobal.block<3, 2>(Acts::ePos0, Acts::ePos0);
-      const auto var                  = (jac * localCov * jac.transpose()).diagonal();
-
-      spacePoints.push_back(ACTSTracking::SeedSpacePoint(globalPos, var[0], var[1], sourceLink));
-    }
-  }
+        SeedInput sp;
+        sp.x          = static_cast<float>(globalPos[Acts::ePos0]);
+        sp.y          = static_cast<float>(globalPos[Acts::ePos1]);
+        sp.z          = static_cast<float>(globalPos[Acts::ePos2]);
+        sp.r          = std::hypot(sp.x, sp.y);
+        sp.phi        = std::atan2(sp.y, sp.x);
+        sp.varR       = static_cast<float>(var[0]);
+        sp.varZ       = static_cast<float>(var[1]);
+        sp.sourceLink = sourceLink;
+        seedInputs.push_back(sp);
+      });
 
   debug() << fmt::format("Created {} sourceLinks and {} space points for seeding", sourceLinks.size(),
-                         spacePoints.size())
+                         seedInputs.size())
           << endmsg;
 
   Acts::MagneticFieldProvider::Cache magCache = m_actsGeoSvc->magneticField()->makeCache(magCtx);
 
   static const Acts::Vector3 zeropos(0, 0, 0);
 
-  Acts::SeedFinderConfig<SSPoint> finderCfg;
-  finderCfg.rMax                     = m_seedFinding_rMax;
-  finderCfg.deltaRMin                = m_seedFinding_deltaRMin;
-  finderCfg.deltaRMax                = m_seedFinding_deltaRMax;
-  finderCfg.deltaRMinTopSP           = m_seedFinding_deltaRMinTop;
-  finderCfg.deltaRMaxTopSP           = m_seedFinding_deltaRMaxTop;
-  finderCfg.deltaRMinBottomSP        = m_seedFinding_deltaRMinBottom;
-  finderCfg.deltaRMaxBottomSP        = m_seedFinding_deltaRMaxBottom;
-  finderCfg.collisionRegionMin       = -m_seedFinding_collisionRegion;
-  finderCfg.collisionRegionMax       = m_seedFinding_collisionRegion;
-  finderCfg.zMin                     = -m_seedFinding_zMax;
-  finderCfg.zMax                     = m_seedFinding_zMax;
-  finderCfg.maxSeedsPerSpM           = 1;
-  finderCfg.cotThetaMax              = 7.40627;  // ~2.7 η
-  finderCfg.sigmaScattering          = m_seedFinding_sigmaScattering;
-  finderCfg.radLengthPerSeed         = m_seedFinding_radLengthPerSeed;
-  finderCfg.minPt                    = m_seedFinding_minPt * Acts::UnitConstants::MeV;
-  finderCfg.impactMax                = m_seedFinding_impactMax * Acts::UnitConstants::mm;
-  finderCfg.useVariableMiddleSPRange = true;
+  const float bFieldInZ       = (*m_actsGeoSvc->magneticField()->getField(zeropos, magCache))[2];
+  const float cotThetaMax     = 7.40627f;  // ~2.7 η
+  const float minPt           = m_seedFinding_minPt * Acts::UnitConstants::MeV;
+  const float impactMax       = m_seedFinding_impactMax * Acts::UnitConstants::mm;
+  const float collisionRegion = m_seedFinding_collisionRegion;
 
-  Acts::SeedFilterConfig filterCfg;
-  filterCfg.maxSeedsPerSpM = finderCfg.maxSeedsPerSpM;
-  finderCfg.seedFilter     = std::make_unique<Acts::SeedFilter<SSPoint>>(filterCfg);
-  finderCfg                = finderCfg.calculateDerivedQuantities();
-
-  Acts::SeedFinderOptions finderOpts;
-  finderOpts.bFieldInZ = (*m_actsGeoSvc->magneticField()->getField(zeropos, magCache))[2];
-  finderOpts.beamPos   = {0, 0};
-  finderOpts           = finderOpts.calculateDerivedQuantities(finderCfg);
-
-  Acts::CylindricalSpacePointGridConfig gridCfg;
-  gridCfg.cotThetaMax = finderCfg.cotThetaMax;
-  gridCfg.deltaRMax   = finderCfg.deltaRMax;
-  gridCfg.minPt       = finderCfg.minPt;
-  gridCfg.rMax        = finderCfg.rMax;
-  gridCfg.zMax        = finderCfg.zMax;
-  gridCfg.zMin        = finderCfg.zMin;
-  gridCfg.impactMax   = finderCfg.impactMax;
+  // -------------------------------------------------------------------------
+  // Seeding grid (SoA): bin the seed space points in (phi, z, r).
+  // -------------------------------------------------------------------------
+  Acts::CylindricalSpacePointGrid2::Config gridCfg;
+  gridCfg.minPt       = minPt;
+  gridCfg.rMin        = 0.f;
+  gridCfg.rMax        = m_seedFinding_rMax;
+  gridCfg.zMin        = -m_seedFinding_zMax;
+  gridCfg.zMax        = m_seedFinding_zMax;
+  gridCfg.deltaRMax   = m_seedFinding_deltaRMax;
+  gridCfg.cotThetaMax = cotThetaMax;
+  gridCfg.impactMax   = impactMax;
+  gridCfg.bFieldInZ   = bFieldInZ;
   if (!m_seedFinding_zBinEdges.empty()) {
     gridCfg.zBinEdges.resize(m_seedFinding_zBinEdges.size());
     for (std::size_t k = 0; k < m_seedFinding_zBinEdges.size(); k++) {
       float pos = std::atof(m_seedFinding_zBinEdges[k].c_str());
-      if (pos >= finderCfg.zMin && pos < finderCfg.zMax) {
+      if (pos >= gridCfg.zMin && pos < gridCfg.zMax) {
         gridCfg.zBinEdges[k] = pos;
       } else {
         warning() << "Wrong parameter SeedFinding_zBinEdges; default used" << endmsg;
@@ -426,233 +482,268 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
       }
     }
   }
+  gridCfg.bottomBinFinder.emplace(m_phiBottomBinLen.value(), m_zBottomBinLen.value(), 0);
+  gridCfg.topBinFinder.emplace(m_phiTopBinLen.value(), m_zTopBinLen.value(), 0);
 
-  Acts::CylindricalSpacePointGridOptions gridOpts;
-  gridOpts.bFieldInZ = (*m_actsGeoSvc->magneticField()->getField(zeropos, magCache))[2];
+  Acts::CylindricalSpacePointGrid2 grid(gridCfg, Acts::getDefaultLogger("CKFSeedingGrid", Acts::Logging::WARNING));
 
-  // Wrap space points for ACTS seed finder
-  std::vector<const ACTSTracking::SeedSpacePoint*> spacePointPtrs(spacePoints.size(), nullptr);
-  std::transform(spacePoints.begin(), spacePoints.end(), spacePointPtrs.begin(),
-                 [](const ACTSTracking::SeedSpacePoint& sp) { return &sp; });
-
-  Acts::SpacePointContainerConfig spConfig;
-  spConfig.useDetailedDoubleMeasurementInfo = finderCfg.useDetailedDoubleMeasurementInfo;
-  Acts::SpacePointContainerOptions spOptions;
-  spOptions.beamPos = {0., 0.};
-
-  ACTSTracking::SpacePointContainer                                       container(spacePointPtrs);
-  Acts::SpacePointContainer<decltype(container), Acts::detail::RefHolder> spContainer(spConfig, spOptions, container);
-
-  SSPointGrid grid = Acts::CylindricalSpacePointGridCreator::createGrid<SSPoint>(gridCfg, gridOpts);
-  Acts::CylindricalSpacePointGridCreator::fillGrid(finderCfg, finderOpts, grid, spContainer);
-
-  const Acts::GridBinFinder<3ul> bottomBinFinder(m_phiBottomBinLen.value(), m_zBottomBinLen.value(), 0);
-  const Acts::GridBinFinder<3ul> topBinFinder(m_phiTopBinLen.value(), m_zTopBinLen.value(), 0);
-
-  Acts::SeedFinder<SSPoint, SSPointGrid> finder(finderCfg);
-
-  const CKF& trackFinder = *m_trackFinder;
-
-  Acts::MeasurementSelector::Config measurementSelectorCfg = {
-      {Acts::GeometryIdentifier(), {{}, {m_CKF_chi2CutOff}, {(std::size_t)(m_CKF_numMeasurementsCutOff)}}}};
-
-  Acts::PropagatorPlainOptions pOptions{geoCtx, magCtx};
-  pOptions.maxSteps = 10000;
-  if (m_propagateBackward) {
-    pOptions.direction = Acts::Direction::Backward();
+  for (std::size_t i = 0; i < seedInputs.size(); ++i) {
+    const SeedInput& sp = seedInputs[i];
+    grid.insert(static_cast<Acts::SpacePointIndex2>(i), sp.phi, sp.z, sp.r);
   }
 
-  Acts::GainMatrixUpdater             kfUpdater;
-  Acts::MeasurementSelector           measSel{measurementSelectorCfg};
-  ACTSTracking::MeasurementCalibrator measCal{measurements};
+  // Sort each bin by radius, as required by the radius-sorted doublet finders.
+  for (std::size_t i = 0; i < grid.numberOfBins(); ++i) {
+    std::ranges::sort(grid.at(i), [&](const Acts::SpacePointIndex2& a, const Acts::SpacePointIndex2& b) {
+      return seedInputs[a].r < seedInputs[b].r;
+    });
+  }
 
-  ACTSTracking::SourceLinkAccessor slAccessor;
-  slAccessor.container = &sourceLinks;
+  // -------------------------------------------------------------------------
+  // Build the SoA space point container in grid-bin order so that every bin
+  // maps to a contiguous index range, as expected by the triplet seeder.
+  // -------------------------------------------------------------------------
+  Acts::SpacePointContainer2 spacePoints(Acts::SpacePointColumns::SourceLinks | Acts::SpacePointColumns::PackedXY |
+                                         Acts::SpacePointColumns::PackedZR | Acts::SpacePointColumns::VarianceZ |
+                                         Acts::SpacePointColumns::VarianceR);
+  spacePoints.reserve(grid.numberOfSpacePoints());
+  std::vector<Acts::SpacePointIndexRange2> gridSpacePointRanges;
+  gridSpacePointRanges.reserve(grid.numberOfBins());
+  for (std::size_t i = 0; i < grid.numberOfBins(); ++i) {
+    std::uint32_t begin = spacePoints.size();
+    for (Acts::SpacePointIndex2 spIndex : grid.at(i)) {
+      const SeedInput& in    = seedInputs[spIndex];
+      auto             newSp = spacePoints.createSpacePoint();
+      newSp.xy()             = {in.x, in.y};
+      newSp.zr()             = {in.z, in.r};
+      newSp.varianceR()      = in.varR;
+      newSp.varianceZ()      = in.varZ;
+      std::array<Acts::SourceLink, 1> sls{Acts::SourceLink{in.sourceLink}};
+      newSp.assignSourceLinks(sls);
+    }
+    std::uint32_t end = spacePoints.size();
+    gridSpacePointRanges.emplace_back(begin, end);
+  }
 
-  using TrackStateCreatorType = Acts::TrackStateCreator<ACTSTracking::SourceLinkAccessor::Iterator, TrackContainer>;
-  TrackStateCreatorType trackStateCreator;
-  trackStateCreator.sourceLinkAccessor.template connect<&ACTSTracking::SourceLinkAccessor::range>(&slAccessor);
-  trackStateCreator.calibrator.template connect<&ACTSTracking::MeasurementCalibrator::calibrate>(&measCal);
-  trackStateCreator.measurementSelector
-      .template connect<&Acts::MeasurementSelector::select<Acts::VectorMultiTrajectory>>(&measSel);
-
-  Acts::CombinatorialKalmanFilterExtensions<TrackContainer> extensions;
-  extensions.updater.connect<&Acts::GainMatrixUpdater::operator()<Acts::VectorMultiTrajectory>>(&kfUpdater);
-  extensions.createTrackStates.template connect<&TrackStateCreatorType::createTrackStates>(&trackStateCreator);
-
-  TrackFinderOptions ckfOptions = TrackFinderOptions(geoCtx, magCtx, calCtx, extensions, pOptions);
-
+  // Radius range, exploiting the per-bin radius sorting performed above.
   float minRange = std::numeric_limits<float>::max();
   float maxRange = std::numeric_limits<float>::lowest();
-  for (const auto& coll : grid) {
-    if (coll.empty())
+  for (const Acts::SpacePointIndexRange2& range : gridSpacePointRanges) {
+    if (range.first == range.second)
       continue;
-    minRange = std::min(coll.front()->radius(), minRange);
-    maxRange = std::max(coll.back()->radius(), maxRange);
+    minRange = std::min(spacePoints[range.first].zr()[1], minRange);
+    maxRange = std::max(spacePoints[range.second - 1].zr()[1], maxRange);
   }
 
-  auto spacePointsGrouping = Acts::CylindricalBinnedGroup<SSPoint>(std::move(grid), bottomBinFinder, topBinFinder);
+  // Variable middle space point radial region of interest.
+  const float                   deltaRMiddleMinSPRange = m_seedFinding_deltaRMiddleMinSPRange;
+  const float                   deltaRMiddleMaxSPRange = m_seedFinding_deltaRMiddleMaxSPRange;
+  const std::pair<float, float> rMiddleSPRange{std::floor(minRange / 2) * 2 + deltaRMiddleMinSPRange,
+                                               std::floor(maxRange / 2) * 2 - deltaRMiddleMaxSPRange};
 
-  const Acts::Range1D<float> rMiddleSPRange(std::floor(minRange / 2) * 2 + finderCfg.deltaRMiddleMinSPRange,
-                                            std::floor(maxRange / 2) * 2 - finderCfg.deltaRMiddleMaxSPRange);
+  // -------------------------------------------------------------------------
+  // Doublet / triplet finders and seed filter.
+  // -------------------------------------------------------------------------
+  Acts::DoubletSeedFinder::Config bottomFinderCfg;
+  bottomFinderCfg.spacePointsSortedByRadius = true;
+  bottomFinderCfg.candidateDirection        = Acts::Direction::Backward();
+  bottomFinderCfg.deltaRMin                 = m_seedFinding_deltaRMinBottom;
+  bottomFinderCfg.deltaRMax                 = m_seedFinding_deltaRMaxBottom;
+  bottomFinderCfg.impactMax                 = impactMax;
+  bottomFinderCfg.collisionRegionMin        = -collisionRegion;
+  bottomFinderCfg.collisionRegionMax        = collisionRegion;
+  bottomFinderCfg.cotThetaMax               = cotThetaMax;
+  bottomFinderCfg.minPt                     = minPt;
+  auto bottomFinder =
+      Acts::DoubletSeedFinder::create(Acts::DoubletSeedFinder::DerivedConfig(bottomFinderCfg, bFieldInZ));
 
-  using GroupIterator = decltype(spacePointsGrouping.begin());
-  using GroupValue    = std::decay_t<decltype(*std::declval<GroupIterator>())>;
-  std::vector<GroupValue> spacePointGroups;
-  spacePointGroups.reserve(spacePointsGrouping.grid().size());
-  for (auto spGroup : spacePointsGrouping) {
-    spacePointGroups.push_back(spGroup);
+  Acts::DoubletSeedFinder::Config topFinderCfg = bottomFinderCfg;
+  topFinderCfg.candidateDirection              = Acts::Direction::Forward();
+  topFinderCfg.deltaRMin                       = m_seedFinding_deltaRMinTop;
+  topFinderCfg.deltaRMax                       = m_seedFinding_deltaRMaxTop;
+  auto topFinder = Acts::DoubletSeedFinder::create(Acts::DoubletSeedFinder::DerivedConfig(topFinderCfg, bFieldInZ));
+
+  Acts::TripletSeedFinder::Config tripletFinderCfg;
+  tripletFinderCfg.useStripInfo     = false;
+  tripletFinderCfg.sortedByCotTheta = true;
+  tripletFinderCfg.minPt            = minPt;
+  tripletFinderCfg.sigmaScattering  = m_seedFinding_sigmaScattering;
+  tripletFinderCfg.radLengthPerSeed = m_seedFinding_radLengthPerSeed;
+  tripletFinderCfg.impactMax        = impactMax;
+  auto tripletFinder =
+      Acts::TripletSeedFinder::create(Acts::TripletSeedFinder::DerivedConfig(tripletFinderCfg, bFieldInZ));
+
+  Acts::BroadTripletSeedFilter::Config filterCfg;
+  filterCfg.deltaInvHelixDiameter       = m_seedFilter_deltaInvHelixDiameter;
+  filterCfg.deltaRMin                   = m_seedFinding_deltaRMin;
+  filterCfg.compatSeedWeight            = m_seedFilter_compatSeedWeight;
+  filterCfg.impactWeightFactor          = m_seedFilter_impactWeightFactor;
+  filterCfg.zOriginWeightFactor         = m_seedFilter_zOriginWeightFactor;
+  filterCfg.maxSeedsPerSpM              = m_seedFilter_maxSeedsPerSpM;
+  filterCfg.compatSeedLimit             = m_seedFilter_compatSeedLimit;
+  filterCfg.seedWeightIncrement         = m_seedFilter_seedWeightIncrement;
+  filterCfg.numSeedIncrement            = m_seedFilter_numSeedIncrement;
+  filterCfg.absDeltaEtaWeightFactor     = m_seedFilter_absDeltaEtaWeightFactor;
+  filterCfg.absDeltaEtaMinImpact        = m_seedFilter_absDeltaEtaMinImpact;
+  filterCfg.seedConfirmation            = m_seedFilter_seedConfirmation;
+  filterCfg.maxSeedsPerSpMConf          = m_seedFilter_maxSeedsPerSpMConf;
+  filterCfg.maxQualitySeedsPerSpMConf   = m_seedFilter_maxQualitySeedsPerSpMConf;
+  filterCfg.useDeltaRinsteadOfTopRadius = m_seedFilter_useDeltaRinsteadOfTopRadius;
+
+  filterCfg.centralSeedConfirmationRange.zMinSeedConf            = m_centralSeedConf_zMin;
+  filterCfg.centralSeedConfirmationRange.zMaxSeedConf            = m_centralSeedConf_zMax;
+  filterCfg.centralSeedConfirmationRange.rMaxSeedConf            = m_centralSeedConf_rMax;
+  filterCfg.centralSeedConfirmationRange.nTopForLargeR           = m_centralSeedConf_nTopForLargeR;
+  filterCfg.centralSeedConfirmationRange.nTopForSmallR           = m_centralSeedConf_nTopForSmallR;
+  filterCfg.centralSeedConfirmationRange.seedConfMinBottomRadius = m_centralSeedConf_minBottomRadius;
+  filterCfg.centralSeedConfirmationRange.seedConfMaxZOrigin      = m_centralSeedConf_maxZOrigin;
+  filterCfg.centralSeedConfirmationRange.minImpactSeedConf       = m_centralSeedConf_minImpact;
+
+  filterCfg.forwardSeedConfirmationRange.zMinSeedConf            = m_forwardSeedConf_zMin;
+  filterCfg.forwardSeedConfirmationRange.zMaxSeedConf            = m_forwardSeedConf_zMax;
+  filterCfg.forwardSeedConfirmationRange.rMaxSeedConf            = m_forwardSeedConf_rMax;
+  filterCfg.forwardSeedConfirmationRange.nTopForLargeR           = m_forwardSeedConf_nTopForLargeR;
+  filterCfg.forwardSeedConfirmationRange.nTopForSmallR           = m_forwardSeedConf_nTopForSmallR;
+  filterCfg.forwardSeedConfirmationRange.seedConfMinBottomRadius = m_forwardSeedConf_minBottomRadius;
+  filterCfg.forwardSeedConfirmationRange.seedConfMaxZOrigin      = m_forwardSeedConf_maxZOrigin;
+  filterCfg.forwardSeedConfirmationRange.minImpactSeedConf       = m_forwardSeedConf_minImpact;
+
+  auto seedingLogger = Acts::getDefaultLogger("CKFSeeding", Acts::Logging::WARNING);
+
+  // The triplet seeder itself is stateless: all per-event scratch lives in the
+  // Cache argument, so a single const instance is shared across threads.
+  const Acts::TripletSeeder seeder(seedingLogger->clone());
+
+  // Collect the binned groups up front so they can be processed in parallel.
+  using GroupValue = std::decay_t<decltype(*grid.binnedGroup().begin())>;
+  std::vector<GroupValue> groups;
+  groups.reserve(grid.numberOfBins());
+  for (const auto& group : grid.binnedGroup()) {
+    groups.push_back(group);
   }
 
+  // -------------------------------------------------------------------------
+  // Seeding and CKF track finding, parallelised over the grid groups. Each
+  // task owns its seeder cache, seed filter (with its own state/cache), seed
+  // container and magnetic-field cache; the shared edm4hep collections are
+  // guarded by mutexes (m_seedMutex / m_trackMutex).
+  // -------------------------------------------------------------------------
   auto parallelSeedingAndTracking = [&](const tbb::blocked_range<size_t>& r) {
     // The magnetic-field cache is mutated on every field lookup, so each
     // parallel invocation needs its own cache rather than sharing one.
     Acts::MagneticFieldProvider::Cache localMagCache = m_actsGeoSvc->magneticField()->makeCache(magCtx);
+
+    Acts::TripletSeeder::Cache          seederCache;
+    Acts::BroadTripletSeedFilter::State filterState;
+    Acts::BroadTripletSeedFilter::Cache filterCache;
+    Acts::BroadTripletSeedFilter        seedFilter(filterCfg, filterState, filterCache, *seedingLogger);
+
+    Acts::SeedContainer2 seeds;
+    seeds.assignSpacePointContainer(spacePoints);
+
+    std::vector<Acts::SpacePointContainer2::ConstRange> bottomSpRanges;
+    std::vector<Acts::SpacePointContainer2::ConstRange> topSpRanges;
+
     for (size_t i = r.begin(); i != r.end(); ++i) {
-      const auto paramseeds = findSeeds(finder, finderOpts, spacePointGroups[i], spacePointsGrouping.grid(),
-                                        rMiddleSPRange, spContainer.size(), seedCollection, localMagCache);
-      if (!m_runCKF)
+      const auto& [bottom, middle, top] = groups[i];
+
+      Acts::SpacePointContainer2::ConstRange middleSpRange =
+          spacePoints.range(gridSpacePointRanges.at(middle)).asConst();
+      if (middleSpRange.empty())
         continue;
-      if (!tracking(paramseeds, trackFinder, ckfOptions, localMagCache, trackCollection).isSuccess()) {
-        warning() << "Tracking failed for this event" << endmsg;
+
+      bottomSpRanges.clear();
+      for (const auto b : bottom) {
+        bottomSpRanges.push_back(spacePoints.range(gridSpacePointRanges.at(b)).asConst());
       }
+      topSpRanges.clear();
+      for (const auto t : top) {
+        topSpRanges.push_back(spacePoints.range(gridSpacePointRanges.at(t)).asConst());
+      }
+
+      seeder.createSeedsFromGroups(seederCache, *bottomFinder, *topFinder, *tripletFinder, seedFilter, spacePoints,
+                                   bottomSpRanges, middleSpRange, topSpRanges, rMiddleSPRange, seeds);
     }
+
+    // Convert this task's seeds into bound track parameters and seed tracks.
+    std::vector<Acts::BoundTrackParameters> paramseeds =
+        seedsToParameters(seeds, spacePoints, seedCollection, localMagCache);
+
+    if (!m_runCKF)
+      return;
+
+    m_ckfRunner->findTracks(*this, measurements, sourceLinks, paramseeds, localMagCache, trackCollection, m_trackMutex,
+                            &m_caloMonitor);
   };
 
+  tbb::task_arena arena(m_numThreads.value());
   if (m_numThreads > 1) {
-    arena.execute(
-        [&] { tbb::parallel_for(tbb::blocked_range<size_t>(0, spacePointGroups.size()), parallelSeedingAndTracking); });
+    arena.execute([&] { tbb::parallel_for(tbb::blocked_range<size_t>(0, groups.size()), parallelSeedingAndTracking); });
   } else {
-    for (size_t i = 0; i < spacePointGroups.size(); ++i) {
-      parallelSeedingAndTracking(tbb::blocked_range<size_t>(i, i + 1));
-    }
+    parallelSeedingAndTracking(tbb::blocked_range<size_t>(0, groups.size()));
   }
 
   debug() << "Track Collection Size: " << trackCollection.size() << endmsg;
   return std::make_tuple(std::move(seedCollection), std::move(trackCollection));
 }
 
-std::vector<Acts::BoundTrackParameters> CKFTrackingAlg::findSeeds(
-    const Acts::SeedFinder<SSPoint, SSPointGrid>& finder, const Acts::SeedFinderOptions& finderOpts,
-    const auto& spacePointGroup, const SSPointGrid& grid, Acts::Range1D<float> middleSpRange, std::size_t mutSpDataSize,
+std::vector<Acts::BoundTrackParameters> CKFTrackingAlg::seedsToParameters(
+    const Acts::SeedContainer2& seeds, const Acts::SpacePointContainer2& spacePoints,
     edm4hep::TrackCollection& seedCollection, Acts::MagneticFieldProvider::Cache& magCache) const {
   const Acts::GeometryContext geoCtx = Acts::GeometryContext::dangerouslyDefaultConstruct();
 
-  const auto& [bottom, middle, top] = spacePointGroup;
+  std::vector<Acts::BoundTrackParameters> paramseeds;
+  paramseeds.reserve(seeds.size());
 
-  std::vector<Acts::Seed<SSPoint>>                     seeds;
-  std::vector<Acts::BoundTrackParameters>              paramseeds;
-  Acts::SeedFinder<SSPoint, SSPointGrid>::SeedingState state;
-  state.spacePointMutableData.resize(mutSpDataSize);
+  auto position = [](const Acts::ConstSpacePointProxy2& sp) {
+    return Acts::Vector3(sp.xy()[0], sp.xy()[1], sp.zr()[0]);
+  };
+  auto sourceLinkOf = [](const Acts::ConstSpacePointProxy2& sp) -> const ACTSTracking::SourceLink& {
+    return sp.sourceLinks()[0].get<ACTSTracking::SourceLink>();
+  };
 
-  finder.createSeedsForGroup(finderOpts, state, grid, seeds, bottom, middle, top, middleSpRange);
+  for (const Acts::ConstSeedProxy2& seed : seeds) {
+    const std::span<const Acts::SpacePointIndex2> spIndices = seed.spacePointIndices();
+    if (spIndices.size() != 3) {
+      continue;
+    }
 
-  // Unwrap proxy types back to concrete SeedSpacePoint
-  std::vector<Acts::Seed<ACTSTracking::SeedSpacePoint>> f_seeds;
-  f_seeds.reserve(seeds.size());
-  for (const Acts::Seed<SSPoint>& seed : seeds) {
-    const auto& sps = seed.sp();
-    f_seeds.emplace_back(*sps[0]->externalSpacePoint(), *sps[1]->externalSpacePoint(), *sps[2]->externalSpacePoint());
-  }
+    const Acts::ConstSpacePointProxy2 bottomSp = spacePoints[spIndices[0]];
+    const Acts::ConstSpacePointProxy2 middleSp = spacePoints[spIndices[1]];
+    const Acts::ConstSpacePointProxy2 topSp    = spacePoints[spIndices[2]];
 
-  for (const auto& seed : f_seeds) {
-    const ACTSTracking::SeedSpacePoint* bottomSP   = seed.sp().front();
-    const auto&                         sourceLink = bottomSP->sourceLink();
-    const Acts::GeometryIdentifier&     geoId      = sourceLink.geometryId();
-    const Acts::Surface*                surface    = m_actsGeoSvc->trackingGeometry()->findSurface(geoId);
+    const ACTSTracking::SourceLink& bottomSL = sourceLinkOf(bottomSp);
+    const Acts::Surface*            surface  = m_actsGeoSvc->trackingGeometry()->findSurface(bottomSL.geometryId());
     if (surface == nullptr) {
-      warning() << "Surface with geoID " << geoId << " not found in tracking geometry" << endmsg;
+      warning() << "Surface with geoID " << bottomSL.geometryId() << " not found in tracking geometry" << endmsg;
       continue;
     }
 
-    // Magnetic field at the seed position
-    const Acts::Vector3         seedPos(bottomSP->x(), bottomSP->y(), bottomSP->z());
-    Acts::Result<Acts::Vector3> seedField = m_actsGeoSvc->magneticField()->getField(seedPos, magCache);
-    if (!seedField.ok()) {
-      throw std::runtime_error("Field lookup error: " + std::to_string(seedField.error().value()));
-    }
-
-    Acts::Result<Acts::BoundVector> optParams =
-        Acts::estimateTrackParamsFromSeed(geoCtx, seed.sp(), *surface, *seedField);
-    if (!optParams.ok()) {
-      debug() << "Failed estimation of track parameters for seed." << endmsg;
+    std::optional<Acts::BoundTrackParameters> paramseed = ACTSTracking::estimateSeedParameters(
+        *this, *m_actsGeoSvc, geoCtx, *surface, position(bottomSp), position(middleSp), position(topSp),
+        bottomSL.edm4hepHit().getTime(), magCache, m_initialTrackError_pos, m_initialTrackError_phi,
+        m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time);
+    if (!paramseed) {
       continue;
     }
+    paramseeds.push_back(*paramseed);
 
-    const Acts::BoundVector& params = *optParams;
-    float                    p      = std::abs(1.f / params[Acts::eBoundQOverP]);
-
-    Acts::BoundMatrix cov = ACTSTracking::makeInitialCovariance(p, m_initialTrackError_pos, m_initialTrackError_phi,
-                                                                m_initialTrackError_lambda, m_initialTrackError_relP,
-                                                                m_initialTrackError_time);
-
-    Acts::BoundTrackParameters paramseed(surface->getSharedPtr(), params, cov, Acts::ParticleHypothesis::pion());
-    paramseeds.push_back(paramseed);
-
-    // Compute seed track state before acquiring the lock
-    Acts::Vector3 globalPos =
-        surface->localToGlobal(geoCtx, {params[Acts::eBoundLoc0], params[Acts::eBoundLoc1]}, {0, 0, 0});
-    Acts::Result<Acts::Vector3> hitField = m_actsGeoSvc->magneticField()->getField(globalPos, magCache);
-    if (!hitField.ok()) {
-      throw std::runtime_error("Field lookup error: " + std::to_string(hitField.error().value()));
-    }
-
-    auto seedTrackState = ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtFirstHit, paramseed,
-                                                                (*hitField)[2] / Acts::UnitConstants::T);
+    auto seedTrackState = ACTSTracking::makeSeedTrackState(*this, *m_actsGeoSvc, geoCtx, *paramseed, magCache);
 
     {
       std::lock_guard<std::mutex> lock(m_seedMutex);
       auto                        seedTrack = seedCollection.create();
-      for (const ACTSTracking::SeedSpacePoint* sp : seed.sp()) {
-        seedTrack.addToTrackerHits(sp->sourceLink().edm4hepHit());
-      }
+      seedTrack.addToTrackerHits(bottomSL.edm4hepHit());
+      seedTrack.addToTrackerHits(sourceLinkOf(middleSp).edm4hepHit());
+      seedTrack.addToTrackerHits(sourceLinkOf(topSp).edm4hepHit());
       seedTrack.addToTrackStates(seedTrackState);
     }
 
-    debug() << "Seed Parameters" << std::endl << paramseed << endmsg;
+    debug() << "Seed Parameters" << std::endl << *paramseed << endmsg;
   }
 
   debug() << "Seeds found: " << paramseeds.size() << endmsg;
   return paramseeds;
-}
-
-StatusCode CKFTrackingAlg::tracking(const std::vector<Acts::BoundTrackParameters>& paramseeds, const CKF& trackFinder,
-                                    const TrackFinderOptions& ckfOptions, Acts::MagneticFieldProvider::Cache& magCache,
-                                    edm4hep::TrackCollection& trackCollection) const {
-  const Acts::GeometryContext geoCtx = Acts::GeometryContext::dangerouslyDefaultConstruct();
-
-  debug() << "Starting CKF track finding with " << paramseeds.size() << " seeds." << endmsg;
-
-  auto           trackContainer      = std::make_shared<Acts::VectorTrackContainer>();
-  auto           trackStateContainer = std::make_shared<Acts::VectorMultiTrajectory>();
-  TrackContainer tracks(trackContainer, trackStateContainer);
-
-  for (std::size_t iseed = 0; iseed < paramseeds.size(); ++iseed) {
-    tracks.clear();
-    auto result = trackFinder.findTracks(paramseeds.at(iseed), ckfOptions, tracks);
-    if (result.ok()) {
-      const auto& fitOutput = result.value();
-      for (const TrackContainer::TrackProxy& trackItem : fitOutput) {
-        auto trackTip = tracks.makeTrack();
-        trackTip.copyFrom(trackItem);
-        auto smoothResult = Acts::smoothTrack(geoCtx, trackTip);
-        if (!smoothResult.ok()) {
-          warning() << "Track smoothing error: " << smoothResult.error() << endmsg;
-          continue;
-        }
-
-        auto track = ACTSTracking::ACTS2edm4hep_track(trackTip, m_actsGeoSvc->magneticField(), magCache);
-        {
-          std::lock_guard lock{m_trackMutex};
-          trackCollection.push_back(track);
-        }
-      }
-    } else {
-      warning() << "Track fit error: " << result.error() << endmsg;
-    }
-  }
-
-  return StatusCode::SUCCESS;
 }
 
 DECLARE_COMPONENT(CKFTrackingAlg);

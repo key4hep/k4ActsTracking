@@ -18,24 +18,33 @@
  */
 #include "DD4hepBlueprintConstruction.h"
 
+#include <Acts/Definitions/Algebra.hpp>
 #include <Acts/Definitions/Units.hpp>
 #include <Acts/Geometry/Blueprint.hpp>
 #include <Acts/Geometry/BlueprintBuilder.hpp>
 #include <Acts/Geometry/BlueprintNode.hpp>
 #include <Acts/Geometry/ContainerBlueprintNode.hpp>
+#include <Acts/Geometry/CylinderVolumeBounds.hpp>
 #include <Acts/Geometry/Extent.hpp>
 #include <Acts/Geometry/LayerBlueprintNode.hpp>
+#include <Acts/Geometry/NavigationPolicyFactory.hpp>
+#include <Acts/Geometry/StaticBlueprintNode.hpp>
+#include <Acts/Geometry/TrackingVolume.hpp>
 #include <Acts/Geometry/VolumeAttachmentStrategy.hpp>
+#include <Acts/Navigation/TryAllNavigationPolicy.hpp>
+#include <Acts/Surfaces/Surface.hpp>
 #include <Acts/Utilities/AxisDefinitions.hpp>
 #include <ActsPlugins/DD4hep/BlueprintBuilder.hpp>
 #include <ActsPlugins/Root/TGeoAxes.hpp>
 
 #include <fmt/core.h>
 
+#include <algorithm>
 #include <memory>
 #include <regex>
 #include <stdexcept>
 
+using Acts::Experimental::BlueprintNode;
 using Acts::Experimental::ContainerBlueprintNode;
 using Acts::Experimental::CylinderContainerBlueprintNode;
 using Acts::Experimental::LayerBlueprintNode;
@@ -232,8 +241,12 @@ namespace Blueprints {
   /// the center of gravity for auto-sizing. This is useful for cases where the
   /// detectors have has an odd number of modules, which shifts them off the
   /// z-axis with the default sizing
-  std::shared_ptr<LayerBlueprintNode> unsetXYCoG(const std::optional<dd4hep::DetElement>&,
-                                                 std::shared_ptr<LayerBlueprintNode> layer) {
+  // Return type is the base BlueprintNodePtr (not the derived LayerBlueprintNode)
+  // so the callback satisfies acts' OnLayerReturnsNode concept, which requires
+  // the result to be exactly std::shared_ptr<BlueprintNode>. `return layer;`
+  // upcasts implicitly.
+  std::shared_ptr<BlueprintNode> unsetXYCoG(const std::optional<dd4hep::DetElement>&,
+                                            std::shared_ptr<LayerBlueprintNode> layer) {
     layer->setUseCenterOfGravity(false, false, true);
     return layer;
   }
@@ -568,28 +581,116 @@ namespace Blueprints {
     return innerTracker;
   }
 
+  /// Navigation policy factory for the passive calo volumes. Each calo volume
+  /// holds only a handful of explicitly added surfaces (the polygon barrel
+  /// faces, or a single endcap disc). A TryAll policy (portals plus all passive
+  /// surfaces) is the simplest robust choice here: with so few surfaces there is
+  /// no benefit to a binned SurfaceArray, and TryAll needs no binning
+  /// configuration that could be mis-set.
+  std::shared_ptr<Acts::NavigationPolicyFactory> makeCaloNavigationPolicyFactory() {
+    return std::make_shared<Acts::NavigationPolicyFactory>(
+        Acts::NavigationPolicyFactory{}.add<Acts::TryAllNavigationPolicy>(Acts::TryAllNavigationPolicy::Config{}));
+  }
+
+  /// Add the calorimeter barrel as a passive static volume to @p parent (the
+  /// radial container around the tracker). The volume is a cylinder enclosing
+  /// the regular-polygon inner face, with one planar surface per polygon side.
+  ///
+  /// A barrel of planar surfaces would normally be a Cylinder layer (a
+  /// cylindrical layer volume whose modules are binned into a SurfaceArray, as
+  /// the tracker barrels are). Here the face is just a few polygon planes, so a
+  /// hand-built static volume navigated with a TryAll policy is simpler and
+  /// avoids picking a SurfaceArray binning for a non-cylindrical polygon; it is
+  /// not a workaround for any missing layer type.
+  void addCaloBarrel(BlueprintNode& parent, const IActsGeoSvc::CaloFaceSurfaces& calo) {
+    constexpr double pad    = 1_mm;
+    auto             bounds = std::make_shared<Acts::CylinderVolumeBounds>(std::max(0.0, calo.barrelRMin - pad),
+                                                                           calo.barrelRMax + pad, calo.barrelHalfZ + pad);
+    auto vol = std::make_unique<Acts::TrackingVolume>(Acts::Transform3::Identity(), std::move(bounds), "CaloBarrel");
+    for (const auto& face : calo.barrelFaces) {
+      vol->addSurface(face);
+    }
+    parent.addStaticVolume(std::move(vol)).setNavigationPolicyFactory(makeCaloNavigationPolicyFactory());
+  }
+
+  /// Add one calorimeter endcap disc as a passive static volume to @p parent
+  /// (the top-level z container). The volume abuts the central region in z and
+  /// extends out beyond the disc face; it shares the central radial extent so
+  /// it stacks cleanly along z.
+  void addCaloEndcap(BlueprintNode& parent, const IActsGeoSvc::CaloFaceSurfaces& calo, bool positive) {
+    const auto& disc = positive ? calo.endcapPos : calo.endcapNeg;
+    if (!disc) {
+      return;
+    }
+    constexpr double pad = 1_mm;
+    // The central region (which holds the calo barrel) reaches barrelHalfZ plus
+    // the barrel volume's z-padding. Start the endcap just beyond that so the
+    // top-level z-stack sees a small gap rather than an overlap. The endcap
+    // disc (at endcapZ, which the surface builder keeps clear of the barrel)
+    // then sits comfortably inside the volume.
+    const double zInner = calo.barrelHalfZ + 2 * pad;
+    const double zOuter = calo.endcapZ + 10_mm;  // beyond the disc face
+    const double halfZ  = std::max(5_mm, (zOuter - zInner) / 2.0);
+    const double zc     = (zInner + zOuter) / 2.0;
+
+    // Span the full radius (0 .. barrel circumradius) so the volume shares the
+    // central radial extent and the z-stack does not need radial gap shells.
+    auto bounds = std::make_shared<Acts::CylinderVolumeBounds>(0.0, calo.barrelRMax + pad, halfZ);
+
+    Acts::Transform3 transform = Acts::Transform3::Identity();
+    transform.translation()    = Acts::Vector3{0, 0, positive ? zc : -zc};
+    auto vol                   = std::make_unique<Acts::TrackingVolume>(transform, std::move(bounds),
+                                                      positive ? "CaloEndcapPos" : "CaloEndcapNeg");
+    vol->addSurface(disc);
+    parent.addStaticVolume(std::move(vol)).setNavigationPolicyFactory(makeCaloNavigationPolicyFactory());
+  }
+
 }  // namespace Blueprints
 
 namespace MuColl {
   namespace MAIA_v0 {
     void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
-                           ActsPlugins::DD4hep::BlueprintBuilder& builder) {
-      auto& outer = root.addCylinderContainer(detName, AxisR);
-      Blueprints::addCylindricalBeampipe(outer);
+                           ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo) {
+      // Build the tracker detectors as radial children of the supplied
+      // container.
+      auto buildTrackers = [&](ContainerBlueprintNode& outer) {
+        Blueprints::addCylindricalBeampipe(outer);
 
-      // NOTE: Need to set rather small padding here for the R-direction, because
-      // the innermost two layers are a double layer for which the cylindrical
-      // volumes are overlapping otherwise
-      auto vertexBarrel = Blueprints::makeGroupedBarrel(builder, "VertexBarrel", std::regex{"layer_\\d"}, "ZYX",
-                                                        Blueprints::kTightBarrelEnvelope);
-      auto vertex = Blueprints::attachEndcaps(builder, std::move(vertexBarrel), Blueprints::DoubleBarrelLayerVertexSpec,
-                                              "Vertex");
+        // NOTE: Need to set rather small padding here for the R-direction,
+        // because the innermost two layers are a double layer for which the
+        // cylindrical volumes are overlapping otherwise
+        auto vertexBarrel = Blueprints::makeGroupedBarrel(builder, "VertexBarrel", std::regex{"layer_\\d"}, "ZYX",
+                                                          Blueprints::kTightBarrelEnvelope);
+        auto vertex       = Blueprints::attachEndcaps(builder, std::move(vertexBarrel),
+                                                      Blueprints::DoubleBarrelLayerVertexSpec, "Vertex");
 
-      auto innerTracker = Blueprints::makeNestedInnerTracker(builder, std::move(vertex));
-      outer.addChild(innerTracker);
+        auto innerTracker = Blueprints::makeNestedInnerTracker(builder, std::move(vertex));
+        outer.addChild(innerTracker);
 
-      auto outerTracker = Blueprints::makeRegularTracker(builder, Blueprints::OuterTrackerSpec, "OuterTracker");
-      outer.addChild(outerTracker);
+        auto outerTracker = Blueprints::makeRegularTracker(builder, Blueprints::OuterTrackerSpec, "OuterTracker");
+        outer.addChild(outerTracker);
+      };
+
+      if (calo.empty()) {
+        // No calorimeter face: keep the original purely-radial layout.
+        auto& outer = root.addCylinderContainer(detName, AxisR);
+        buildTrackers(outer);
+        return;
+      }
+
+      // The calorimeter wraps the tracker: its endcaps reach to small radius at
+      // large |z| where the tracker does not extend. This is expressed as a
+      // top-level z-stack [calo -endcap | central (tracker + calo barrel) |
+      // calo +endcap], with the calo barrel as the outermost radial child of
+      // the central region.
+      auto& world = root.addCylinderContainer(detName, AxisZ);
+      Blueprints::addCaloEndcap(world, calo, /*positive=*/false);
+      auto& central = world.addCylinderContainer(detName + "Central", AxisR);
+      buildTrackers(central);
+      if (!calo.barrelFaces.empty()) {
+        Blueprints::addCaloBarrel(central, calo);
+      }
+      Blueprints::addCaloEndcap(world, calo, /*positive=*/true);
     }
   }  // namespace MAIA_v0
 }  // namespace MuColl
@@ -597,69 +698,133 @@ namespace MuColl {
 namespace FCCee {
   namespace ILD_FCCee_v01 {
     void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
-                           ActsPlugins::DD4hep::BlueprintBuilder& builder) {
-      auto& outer = root.addCylinderContainer(detName, AxisR);
+                           ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo) {
+      // Build the tracker detectors as radial children of the supplied
+      // container.
+      auto buildTrackers = [&](ContainerBlueprintNode& outer) {
+        Blueprints::addCylindricalBeampipe(outer);
 
-      Blueprints::addCylindricalBeampipe(outer);
+        auto vtxBarrel = Blueprints::makeBarrel(builder, Blueprints::UngroupedDoubleBarrelLayerVertexSpec,
+                                                Blueprints::kBarrelEnvelope, Blueprints::doubleLayerKey);
+        auto vertex    = Blueprints::attachEndcaps(builder, std::move(vtxBarrel),
+                                                   Blueprints::UngroupedDoubleBarrelLayerVertexSpec, "Vertex");
 
-      auto vtxBarrel = Blueprints::makeBarrel(builder, Blueprints::UngroupedDoubleBarrelLayerVertexSpec,
-                                              Blueprints::kBarrelEnvelope, Blueprints::doubleLayerKey);
-      auto vertex    = Blueprints::attachEndcaps(builder, std::move(vtxBarrel),
-                                                 Blueprints::UngroupedDoubleBarrelLayerVertexSpec, "Vertex");
+        auto innerTrackerBarrel = Blueprints::makeBarrel(builder, Blueprints::UngroupedInnerTrackerSpec);
+        innerTrackerBarrel->addChild(vertex);
 
-      auto innerTrackerBarrel = Blueprints::makeBarrel(builder, Blueprints::UngroupedInnerTrackerSpec);
-      innerTrackerBarrel->addChild(vertex);
+        auto innerTrackerEndcap = Blueprints::attachEndcaps(
+            builder, std::move(innerTrackerBarrel), Blueprints::UngroupedInnerTrackerSpec, "InnerTrackerEndcap");
+        outer.addChild(innerTrackerEndcap);
 
-      auto innerTrackerEndcap = Blueprints::attachEndcaps(builder, std::move(innerTrackerBarrel),
-                                                          Blueprints::UngroupedInnerTrackerSpec, "InnerTrackerEndcap");
-      outer.addChild(innerTrackerEndcap);
+        // TODO: this is not yet properly working only part of the SET show up in
+        // the exporte .obj geometry. This usually indicates some issues with the
+        // AxisDirection, but that would mean that there are different
+        // AxisDirections in play for the SET geometry
+        auto set = Blueprints::makeBarrel(builder, Blueprints::SETSpec, Blueprints::kBarrelEnvelope,
+                                          Blueprints::doubleLayerKey);
+        outer.addChild(set);
+      };
 
-      // TODO: this is not yet properly working only part of the SET show up in
-      // the exporte .obj geometry. This usually indicates some issues with the
-      // AxisDirection, but that would mean that there are different
-      // AxisDirections in play for the SET geometry
-      auto set =
-          Blueprints::makeBarrel(builder, Blueprints::SETSpec, Blueprints::kBarrelEnvelope, Blueprints::doubleLayerKey);
-      outer.addChild(set);
+      if (calo.empty()) {
+        // No calorimeter face: keep the original purely-radial layout.
+        auto& outer = root.addCylinderContainer(detName, AxisR);
+        buildTrackers(outer);
+        return;
+      }
+
+      // The calorimeter wraps the tracker, so the top level is a z-stack
+      // [calo -endcap | central (tracker + calo barrel) | calo +endcap] (see
+      // MAIA_v0 for details).
+      auto& world = root.addCylinderContainer(detName, AxisZ);
+      Blueprints::addCaloEndcap(world, calo, /*positive=*/false);
+      auto& central = world.addCylinderContainer(detName + "Central", AxisR);
+      buildTrackers(central);
+      if (!calo.barrelFaces.empty()) {
+        Blueprints::addCaloBarrel(central, calo);
+      }
+      Blueprints::addCaloEndcap(world, calo, /*positive=*/true);
     }
   }  // namespace ILD_FCCee_v01
 
   namespace ILD_FCCee_v02 {
     void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
-                           ActsPlugins::DD4hep::BlueprintBuilder& builder) {
-      auto& outer = root.addCylinderContainer(detName, AxisR);
+                           ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo) {
+      // Build the tracker detectors as radial children of the supplied
+      // container.
+      auto buildTrackers = [&](ContainerBlueprintNode& outer) {
+        Blueprints::addCylindricalBeampipe(outer);
+        auto vtxBarrel = Blueprints::makeBarrel(builder, Blueprints::UngroupedDoubleBarrelLayerVertexSpec,
+                                                Blueprints::kBarrelEnvelope, Blueprints::doubleLayerKey);
+        auto vertex    = Blueprints::attachEndcaps(builder, std::move(vtxBarrel),
+                                                   Blueprints::UngroupedDoubleBarrelLayerVertexSpec, "Vertex");
 
-      Blueprints::addCylindricalBeampipe(outer);
-      auto vtxBarrel = Blueprints::makeBarrel(builder, Blueprints::UngroupedDoubleBarrelLayerVertexSpec,
-                                              Blueprints::kBarrelEnvelope, Blueprints::doubleLayerKey);
-      auto vertex    = Blueprints::attachEndcaps(builder, std::move(vtxBarrel),
-                                                 Blueprints::UngroupedDoubleBarrelLayerVertexSpec, "Vertex");
+        auto innerTracker =
+            Blueprints::makeNestedInnerTracker(builder, std::move(vertex), Blueprints::UngroupedNestedInnerTrackerSpec);
+        outer.addChild(innerTracker);
 
-      auto innerTracker =
-          Blueprints::makeNestedInnerTracker(builder, std::move(vertex), Blueprints::UngroupedNestedInnerTrackerSpec);
-      outer.addChild(innerTracker);
+        // TODO: Add SET (see V01 for caveats)
+      };
 
-      // TODO: Add SET (see V01 for caveats)
+      if (calo.empty()) {
+        // No calorimeter face: keep the original purely-radial layout.
+        auto& outer = root.addCylinderContainer(detName, AxisR);
+        buildTrackers(outer);
+        return;
+      }
+
+      // The calorimeter wraps the tracker, so the top level is a z-stack
+      // [calo -endcap | central (tracker + calo barrel) | calo +endcap] (see
+      // MAIA_v0 for details).
+      auto& world = root.addCylinderContainer(detName, AxisZ);
+      Blueprints::addCaloEndcap(world, calo, /*positive=*/false);
+      auto& central = world.addCylinderContainer(detName + "Central", AxisR);
+      buildTrackers(central);
+      if (!calo.barrelFaces.empty()) {
+        Blueprints::addCaloBarrel(central, calo);
+      }
+      Blueprints::addCaloEndcap(world, calo, /*positive=*/true);
     }
   }  // namespace ILD_FCCee_v02
 
   namespace CLD_o2_v07 {
     void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
-                           ActsPlugins::DD4hep::BlueprintBuilder& builder) {
-      auto& outer = root.addCylinderContainer(detName, AxisR);
-      Blueprints::addCylindricalBeampipe(outer);
-      auto vtxBarrel = Blueprints::makeBarrel(builder, Blueprints::UngroupedDoubleBarrelLayerVertexSpec,
-                                              Blueprints::kBarrelEnvelope, Blueprints::doubleLayerKey);
-      auto vertex    = Blueprints::attachEndcaps(builder, std::move(vtxBarrel),
-                                                 Blueprints::UngroupedDoubleBarrelLayerVertexSpec, "Vertex");
+                           ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo) {
+      // Build the tracker detectors as radial children of the supplied
+      // container.
+      auto buildTrackers = [&](ContainerBlueprintNode& outer) {
+        Blueprints::addCylindricalBeampipe(outer);
+        auto vtxBarrel = Blueprints::makeBarrel(builder, Blueprints::UngroupedDoubleBarrelLayerVertexSpec,
+                                                Blueprints::kBarrelEnvelope, Blueprints::doubleLayerKey);
+        auto vertex    = Blueprints::attachEndcaps(builder, std::move(vtxBarrel),
+                                                   Blueprints::UngroupedDoubleBarrelLayerVertexSpec, "Vertex");
 
-      auto innerTracker =
-          Blueprints::makeNestedInnerTracker(builder, std::move(vertex), Blueprints::UngroupedNestedInnerTrackerSpec);
-      outer.addChild(innerTracker);
+        auto innerTracker =
+            Blueprints::makeNestedInnerTracker(builder, std::move(vertex), Blueprints::UngroupedNestedInnerTrackerSpec);
+        outer.addChild(innerTracker);
 
-      auto outerTracker =
-          Blueprints::makeRegularTracker(builder, Blueprints::UngroupedOuterTrackerSpec, "OuterTracker");
-      outer.addChild(outerTracker);
+        auto outerTracker =
+            Blueprints::makeRegularTracker(builder, Blueprints::UngroupedOuterTrackerSpec, "OuterTracker");
+        outer.addChild(outerTracker);
+      };
+
+      if (calo.empty()) {
+        // No calorimeter face: keep the original purely-radial layout.
+        auto& outer = root.addCylinderContainer(detName, AxisR);
+        buildTrackers(outer);
+        return;
+      }
+
+      // The calorimeter wraps the tracker, so the top level is a z-stack
+      // [calo -endcap | central (tracker + calo barrel) | calo +endcap] (see
+      // MAIA_v0 for details).
+      auto& world = root.addCylinderContainer(detName, AxisZ);
+      Blueprints::addCaloEndcap(world, calo, /*positive=*/false);
+      auto& central = world.addCylinderContainer(detName + "Central", AxisR);
+      buildTrackers(central);
+      if (!calo.barrelFaces.empty()) {
+        Blueprints::addCaloBarrel(central, calo);
+      }
+      Blueprints::addCaloEndcap(world, calo, /*positive=*/true);
     }
   }  // namespace CLD_o2_v07
 }  // namespace FCCee
@@ -667,7 +832,9 @@ namespace FCCee {
 namespace LUXE {
   namespace LUXE_v0 {
     void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
-                           ActsPlugins::DD4hep::BlueprintBuilder& builder) {
+                           ActsPlugins::DD4hep::BlueprintBuilder&                builder,
+                           [[maybe_unused]] const IActsGeoSvc::CaloFaceSurfaces& calo) {
+      // No electromagnetic calorimeter face integration for LUXE.
       auto& tracker = root.addCuboidContainer(detName, AxisZ);
       auto  envelope =
           Acts::ExtentEnvelope{}.set(AxisZ, {0.4_mm, 0.4_mm}).set(AxisX, {0.4_mm, 0.4_mm}).set(AxisY, {0.4_mm, 0.4_mm});
