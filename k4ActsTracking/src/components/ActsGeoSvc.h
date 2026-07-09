@@ -45,7 +45,8 @@ namespace Acts {
 
 namespace dd4hep {
   class Detector;
-}
+  class DetElement;
+}  // namespace dd4hep
 
 class ActsGeoSvc : public extends<Service, IActsGeoSvc> {
 public:
@@ -90,6 +91,13 @@ private:
   /// Must run before the blueprint is constructed, since the surfaces are
   /// inserted into the tracking geometry as passive calo volumes.
   void buildCaloFaceSurfaces();
+
+  /// Build a single rectangular calo-face surface (m_caloFaceSurfaces.planarFace)
+  /// for a telescope-style detector (e.g. LUXE), where the electromagnetic
+  /// calorimeter is one rectangular slab rather than a cylindrical barrel/endcap.
+  /// The face geometry is taken from the DetElement's box envelope and world
+  /// placement. @p lengthScale converts DD4hep native lengths to ACTS units.
+  void buildPlanarCaloFace(const dd4hep::DetElement& ecal, double lengthScale);
 
   SmartIF<IGeoSvc>                                          m_geoSvc;
   std::shared_ptr<const Acts::TrackingGeometry>             m_trackingGeo{nullptr};

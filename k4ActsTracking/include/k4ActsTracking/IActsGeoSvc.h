@@ -26,6 +26,7 @@
 
 #include <Acts/Geometry/GeometryIdentifier.hpp>
 
+#include <array>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -70,7 +71,15 @@ public:
     double endcapRMax  = 0;  ///< outer radius of the endcap disc volumes
     double endcapZ     = 0;  ///< |z| of the endcap inner face
 
-    bool empty() const { return barrelFaces.empty() && !endcapPos && !endcapNeg; }
+    // Telescope geometries (e.g. LUXE) are not cylindrical: the calorimeter is a
+    // single rectangular slab, possibly offset from the beam axis. Its inner
+    // face is modelled as one planar surface enclosed in a cuboid volume rather
+    // than the barrel/endcap cylinders above.
+    std::shared_ptr<Acts::Surface> planarFace;                   ///< rectangular calo inner face, may be null
+    std::array<double, 3>          planarVolumeCenter{0, 0, 0};  ///< center of the enclosing cuboid volume (ACTS units)
+    std::array<double, 3>          planarVolumeHalfLen{0, 0, 0};  ///< half-lengths (x, y, z) of the enclosing cuboid
+
+    bool empty() const { return barrelFaces.empty() && !endcapPos && !endcapNeg && !planarFace; }
   };
 
 public:
