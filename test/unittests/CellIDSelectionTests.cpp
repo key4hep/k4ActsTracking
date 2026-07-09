@@ -24,12 +24,10 @@
 
 #include <catch2/matchers/catch_matchers.hpp>
 #include "catch2/catch_test_macros.hpp"
-#include "catch2/generators/catch_generators.hpp"
-#include "catch2/generators/catch_generators_adapters.hpp"
-#include "catch2/generators/catch_generators_random.hpp"
 #include "catch2/matchers/catch_matchers_range_equals.hpp"
 
 #include <limits>
+#include <random>
 #include <ranges>
 
 using namespace k4ActsTracking;
@@ -95,8 +93,19 @@ TEST_CASE("CellIDSelector::accept multiple selections") {
 
 TEST_CASE("CellIDSelector::accept empty selection") {
   const auto selector = CellIDSelector{"system:8,side:-2,layer:5,module:7,sensor:10", {}};
-  const auto cellID   = GENERATE(take(100, random(0UL, std::numeric_limits<dd4hep::CellID>::max())));
-  REQUIRE_FALSE(selector.accept(cellID));
+
+  // An empty selection list must reject every CellID. Catch2's random() generator
+  // crashes when asked to cover the full range of a 64-bit integer type (as
+  // dd4hep::CellID is), so draw the sample CellIDs ourselves with a fixed seed for
+  // reproducibility and also probe the range boundaries explicitly.
+  std::mt19937_64 rng{0xC5117D5ULL};
+  for (int i = 0; i < 100; ++i) {
+    const dd4hep::CellID cellID = rng();
+    INFO("cellID = " << cellID);
+    REQUIRE_FALSE(selector.accept(cellID));
+  }
+  REQUIRE_FALSE(selector.accept(dd4hep::CellID{0}));
+  REQUIRE_FALSE(selector.accept(std::numeric_limits<dd4hep::CellID>::max()));
 }
 
 TEST_CASE("CellIDSelector::getSelectionMasks") {
