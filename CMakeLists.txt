@@ -32,6 +32,7 @@ SET( ${PROJECT_NAME}_VERSION  "${${PROJECT_NAME}_VERSION_MAJOR}.${${PROJECT_NAME
 option(K4ACTSTRACKING_BUILD_GNN
   "Build the GNN track finding code (requires Torch, onnxruntime and the Acts Gnn plugin)"
   OFF)
+include(cmake/MaybeBuildActs.cmake)
 
 find_package(EDM4HEP REQUIRED)
 find_package(k4FWCore REQUIRED)
