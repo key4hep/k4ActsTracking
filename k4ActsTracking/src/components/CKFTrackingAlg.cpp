@@ -128,6 +128,7 @@ private:
   /// point indices stored in @p seeds reference @p spacePoints.
   std::vector<Acts::BoundTrackParameters> seedsToParameters(const Acts::SeedContainer2&         seeds,
                                                             const Acts::SpacePointContainer2&   spacePoints,
+                                                            const ACTSTracking::HitContainer&   hits,
                                                             edm4hep::TrackCollection&           seedCollection,
                                                             Acts::MagneticFieldProvider::Cache& magCache) const;
 
@@ -405,13 +406,14 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
 
   ACTSTracking::SourceLinkContainer  sourceLinks;
   ACTSTracking::MeasurementContainer measurements;
+  ACTSTracking::HitContainer         hits;
   std::vector<SeedInput>             seedInputs;
 
   // Build measurements + source links for all hits (shared with the other CKF
   // algorithms); for seed-selected surfaces also record a seeding space point
   // (global position + rho/z variance) for the triplet seeder.
   ACTSTracking::prepareTrackerHits(
-      *this, *m_actsGeoSvc, geoCtx, trackerHitCollection, measurements, sourceLinks, m_numThreads.value(),
+      *this, *m_actsGeoSvc, geoCtx, trackerHitCollection, measurements, sourceLinks, hits, m_numThreads.value(),
       [&](const edm4hep::TrackerHitPlane& hit, const ACTSTracking::SourceLink& sourceLink,
           const Acts::Vector3& globalPos, const Acts::Surface& surface, const Acts::SquareMatrix2& localCov) {
         if (!m_seedSelector.accept(hit.getCellID())) {
@@ -667,13 +669,13 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
 
     // Convert this task's seeds into bound track parameters and seed tracks.
     std::vector<Acts::BoundTrackParameters> paramseeds =
-        seedsToParameters(seeds, spacePoints, seedCollection, localMagCache);
+        seedsToParameters(seeds, spacePoints, hits, seedCollection, localMagCache);
 
     if (!m_runCKF)
       return;
 
-    m_ckfRunner->findTracks(*this, measurements, sourceLinks, paramseeds, localMagCache, trackCollection, m_trackMutex,
-                            &m_caloMonitor);
+    m_ckfRunner->findTracks(*this, measurements, sourceLinks, hits, paramseeds, localMagCache, trackCollection,
+                            m_trackMutex, &m_caloMonitor);
   };
 
   tbb::task_arena arena(m_numThreads.value());
@@ -689,7 +691,8 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
 
 std::vector<Acts::BoundTrackParameters> CKFTrackingAlg::seedsToParameters(
     const Acts::SeedContainer2& seeds, const Acts::SpacePointContainer2& spacePoints,
-    edm4hep::TrackCollection& seedCollection, Acts::MagneticFieldProvider::Cache& magCache) const {
+    const ACTSTracking::HitContainer& hits, edm4hep::TrackCollection& seedCollection,
+    Acts::MagneticFieldProvider::Cache& magCache) const {
   const Acts::GeometryContext geoCtx = Acts::GeometryContext::dangerouslyDefaultConstruct();
 
   std::vector<Acts::BoundTrackParameters> paramseeds;
@@ -721,7 +724,7 @@ std::vector<Acts::BoundTrackParameters> CKFTrackingAlg::seedsToParameters(
 
     std::optional<Acts::BoundTrackParameters> paramseed = ACTSTracking::estimateSeedParameters(
         *this, *m_actsGeoSvc, geoCtx, *surface, position(bottomSp), position(middleSp), position(topSp),
-        bottomSL.edm4hepHit().getTime(), magCache, m_initialTrackError_pos, m_initialTrackError_phi,
+        hits[bottomSL.index()].getTime(), magCache, m_initialTrackError_pos, m_initialTrackError_phi,
         m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time);
     if (!paramseed) {
       continue;
@@ -733,9 +736,9 @@ std::vector<Acts::BoundTrackParameters> CKFTrackingAlg::seedsToParameters(
     {
       std::lock_guard<std::mutex> lock(m_seedMutex);
       auto                        seedTrack = seedCollection.create();
-      seedTrack.addToTrackerHits(bottomSL.edm4hepHit());
-      seedTrack.addToTrackerHits(sourceLinkOf(middleSp).edm4hepHit());
-      seedTrack.addToTrackerHits(sourceLinkOf(topSp).edm4hepHit());
+      seedTrack.addToTrackerHits(hits[bottomSL.index()]);
+      seedTrack.addToTrackerHits(hits[sourceLinkOf(middleSp).index()]);
+      seedTrack.addToTrackerHits(hits[sourceLinkOf(topSp).index()]);
       seedTrack.addToTrackStates(seedTrackState);
     }
 

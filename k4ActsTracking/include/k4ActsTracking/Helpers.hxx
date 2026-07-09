@@ -93,12 +93,14 @@ namespace ACTSTracking {
  *  - track states at IP
  *
  * \param fitOutput KF fit result
+ * \param hits edm4hep hits parallel to the measurement container; the hit of
+ *        each track state is recovered via its source-link index()
  * \param magneticField magnetic field at different locations in the detector
  * \param magCache cache to help with magnetic field lookup
  *
  * \return Track with equivalent parameters of the ACTS track
  */
-  edm4hep::MutableTrack ACTS2edm4hep_track(const TrackResult&                                 fitter_res,
+  edm4hep::MutableTrack ACTS2edm4hep_track(const TrackResult& fitter_res, const HitContainer& hits,
                                            std::shared_ptr<const Acts::MagneticFieldProvider> magneticField,
                                            Acts::MagneticFieldProvider::Cache&                magCache);
 
