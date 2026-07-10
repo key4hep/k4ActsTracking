@@ -149,7 +149,7 @@ add_geometry_load_test($ENV{k4geo_DIR}/FCCee/CLD/compact/CLD_o2_v08/CLD_o2_v08.x
 # these tests are not registered on the key4hep/MuColl stacks where luxegeo is
 # absent (they would otherwise fail with an unresolved compact file path).
 if(DEFINED ENV{luxegeo_DIR})
-  add_geometry_load_test($ENV{luxegeo_DIR}/LUXE/LUXE_v0.xml)
+  add_geometry_load_test($ENV{luxegeo_DIR}/compact/LUXE/LUXE_v0.xml)
 endif()
 
 
@@ -185,7 +185,7 @@ add_k4run_test(reco_MAIA_Gen3
 # Only registered when luxegeo is available (see the guard note above); on the
 # key4hep/MuColl CI stacks luxegeo_DIR is unset and this chain is skipped.
 if(DEFINED ENV{luxegeo_DIR})
-  set(_luxe_compact $ENV{luxegeo_DIR}/LUXE/LUXE_v0.xml)
+  set(_luxe_compact $ENV{luxegeo_DIR}/compact/LUXE/LUXE_v0.xml)
 
   add_test(NAME sim_LUXE_v0
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}

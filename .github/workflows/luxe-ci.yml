@@ -46,12 +46,11 @@ jobs:
           set -e
           source /opt/setup_luxe.sh
 
-          # luxegeo ships its compact files under <prefix>/share/luxegeo/compact.
-          # Point luxegeo_DIR there (matching the luxegeo README) if the stack
-          # does not already set it, so the LUXE_v0 compact file resolves.
+          # The LUXE stack exports luxegeo_DIR=<prefix>/share/luxegeo; the compact
+          # files live under ${luxegeo_DIR}/compact. If the stack did not set it,
+          # locate the compact dir and point luxegeo_DIR at its parent.
           if [ -z "${luxegeo_DIR}" ]; then
-            _luxe_v0=$(find / -path '*share/luxegeo/compact/LUXE/LUXE_v0.xml' 2>/dev/null | head -1)
-            export luxegeo_DIR=$(dirname "$(dirname "${_luxe_v0}")")
+            export luxegeo_DIR=$(dirname "$(find / -type d -path '*share/luxegeo/compact' 2>/dev/null | head -1)")
           fi
           echo "Using luxegeo_DIR=${luxegeo_DIR}"
 
