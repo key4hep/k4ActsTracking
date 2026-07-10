@@ -143,7 +143,8 @@ namespace ACTSTracking {
                           const edm4hep::TrackerHitPlaneCollection& trackerHits,
                           ACTSTracking::MeasurementContainer&       measurements,
                           ACTSTracking::SourceLinkContainer& sourceLinks, ACTSTracking::HitContainer& hits,
-                          int numThreads, HitSink&& hitSink) {
+                          int numThreads, HitSink&& hitSink, bool useHitTime = false,
+                          double hitTimeResolution = 0.0, bool hitTimesTofCorrected = false) {
     const auto& cellIdToSurface = geo.cellIdToSurfaceMap();
 
     std::vector<std::pair<Acts::GeometryIdentifier, edm4hep::TrackerHitPlane>> sortedHits;
@@ -195,10 +196,29 @@ namespace ACTSTracking {
       localCov(0, 0)               = std::pow(hitPair.second.getDu() * Acts::UnitConstants::mm, 2);
       localCov(1, 1)               = std::pow(hitPair.second.getDv() * Acts::UnitConstants::mm, 2);
 
-      ACTSTracking::SourceLink  sourceLink(surface->geometryId(), measurements.size());
-      Acts::SourceLink          srcWrap{sourceLink};
-      ACTSTracking::Measurement meas =
-          ACTSTracking::makeMeasurement(srcWrap, loc, localCov, Acts::eBoundLoc0, Acts::eBoundLoc1);
+      ACTSTracking::SourceLink sourceLink(surface->geometryId(), measurements.size());
+      Acts::SourceLink         srcWrap{sourceLink};
+      // Build the measurement from the local position, optionally extended with
+      // the hit time as a third dimension so the track fit also constrains time.
+      ACTSTracking::Measurement meas = [&] {
+        if (useHitTime) {
+          // Hit time in Acts native units (native time = c*t). If the digitiser subtracted the
+          // propagation time-of-flight, add it back (|pos| at c=1) to recover the absolute time.
+          double hitT = static_cast<double>(hitPair.second.getTime()) * Acts::UnitConstants::ns;
+          if (hitTimesTofCorrected) {
+            hitT += globalPos.norm();
+          }
+          Acts::Vector3 loc3;
+          loc3 << loc[0], loc[1], hitT;
+          Acts::SquareMatrix3 cov3 = Acts::SquareMatrix3::Zero();
+          cov3(0, 0)               = localCov(0, 0);
+          cov3(1, 1)               = localCov(1, 1);
+          cov3(2, 2)               = std::pow(hitTimeResolution * Acts::UnitConstants::ns, 2);
+          return ACTSTracking::makeMeasurement(srcWrap, loc3, cov3, Acts::eBoundLoc0, Acts::eBoundLoc1,
+                                               Acts::eBoundTime);
+        }
+        return ACTSTracking::makeMeasurement(srcWrap, loc, localCov, Acts::eBoundLoc0, Acts::eBoundLoc1);
+      }();
 
       measurements.push_back(meas);
       hits.push_back(hitPair.second);
