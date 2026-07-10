@@ -298,6 +298,23 @@ private:
   Gaudi::Property<double>  m_CKF_chi2CutOff{this, "CKF_Chi2CutOff", 15, "Maximum local chi2 contribution."};
   Gaudi::Property<int32_t> m_CKF_numMeasurementsCutOff{this, "CKF_NumMeasurementsCutOff", 10,
                                                        "Maximum measurements on a single surface."};
+  Gaudi::Property<double>  m_CKF_chi2CutOffOutlier{
+      this, "CKF_Chi2CutOffOutlier", std::numeric_limits<double>::max(),
+      "Maximum local chi2 for a failing hit to be kept as an outlier; above this it becomes a hole."};
+
+  /// @name CKF branch stopper (early termination of candidate branches)
+  ///@{
+  Gaudi::Property<bool> m_useBranchStopper{this, "UseBranchStopper", false, "Enable the CKF branch stopper."};
+  Gaudi::Property<int>  m_bsMaxHoles{this, "BranchStopper_MaxHoles", 2, "Stop a branch above this many holes."};
+  Gaudi::Property<int> m_bsMaxOutliers{this, "BranchStopper_MaxOutliers", 2, "Stop a branch above this many outliers."};
+  Gaudi::Property<int> m_bsMinMeasurements{
+      this, "BranchStopper_MinMeasurements", 6,
+      "When stopping, keep the branch if it has at least this many measurements, otherwise drop it."};
+  Gaudi::Property<double> m_bsPtMin{this, "BranchStopper_PtMin", 0.0,
+                                    "Drop a branch with |pT| (GeV) below this; <=0 disables."};
+  Gaudi::Property<int>    m_bsPtMinMeasurements{this, "BranchStopper_PtMinMeasurements", 3,
+                                             "Minimum measurements before the pT branch stop is applied."};
+  ///@}
   ///@}
 
   /// @name Seeding layer selection
@@ -371,8 +388,15 @@ StatusCode CKFTrackingAlg::initialize() {
   m_ckfRunner.emplace(*m_actsGeoSvc,
                       ACTSTracking::CKFRunner::Config{.chi2CutOff            = m_CKF_chi2CutOff,
                                                       .numMeasurementsCutOff = m_CKF_numMeasurementsCutOff,
+                                                      .chi2CutOffOutlier     = m_CKF_chi2CutOffOutlier,
                                                       .propagateBackward     = m_propagateBackward,
-                                                      .extrapolateToCalo     = m_extrapolateToCalo});
+                                                      .extrapolateToCalo     = m_extrapolateToCalo,
+                                                      .useBranchStopper      = m_useBranchStopper,
+                                                      .bsMaxHoles            = m_bsMaxHoles,
+                                                      .bsMaxOutliers         = m_bsMaxOutliers,
+                                                      .bsMinMeasurements     = m_bsMinMeasurements,
+                                                      .bsPtMin               = m_bsPtMin,
+                                                      .bsPtMinMeasurements   = m_bsPtMinMeasurements});
 
   return StatusCode::SUCCESS;
 }
