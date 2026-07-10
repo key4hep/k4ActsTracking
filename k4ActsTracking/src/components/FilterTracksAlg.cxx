@@ -76,12 +76,12 @@ edm4hep::TrackCollection FilterTracksAlg::operator()(const edm4hep::TrackCollect
 
     if (m_NHitsInner > 0) {
       int nhitinner = trk.getSubdetectorHitNumbers(3) + trk.getSubdetectorHitNumbers(4);
-      if (nhitinner <= m_NHitsVertex)
+      if (nhitinner <= m_NHitsInner)
         continue;
     }
     if (m_NHitsOuter > 0) {
       int nhitouter = trk.getSubdetectorHitNumbers(5) + trk.getSubdetectorHitNumbers(6);
-      if (nhitouter <= m_NHitsVertex)
+      if (nhitouter <= m_NHitsOuter)
         continue;
     }
     float trackD0 = trk.getTrackStates(0).D0;
@@ -94,6 +94,9 @@ edm4hep::TrackCollection FilterTracksAlg::operator()(const edm4hep::TrackCollect
     float pt = fabs(0.3 * m_Bz / trk.getTrackStates(edm4hep::TrackState::AtIP).omega / 1000);
     if (m_MinPt > 0 && pt < m_MinPt)
       continue;  // pT check
+
+    if (m_MaxHoles >= 0 && trk.getNholes() > m_MaxHoles)
+      continue;  // hole count check
 
     // add tracks that pass all tests
     outputTracks.push_back(trk);

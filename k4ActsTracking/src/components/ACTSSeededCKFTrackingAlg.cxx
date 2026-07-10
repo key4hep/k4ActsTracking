@@ -120,6 +120,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
   std::vector<std::pair<Acts::GeometryIdentifier, edm4hep::TrackerHitPlane>> sortedHits;
   ACTSTracking::SourceLinkContainer                                          sourceLinks;
   ACTSTracking::MeasurementContainer                                         measurements;
+  ACTSTracking::HitContainer                                                 hits;
   std::vector<SeedInput>                                                     seedInputs;
 
   // Loop over each hit collections and get a single vector with hits
@@ -147,6 +148,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
   // Turn the edm4hep TrackerHit's into Acts objects
   // Assumes that the hits are sorted by the GeoID
   sourceLinks.reserve(sortedHits.size());
+  hits.reserve(sortedHits.size());
   for (auto& hitPair : sortedHits) {
     // Convert to Acts hit
     const Acts::Surface* surface = trackingGeometry()->findSurface(hitPair.first);
@@ -167,12 +169,13 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
     localCov(0, 0)                          = std::pow(hitplane.getDu() * Acts::UnitConstants::mm, 2);
     localCov(1, 1)                          = std::pow(hitplane.getDv() * Acts::UnitConstants::mm, 2);
 
-    ACTSTracking::SourceLink  sourceLink(surface->geometryId(), measurements.size(), hitPair.second);
+    ACTSTracking::SourceLink  sourceLink(surface->geometryId(), measurements.size());
     Acts::SourceLink          src_wrap{sourceLink};
     ACTSTracking::Measurement meas =
         ACTSTracking::makeMeasurement(src_wrap, loc, localCov, Acts::eBoundLoc0, Acts::eBoundLoc1);
 
     measurements.push_back(meas);
+    hits.push_back(hitPair.second);
     sourceLinks.emplace_hint(sourceLinks.end(), sourceLink);
 
     // Seed selection and conversion to useful coordinates
@@ -474,14 +477,14 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
 
     // Convert this task's seeds into bound track parameters and seed tracks.
     std::vector<Acts::BoundTrackParameters> paramseeds =
-        seedsToParameters(seeds, spacePoints, seedCollection, localMagCache);
+        seedsToParameters(seeds, spacePoints, hits, seedCollection, localMagCache);
 
     // Find the tracks
     if (!m_runCKF)
       return;
 
-    if (!tracking(paramseeds, trackFinder, ckfOptions, extrapPropagator, *perigeeSurface, extrapOptions, localMagCache,
-                  trackCollection)
+    if (!tracking(paramseeds, trackFinder, ckfOptions, extrapPropagator, *perigeeSurface, extrapOptions, hits,
+                  localMagCache, trackCollection)
              .isSuccess()) {
       warning() << "Tracking failed for this event" << endmsg;
     }
@@ -501,7 +504,8 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
 
 std::vector<Acts::BoundTrackParameters> ACTSSeededCKFTrackingAlg::seedsToParameters(
     const Acts::SeedContainer2& seeds, const Acts::SpacePointContainer2& spacePoints,
-    edm4hep::TrackCollection& seedCollection, Acts::MagneticFieldProvider::Cache& magCache) const {
+    const ACTSTracking::HitContainer& hits, edm4hep::TrackCollection& seedCollection,
+    Acts::MagneticFieldProvider::Cache& magCache) const {
   std::vector<Acts::BoundTrackParameters> paramseeds;
   paramseeds.reserve(seeds.size());
 
@@ -533,7 +537,7 @@ std::vector<Acts::BoundTrackParameters> ACTSSeededCKFTrackingAlg::seedsToParamet
     const Acts::Vector3 bottomPos = position(bottomSp);
     const Acts::Vector3 middlePos = position(middleSp);
     const Acts::Vector3 topPos    = position(topSp);
-    const double        t0        = bottomSL.edm4hepHit().getTime();
+    const double        t0        = hits[bottomSL.index()].getTime();
 
     // Get the magnetic field at the bottom space point
     Acts::Result<Acts::Vector3> seedField = magneticField()->getField(bottomPos, magCache);
@@ -580,9 +584,9 @@ std::vector<Acts::BoundTrackParameters> ACTSSeededCKFTrackingAlg::seedsToParamet
     {
       std::lock_guard<std::mutex> lock(m_seedMutex);
       auto                        seedTrack = seedCollection.create();
-      seedTrack.addToTrackerHits(bottomSL.edm4hepHit());
-      seedTrack.addToTrackerHits(sourceLinkOf(middleSp).edm4hepHit());
-      seedTrack.addToTrackerHits(sourceLinkOf(topSp).edm4hepHit());
+      seedTrack.addToTrackerHits(hits[bottomSL.index()]);
+      seedTrack.addToTrackerHits(hits[sourceLinkOf(middleSp).index()]);
+      seedTrack.addToTrackerHits(hits[sourceLinkOf(topSp).index()]);
       seedTrack.addToTrackStates(seedTrackState);
     }
 
@@ -600,6 +604,7 @@ StatusCode ACTSSeededCKFTrackingAlg::tracking(const std::vector<Acts::BoundTrack
                                               const Propagator&                   extrapPropagator,
                                               const Acts::PerigeeSurface&         perigeeSurface,
                                               Propagator::Options<>&              extrapOptions,
+                                              const ACTSTracking::HitContainer&   hits,
                                               Acts::MagneticFieldProvider::Cache& magCache,
                                               edm4hep::TrackCollection&           trackCollection) const {
   // Initialize track finder
@@ -647,7 +652,7 @@ StatusCode ACTSSeededCKFTrackingAlg::tracking(const std::vector<Acts::BoundTrack
         debug() << "\tnStates       " << trackTip.nTrackStates() << endmsg;
 
         // Make track object
-        auto track = ACTSTracking::ACTS2edm4hep_track(trackTip, magneticField(), magCache);
+        auto track = ACTSTracking::ACTS2edm4hep_track(trackTip, hits, magneticField(), magCache);
 
         // Save results
         {

@@ -25,13 +25,20 @@
 
 #include "k4ActsTracking/GeometryContainers.hxx"
 
+#include <vector>
+
 namespace ACTSTracking {
   //! \brief Link between an ACTS surface and hit index
+  ///
+  /// Deliberately kept to two 8-byte members (geometry identifier + index) so it
+  /// fits inside the ACTS SourceLink small-buffer (ACTS_SOURCELINK_SBO_SIZE,
+  /// default 16 bytes) and is stored in place rather than heap-allocated on every
+  /// wrap. The associated edm4hep::TrackerHit is therefore not stored here; it is
+  /// recovered from the parallel HitContainer via index() (see HitContainer).
   class SourceLink final {
   public:
-    //! \brief Construct from geometry identifier and hit
-    SourceLink(Acts::GeometryIdentifier gid, std::size_t index, const edm4hep::TrackerHit edmhit)
-        : m_geometryId(gid), m_index(index), m_edm4hephit(edmhit) {}
+    //! \brief Construct from geometry identifier and hit index
+    SourceLink(Acts::GeometryIdentifier gid, std::size_t index) : m_geometryId(gid), m_index(index) {}
 
     // Construct an invalid source link. Must be default constructible to
     /// satisfy SourceLinkConcept.
@@ -43,26 +50,27 @@ namespace ACTSTracking {
 
     /// Access the geometry identifier.
     constexpr Acts::GeometryIdentifier geometryId() const { return m_geometryId; }
-    /// Access the index.
+    /// Access the index. Used both as the key into the MeasurementContainer and,
+    /// in the same order, into the HitContainer to recover the edm4hep hit.
     constexpr std::size_t index() const { return m_index; }
-    /// Access the edm4hep TrackerHitPlane
-    /// @TODO: We want this to be a TrackerHit to support multiple types of tracking detector. However, TrackerHitPlane is currently not derived from TrackerHit as expected.
-    edm4hep::TrackerHit edm4hepHit() const { return m_edm4hephit; }
 
   private:
     Acts::GeometryIdentifier m_geometryId;
     std::size_t              m_index = -1;
-    edm4hep::TrackerHit      m_edm4hephit{edm4hep::TrackerHit::makeEmpty()};
 
     friend constexpr bool operator==(const SourceLink& lhs, const SourceLink& rhs) {
-      return (lhs.m_geometryId == rhs.m_geometryId) and (lhs.m_index == rhs.m_index) and
-             (lhs.m_edm4hephit == rhs.m_edm4hephit);
+      return (lhs.m_geometryId == rhs.m_geometryId) and (lhs.m_index == rhs.m_index);
     }
     friend constexpr bool operator!=(const SourceLink& lhs, const SourceLink& rhs) { return not(lhs == rhs); }
   };
 
   /// Container of index source links
   using SourceLinkContainer = GeometryIdMultiset<SourceLink>;
+
+  /// Container of edm4hep hits, parallel to the MeasurementContainer: entry i is
+  /// the hit of the SourceLink/Measurement whose index() is i. Lets the compact
+  /// SourceLink recover its edm4hep::TrackerHit without storing the handle.
+  using HitContainer = std::vector<edm4hep::TrackerHit>;
   /// Accessor for the above source link container
   ///
   /// It wraps up a few lookup methods to be used in the Combinatorial Kalman
