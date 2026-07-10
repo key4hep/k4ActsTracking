@@ -195,6 +195,18 @@ if(DEFINED ENV{luxegeo_DIR})
                   --enableGun
                   --gun.particle e+
                   --gun.multiplicity 10
+                  # Shoot every positron in the same fixed direction, along the
+                  # beam axis (+z) towards the instrumented tracker/ECAL region.
+                  # isotrop=False disables the random per-particle directions of
+                  # the default gun distribution; the dipole field then steers
+                  # the positrons into the tracker acceptance.
+                  --gun.direction "0 0 1"
+                  --gun.isotrop false
+                  # Uniform momentum between 2 and 8 GeV (bare numbers are MeV,
+                  # as in the MAIA chain). At these energies E ~= p for the
+                  # positrons, so this is effectively a uniform 2-8 GeV energy.
+                  --gun.momentumMin 2000
+                  --gun.momentumMax 8000
                   --outputFile particle_gun_LUXE_v0_SIM.edm4hep.root
   )
   set_tests_properties(sim_LUXE_v0 PROPERTIES FIXTURES_SETUP sim_luxe_fixture)
