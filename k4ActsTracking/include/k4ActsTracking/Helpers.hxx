@@ -92,6 +92,7 @@ namespace ACTSTracking {
  *  - associated hits
  *  - track states at IP
  *
+ * \param gctx geometry context used to resolve surface positions
  * \param fitOutput KF fit result
  * \param hits edm4hep hits parallel to the measurement container; the hit of
  *        each track state is recovered via its source-link index()
@@ -100,20 +101,34 @@ namespace ACTSTracking {
  *
  * \return Track with equivalent parameters of the ACTS track
  */
-  edm4hep::MutableTrack ACTS2edm4hep_track(const TrackResult& fitter_res, const HitContainer& hits,
+  edm4hep::MutableTrack ACTS2edm4hep_track(const Acts::GeometryContext& gctx, const TrackResult& fitter_res,
+                                           const HitContainer&                                hits,
                                            std::shared_ptr<const Acts::MagneticFieldProvider> magneticField,
                                            Acts::MagneticFieldProvider::Cache&                magCache);
 
   //! Convert ACTS track state class to edm4hep class
   /**
+ * The EDM4hep/LCIO track state uses a perigee (D0, Z0, phi, omega, tanLambda)
+ * parametrization defined relative to a reference point. If \p params are not
+ * already expressed on a perigee surface, they are re-expressed at an ad-hoc
+ * perigee surface created at their global position (transporting parameters and
+ * covariance), and the state's referencePoint is set to that perigee. This
+ * mirrors ActsPlugins EDM4hep::convertTrackParametersToEdm4hep.
+ *
  * \param location Location where the track state is defined (ie: `AtIP`)
+ * \param gctx geometry context used to resolve surface positions
  * \param params ACTS track state parameters
  * \params Bz magnetic field at location of track state [Tesla]
  *
  * \return Track state with equivalent parameters of the ACTS track
  */
-  edm4hep::TrackState ACTS2edm4hep_trackState(int location, const Acts::BoundTrackParameters& params, double Bz);
-  //! Helper Method for ACTS2edm4hep_trackState
+  edm4hep::TrackState ACTS2edm4hep_trackState(int location, const Acts::GeometryContext& gctx,
+                                              const Acts::BoundTrackParameters& params, double Bz);
+  //! Helper Method for ACTS2edm4hep_trackState. Expects \p value / \p cov to
+  //! already be in the perigee (LCIO) reference frame and does NOT set the
+  //! referencePoint; callers holding generic on-surface parameters should use
+  //! the BoundTrackParameters overload above, which re-expresses them at an
+  //! ad-hoc perigee first.
   edm4hep::TrackState ACTS2edm4hep_trackState(int location, const Acts::BoundVector& value,
                                               const Acts::BoundMatrix& cov, double Bz);
 

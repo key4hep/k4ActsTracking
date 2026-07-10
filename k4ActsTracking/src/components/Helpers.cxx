@@ -34,7 +34,9 @@
 #include <Acts/MagneticField/InterpolatedBFieldMap.hpp>
 #include <Acts/Propagator/ActorList.hpp>
 #include <Acts/Propagator/PropagatorOptions.hpp>
+#include <Acts/Propagator/detail/CovarianceEngine.hpp>
 #include <Acts/Surfaces/BoundaryTolerance.hpp>
+#include <Acts/Surfaces/PerigeeSurface.hpp>
 #include <Acts/Surfaces/Surface.hpp>
 #include <Acts/Utilities/Intersection.hpp>
 #include <Acts/Utilities/Logger.hpp>
@@ -73,7 +75,8 @@ namespace ACTSTracking {
     return inpath;
   }
 
-  edm4hep::MutableTrack ACTS2edm4hep_track(const TrackResult& fitter_res, const HitContainer& hits,
+  edm4hep::MutableTrack ACTS2edm4hep_track(const Acts::GeometryContext& gctx, const TrackResult& fitter_res,
+                                           const HitContainer&                                hits,
                                            std::shared_ptr<const Acts::MagneticFieldProvider> magneticField,
                                            Acts::MagneticFieldProvider::Cache&                magCache) {
     // Create new object
@@ -84,25 +87,27 @@ namespace ACTSTracking {
     track.setNdf(fitter_res.nDoF());
     track.setNholes(fitter_res.nHoles());
 
-    // ACTS magnetic field
-    const Acts::Vector3         zeroPos(0, 0, 0);
-    Acts::Result<Acts::Vector3> fieldRes = magneticField->getField(zeroPos, magCache);
-    if (!fieldRes.ok()) {
-      throw std::runtime_error("Field lookup error: " + fieldRes.error().message());
-    }
-    Acts::Vector3 field = *fieldRes;
+    // Local z-field [Tesla] at a global position
+    auto localBz = [&](const Acts::Vector3& pos) -> double {
+      Acts::Result<Acts::Vector3> fieldRes = magneticField->getField(pos, magCache);
+      if (!fieldRes.ok()) {
+        throw std::runtime_error("Field lookup error: " + fieldRes.error().message());
+      }
+      return (*fieldRes)[2] / Acts::UnitConstants::T;
+    };
 
-    // Covarienc and states
-    const Acts::BoundVector& params     = fitter_res.parameters();
-    const Acts::BoundMatrix& covariance = fitter_res.covariance();
-    auto trackStateAtIP = ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtIP, params, covariance,
-                                                                field[2] / Acts::UnitConstants::T);
-    track.addToTrackStates(trackStateAtIP);
+    // IP track state. The fit reference surface is a perigee at the IP, so the
+    // parameters are already in the perigee frame and the referencePoint ends up
+    // at the origin.
+    Acts::BoundTrackParameters ipParams{fitter_res.referenceSurface().getSharedPtr(), fitter_res.parameters(),
+                                        fitter_res.covariance(), fitter_res.particleHypothesis()};
+    track.addToTrackStates(ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtIP, gctx, ipParams,
+                                                                 localBz(Acts::Vector3(0, 0, 0))));
 
     std::vector<edm4hep::TrackerHit> hitsOnTrack;
     std::vector<edm4hep::TrackState> statesOnTrack;
 
-    // Handle each track state
+    // Handle each measurement track state
     for (const auto& trk_state : fitter_res.trackStatesReversed()) {
       if (!trk_state.hasUncalibratedSourceLink())
         continue;
@@ -116,16 +121,14 @@ namespace ACTSTracking {
 
       const Acts::Vector3 hitPos(curr_hit.getPosition().x, curr_hit.getPosition().y, curr_hit.getPosition().z);
 
-      fieldRes = magneticField->getField(hitPos, magCache);
-      if (!fieldRes.ok()) {
-        throw std::runtime_error("Field lookup error: " + fieldRes.error().message());
-      }
-      field = *fieldRes;
-
-      auto trackState =
-          ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtOther, trk_state.parameters(),
-                                                trk_state.covariance(), field[2] / Acts::UnitConstants::T);
-      statesOnTrack.push_back(trackState);
+      // Re-express the on-surface state at an ad-hoc perigee at the hit location
+      // (handled inside ACTS2edm4hep_trackState) so D0/Z0 and the per-state
+      // referencePoint are geometrically consistent. The curvature (omega)
+      // conversion uses the local field at the hit.
+      Acts::BoundTrackParameters stateParams{trk_state.referenceSurface().getSharedPtr(), trk_state.parameters(),
+                                             trk_state.covariance(), fitter_res.particleHypothesis()};
+      statesOnTrack.push_back(
+          ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtOther, gctx, stateParams, localBz(hitPos)));
     }
 
     std::reverse(hitsOnTrack.begin(), hitsOnTrack.end());
@@ -149,8 +152,42 @@ namespace ACTSTracking {
     return track;
   }
 
-  edm4hep::TrackState ACTS2edm4hep_trackState(int location, const Acts::BoundTrackParameters& params, double Bz) {
-    return ACTS2edm4hep_trackState(location, params.parameters(), params.covariance().value(), Bz);
+  edm4hep::TrackState ACTS2edm4hep_trackState(int location, const Acts::GeometryContext& gctx,
+                                              const Acts::BoundTrackParameters& params, double Bz) {
+    const Acts::Surface& surface = params.referenceSurface();
+
+    // Global position of the parameters on their reference surface.
+    const Acts::Vector3 global = surface.localToGlobal(gctx, params.parameters().head<2>(), params.direction());
+
+    // EDM4hep/LCIO track states use a perigee parametrization (D0, Z0, phi,
+    // omega, tanLambda) defined relative to a reference point. If the parameters
+    // are not already on a perigee surface, re-express them at an ad-hoc perigee
+    // created at their global position, transporting parameters and covariance.
+    // Mirrors ActsPlugins EDM4hep::convertTrackParametersToEdm4hep.
+    std::shared_ptr<const Acts::Surface> refSurface  = surface.getSharedPtr();
+    Acts::BoundVector                    perigeePars = params.parameters();
+    Acts::BoundMatrix                    perigeeCov  = params.covariance().value();
+
+    if (dynamic_cast<const Acts::PerigeeSurface*>(refSurface.get()) == nullptr) {
+      refSurface = Acts::Surface::makeShared<Acts::PerigeeSurface>(global);
+
+      Acts::Result<Acts::BoundTrackParameters> converted =
+          Acts::detail::boundToBoundConversion(gctx, params, *refSurface, Acts::Vector3{0, 0, Bz});
+      if (!converted.ok()) {
+        throw std::runtime_error("Bound-to-perigee conversion error: " + converted.error().message());
+      }
+      perigeePars = converted->parameters();
+      perigeeCov  = converted->covariance().value();
+    }
+
+    edm4hep::TrackState trackState = ACTS2edm4hep_trackState(location, perigeePars, perigeeCov, Bz);
+
+    // Reference point = center of the (perigee) reference surface.
+    const Acts::Vector3 center     = refSurface->center(gctx);
+    trackState.referencePoint      = edm4hep::Vector3f(static_cast<float>(center.x()), static_cast<float>(center.y()),
+                                                       static_cast<float>(center.z()));
+
+    return trackState;
   }
 
   edm4hep::TrackState ACTS2edm4hep_trackState(int location, const Acts::BoundVector& value,
