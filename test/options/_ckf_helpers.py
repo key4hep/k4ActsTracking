@@ -77,8 +77,11 @@ def make_ckf_tracking(
     hit_merger,
     hit_rel_merger,
     seeding_cellids,
+    **ckf_args,
 ):
     """Configure the CKFTrackingAlg such that it does **some** tracking
+
+    Additional CKFTrackingAlg properties can be passed as keyword arguments.
 
     NOTE: This is really just an example on how to configure it for some
     technical tests! This will not work for any meaningful tracking!
@@ -101,4 +104,5 @@ def make_ckf_tracking(
         InputTrackerHitCollection=hit_merger.OutputCollection,
         InputTrackerHitRelationCollection=hit_rel_merger.OutputCollection,
         OutputLevel=INFO,
+        **ckf_args,
     )
