@@ -287,14 +287,6 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
   const ACTSTracking::KFRunner kfRunner(*m_actsGeoSvc, geoCtx, magCtx, calCtx, measurements, hitContainer,
                                         {.propagateBackward = m_propagateBackward});
 
-  // Per-hit seed info: global position + transverse radius, resolved once per
-  // usable hit so the seed triplet can be ordered by radius.
-  struct SeedHit {
-    Acts::Vector3            pos;
-    double                   r;
-    ACTSTracking::SourceLink sl;
-  };
-
   edm4hep::TrackCollection trackCands{};
   auto                     histBuffer = m_monitoringHist.buffer();
   for (const auto& candIdcs : trackCandIdcs) {
@@ -303,35 +295,30 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
       continue;
     }
 
-    // Collect the source links + seed positions for this candidate's hits.
-    std::vector<SeedHit>          hits;
-    std::vector<Acts::SourceLink> candSourceLinks;
-    hits.reserve(candIdcs.size());
-    candSourceLinks.reserve(candIdcs.size());
+    // Gather this candidate's hits and build the radius-ordered seed hits.
+    std::vector<edm4hep::TrackerHitPlane> candHits;
+    candHits.reserve(candIdcs.size());
     for (const auto idx : candIdcs) {
-      auto it = slByHit.find(ACTSTracking::trackerHitKey(allHits[idx]));
-      if (it == slByHit.end()) {
-        continue;
-      }
-      const edm4hep::Vector3d p = hitContainer[it->second.index()].getPosition();
-      hits.push_back({Acts::Vector3(p.x, p.y, p.z), std::hypot(p.x, p.y), it->second});
+      candHits.push_back(allHits[idx]);
     }
+    const std::vector<ACTSTracking::SeedHit> hits = ACTSTracking::collectSeedHits(candHits, slByHit, hitContainer);
 
     if (hits.size() < m_minHitsPerTrk.value()) {
       debug() << "Skipping candidate with " << hits.size() << " usable hits." << endmsg;
       continue;
     }
 
-    // Order hits by radius: innermost / middle / outermost form the seed, and
-    // the (radius-ordered) source links are handed to the Kalman fitter.
-    std::sort(hits.begin(), hits.end(), [](const SeedHit& a, const SeedHit& b) { return a.r < b.r; });
-    for (const SeedHit& h : hits) {
+    // The radius-ordered source links (innermost / middle / outermost form the
+    // seed) are handed to the Kalman fitter.
+    std::vector<Acts::SourceLink> candSourceLinks;
+    candSourceLinks.reserve(hits.size());
+    for (const ACTSTracking::SeedHit& h : hits) {
       candSourceLinks.emplace_back(h.sl);
     }
 
-    const SeedHit& bottom = hits.front();
-    const SeedHit& middle = hits[hits.size() / 2];
-    const SeedHit& top    = hits.back();
+    const ACTSTracking::SeedHit& bottom = hits.front();
+    const ACTSTracking::SeedHit& middle = hits[hits.size() / 2];
+    const ACTSTracking::SeedHit& top    = hits.back();
 
     const Acts::Surface* bottomSurface = m_actsGeoSvc->trackingGeometry()->findSurface(bottom.sl.geometryId());
     if (bottomSurface == nullptr) {

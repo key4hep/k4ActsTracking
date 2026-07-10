@@ -66,6 +66,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -225,6 +226,48 @@ namespace ACTSTracking {
     Acts::BoundMatrix cov = ACTSTracking::makeInitialCovariance(p, errPos, errPhi, errLambda, errRelP, errTime);
 
     return Acts::BoundTrackParameters(bottomSurface.getSharedPtr(), params, cov, Acts::ParticleHypothesis::pion());
+  }
+
+  /// A hit belonging to a seed candidate: global position, transverse radius and
+  /// the source link of its ACTS measurement. Once the hits are ordered by
+  /// radius the innermost, middle and outermost entries form the three-point
+  /// seed.
+  struct SeedHit {
+    Acts::Vector3            pos;
+    double                   r;
+    ACTSTracking::SourceLink sl;
+  };
+
+  /**
+   * @brief Collect the radius-ordered seed hits for a candidate's hits.
+   *
+   * For every hit in @p candidateHits that has a source link in @p slByHit a
+   * SeedHit is built: its global position is taken from the parallel
+   * @p hitContainer via the source-link index(), together with the transverse
+   * radius and the source link itself. The returned vector is sorted by
+   * increasing transverse radius, so front() / [size()/2] / back() form the
+   * three-point seed.
+   *
+   * Hits without a source link are skipped, so the result may be smaller than
+   * @p candidateHits; callers apply their own minimum-hit requirement.
+   *
+   * @tparam HitRange Iterable of edm4hep hits accepted by trackerHitKey().
+   */
+  template <class HitRange>
+  std::vector<SeedHit> collectSeedHits(const HitRange&                                      candidateHits,
+                                       const std::unordered_map<std::uint64_t, SourceLink>& slByHit,
+                                       const ACTSTracking::HitContainer&                    hitContainer) {
+    std::vector<SeedHit> seedHits;
+    for (const auto& hit : candidateHits) {
+      auto it = slByHit.find(trackerHitKey(hit));
+      if (it == slByHit.end()) {
+        continue;
+      }
+      const edm4hep::Vector3d p = hitContainer[it->second.index()].getPosition();
+      seedHits.push_back({Acts::Vector3(p.x, p.y, p.z), std::hypot(p.x, p.y), it->second});
+    }
+    std::sort(seedHits.begin(), seedHits.end(), [](const SeedHit& a, const SeedHit& b) { return a.r < b.r; });
+    return seedHits;
   }
 
 }  // namespace ACTSTracking
