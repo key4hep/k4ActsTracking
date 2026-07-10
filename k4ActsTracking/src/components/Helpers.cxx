@@ -24,6 +24,7 @@
 #include <edm4hep/TrackerHit.h>
 
 // Standard
+#include <cassert>
 #include <filesystem>
 #include <memory>
 #include <vector>
@@ -72,7 +73,7 @@ namespace ACTSTracking {
     return inpath;
   }
 
-  edm4hep::MutableTrack ACTS2edm4hep_track(const TrackResult&                                 fitter_res,
+  edm4hep::MutableTrack ACTS2edm4hep_track(const TrackResult& fitter_res, const HitContainer& hits,
                                            std::shared_ptr<const Acts::MagneticFieldProvider> magneticField,
                                            Acts::MagneticFieldProvider::Cache&                magCache) {
     // Create new object
@@ -108,7 +109,8 @@ namespace ACTSTracking {
 
       auto sl = trk_state.getUncalibratedSourceLink().get<ACTSTracking::SourceLink>();
 
-      const auto curr_hit = sl.edm4hepHit();
+      assert((sl.index() < hits.size()) and "Source link index is outside the hit container bounds");
+      const auto curr_hit = hits[sl.index()];
 
       hitsOnTrack.push_back(curr_hit);
 

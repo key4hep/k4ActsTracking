@@ -73,6 +73,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -159,9 +160,19 @@ namespace ACTSTracking {
     struct Config {
       double       chi2CutOff            = 15;
       std::int32_t numMeasurementsCutOff = 10;
+      double       chi2CutOffOutlier     = std::numeric_limits<double>::max();
       bool         propagateBackward     = false;
       bool         extrapolateToCalo     = false;
       std::size_t  maxSteps              = 10000;
+
+      // Branch stopper: optionally terminate CKF branches early on too many
+      // holes/outliers or low pT. Disabled by default (useBranchStopper = false).
+      bool   useBranchStopper    = false;
+      int    bsMaxHoles          = 2;
+      int    bsMaxOutliers       = 2;
+      int    bsMinMeasurements   = 6;
+      double bsPtMin             = 0.0;  ///< GeV; <= 0 disables the pT branch stop
+      int    bsPtMinMeasurements = 3;
     };
 
     /// Builds the event-independent propagators and CKF once. The event-local
@@ -178,6 +189,12 @@ namespace ACTSTracking {
           m_geoCtx(Acts::GeometryContext::dangerouslyDefaultConstruct()),
           m_maxSteps(cfg.maxSteps),
           m_propagateBackward(cfg.propagateBackward),
+          m_useBranchStopper(cfg.useBranchStopper),
+          m_bsMaxHoles(cfg.bsMaxHoles),
+          m_bsMaxOutliers(cfg.bsMaxOutliers),
+          m_bsMinMeasurements(cfg.bsMinMeasurements),
+          m_bsPtMin(cfg.bsPtMin),
+          m_bsPtMinMeasurements(cfg.bsPtMinMeasurements),
           m_measSelConfig(makeSelectorConfig(cfg)),
           m_trackFinder(std::make_unique<CombKalmanFilter>(makePropagator(geo, false))),
           m_perigee(Acts::Surface::makeShared<Acts::PerigeeSurface>(Acts::Vector3::Zero())),
@@ -200,7 +217,7 @@ namespace ACTSTracking {
     /// @param caloMonitor Optional counters for the calorimeter-face extrapolation.
     template <class Alg>
     void findTracks(const Alg& alg, const ACTSTracking::MeasurementContainer& measurements,
-                    const ACTSTracking::SourceLinkContainer&       sourceLinks,
+                    const ACTSTracking::SourceLinkContainer& sourceLinks, const ACTSTracking::HitContainer& hits,
                     const std::vector<Acts::BoundTrackParameters>& paramseeds,
                     Acts::MagneticFieldProvider::Cache& magCache, edm4hep::TrackCollection& trackCollection,
                     std::mutex& trackMutex, const CaloExtrapMonitor* caloMonitor = nullptr) const {
@@ -225,6 +242,9 @@ namespace ACTSTracking {
       Acts::CombinatorialKalmanFilterExtensions<CKFTrackContainer> extensions;
       extensions.updater.connect<&Acts::GainMatrixUpdater::operator()<Acts::VectorMultiTrajectory>>(&kfUpdater);
       extensions.createTrackStates.template connect<&TrackStateCreatorType::createTrackStates>(&trackStateCreator);
+      if (m_useBranchStopper) {
+        extensions.branchStopper.template connect<&CKFRunner::branchStopper>(this);
+      }
 
       Acts::PropagatorPlainOptions pOptions{m_geoCtx, m_magCtx};
       pOptions.maxSteps = m_maxSteps;
@@ -269,7 +289,7 @@ namespace ACTSTracking {
               continue;
             }
 
-            auto track = ACTSTracking::ACTS2edm4hep_track(trackTip, m_geo.magneticField(), magCache);
+            auto track = ACTSTracking::ACTS2edm4hep_track(trackTip, hits, m_geo.magneticField(), magCache);
 
             addCaloState(alg, trackTip, track, magCache, caloMonitor);
 
@@ -289,8 +309,41 @@ namespace ACTSTracking {
         Acts::TrackStateCreator<ACTSTracking::SourceLinkAccessor::Iterator, CKFTrackContainer>;
 
     static Acts::MeasurementSelector::Config makeSelectorConfig(const Config& cfg) {
-      return {
-          {Acts::GeometryIdentifier(), {{}, {cfg.chi2CutOff}, {static_cast<std::size_t>(cfg.numMeasurementsCutOff)}}}};
+      return {{Acts::GeometryIdentifier(),
+               {{}, {cfg.chi2CutOff}, {static_cast<std::size_t>(cfg.numMeasurementsCutOff)}, {cfg.chi2CutOffOutlier}}}};
+    }
+
+    /// CKF branch stopper: drop a branch whose |pT| falls below threshold, or
+    /// that has too many holes/outliers (keeping it if it already has enough
+    /// measurements). Only connected when Config::useBranchStopper is set.
+    Acts::CombinatorialKalmanFilterBranchStopperResult branchStopper(
+        const CKFTrackContainer::TrackProxy& track, const CKFTrackContainer::TrackStateProxy& trackState) const {
+      using Result = Acts::CombinatorialKalmanFilterBranchStopperResult;
+
+      const int nMeas = static_cast<int>(track.nMeasurements());
+
+      // pT branch stop: once the branch has enough measurements for the momentum
+      // estimate to be reliable, drop it if |pT| has fallen below threshold.
+      if (m_bsPtMin > 0.0 && nMeas >= m_bsPtMinMeasurements) {
+        const auto&  params = trackState.hasFiltered() ? trackState.filtered() : trackState.predicted();
+        const double theta  = params[Acts::eBoundTheta];
+        const double qOverP = params[Acts::eBoundQOverP];
+        if (qOverP != 0.0) {
+          const double pt = std::abs(std::sin(theta) / qOverP);  // native momentum units
+          if (pt < m_bsPtMin * Acts::UnitConstants::GeV) {
+            return Result::StopAndDrop;
+          }
+        }
+      }
+
+      // Hole / outlier branch stop.
+      const bool tooManyHoles    = static_cast<int>(track.nHoles()) > m_bsMaxHoles;
+      const bool tooManyOutliers = static_cast<int>(track.nOutliers()) > m_bsMaxOutliers;
+      if (!(tooManyHoles || tooManyOutliers)) {
+        return Result::Continue;
+      }
+      // Keep the branch if it already has enough measurements, otherwise drop it.
+      return (nMeas >= m_bsMinMeasurements) ? Result::StopAndKeep : Result::StopAndDrop;
     }
 
     /// Extrapolate the smoothed track to the calorimeter face and, on success,
@@ -375,8 +428,14 @@ namespace ACTSTracking {
     Acts::GeometryContext             m_geoCtx;
     Acts::MagneticFieldContext        m_magCtx{};
     Acts::CalibrationContext          m_calCtx{};
-    std::size_t                       m_maxSteps          = 10000;
-    bool                              m_propagateBackward = false;
+    std::size_t                       m_maxSteps            = 10000;
+    bool                              m_propagateBackward   = false;
+    bool                              m_useBranchStopper    = false;
+    int                               m_bsMaxHoles          = 2;
+    int                               m_bsMaxOutliers       = 2;
+    int                               m_bsMinMeasurements   = 6;
+    double                            m_bsPtMin             = 0.0;
+    int                               m_bsPtMinMeasurements = 3;
     Acts::MeasurementSelector::Config m_measSelConfig;
 
     std::unique_ptr<CombKalmanFilter>                 m_trackFinder;

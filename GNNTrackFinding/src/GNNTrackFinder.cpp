@@ -272,18 +272,19 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
   // source link of each hit so each candidate can be turned into a fit seed.
   ACTSTracking::SourceLinkContainer                           sourceLinks;
   ACTSTracking::MeasurementContainer                          measurements;
+  ACTSTracking::HitContainer                                  hitContainer;
   std::unordered_map<std::uint64_t, ACTSTracking::SourceLink> slByHit;
   slByHit.reserve(allHits.size());
 
   ACTSTracking::prepareTrackerHits(
-      *this, *m_actsGeoSvc, geoCtx, allHits, measurements, sourceLinks, /*numThreads=*/1,
+      *this, *m_actsGeoSvc, geoCtx, allHits, measurements, sourceLinks, hitContainer, /*numThreads=*/1,
       [&](const edm4hep::TrackerHitPlane& hit, const ACTSTracking::SourceLink& sl, const Acts::Vector3& /*globalPos*/,
           const Acts::Surface& /*surface*/,
           const Acts::SquareMatrix2& /*localCov*/) { slByHit.emplace(ACTSTracking::trackerHitKey(hit), sl); });
 
   Acts::MagneticFieldProvider::Cache magCache = m_actsGeoSvc->magneticField()->makeCache(magCtx);
 
-  const ACTSTracking::KFRunner kfRunner(*m_actsGeoSvc, geoCtx, magCtx, calCtx, measurements,
+  const ACTSTracking::KFRunner kfRunner(*m_actsGeoSvc, geoCtx, magCtx, calCtx, measurements, hitContainer,
                                         {.propagateBackward = m_propagateBackward});
 
   // Per-hit seed info: global position + transverse radius, resolved once per
@@ -312,7 +313,7 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
       if (it == slByHit.end()) {
         continue;
       }
-      const edm4hep::Vector3d p = it->second.edm4hepHit().getPosition();
+      const edm4hep::Vector3d p = hitContainer[it->second.index()].getPosition();
       hits.push_back({Acts::Vector3(p.x, p.y, p.z), std::hypot(p.x, p.y), it->second});
     }
 
@@ -339,9 +340,9 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
     }
 
     std::optional<Acts::BoundTrackParameters> startParams = ACTSTracking::estimateSeedParameters(
-        *this, *m_actsGeoSvc, geoCtx, *bottomSurface, bottom.pos, middle.pos, top.pos, bottom.sl.edm4hepHit().getTime(),
-        magCache, m_initialTrackError_pos, m_initialTrackError_phi, m_initialTrackError_lambda,
-        m_initialTrackError_relP, m_initialTrackError_time);
+        *this, *m_actsGeoSvc, geoCtx, *bottomSurface, bottom.pos, middle.pos, top.pos,
+        hitContainer[bottom.sl.index()].getTime(), magCache, m_initialTrackError_pos, m_initialTrackError_phi,
+        m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time);
     if (!startParams) {
       continue;
     }

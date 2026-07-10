@@ -111,6 +111,10 @@ namespace ACTSTracking {
    * algorithm can decide what to keep (a per-hit source-link map, seed grid
    * inputs, ...).
    *
+   * The @p hits container is filled in lockstep with @p measurements: entry i is
+   * the edm4hep hit of the source link whose index() is i, so the compact
+   * SourceLink can recover its hit via hits[sourceLink.index()].
+   *
    * @tparam Alg     Owning Gaudi algorithm (used only for level-aware logging).
    * @tparam HitSink Callback (const edm4hep::TrackerHitPlane&, const SourceLink&,
    *                 const Acts::Vector3& globalPos, const Acts::Surface&,
@@ -120,7 +124,8 @@ namespace ACTSTracking {
   void prepareTrackerHits(const Alg& alg, const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx,
                           const edm4hep::TrackerHitPlaneCollection& trackerHits,
                           ACTSTracking::MeasurementContainer&       measurements,
-                          ACTSTracking::SourceLinkContainer& sourceLinks, int numThreads, HitSink&& hitSink) {
+                          ACTSTracking::SourceLinkContainer& sourceLinks, ACTSTracking::HitContainer& hits,
+                          int numThreads, HitSink&& hitSink) {
     const auto& cellIdToSurface = geo.cellIdToSurfaceMap();
 
     std::vector<std::pair<Acts::GeometryIdentifier, edm4hep::TrackerHitPlane>> sortedHits;
@@ -146,6 +151,7 @@ namespace ACTSTracking {
     }
 
     sourceLinks.reserve(sortedHits.size());
+    hits.reserve(sortedHits.size());
 
     for (const auto& hitPair : sortedHits) {
       const Acts::Surface* surface = geo.trackingGeometry()->findSurface(hitPair.first);
@@ -171,12 +177,13 @@ namespace ACTSTracking {
       localCov(0, 0)               = std::pow(hitPair.second.getDu() * Acts::UnitConstants::mm, 2);
       localCov(1, 1)               = std::pow(hitPair.second.getDv() * Acts::UnitConstants::mm, 2);
 
-      ACTSTracking::SourceLink  sourceLink(surface->geometryId(), measurements.size(), hitPair.second);
+      ACTSTracking::SourceLink  sourceLink(surface->geometryId(), measurements.size());
       Acts::SourceLink          srcWrap{sourceLink};
       ACTSTracking::Measurement meas =
           ACTSTracking::makeMeasurement(srcWrap, loc, localCov, Acts::eBoundLoc0, Acts::eBoundLoc1);
 
       measurements.push_back(meas);
+      hits.push_back(hitPair.second);
       sourceLinks.emplace_hint(sourceLinks.end(), sourceLink);
 
       hitSink(hitPair.second, sourceLink, globalPos, *surface, localCov);

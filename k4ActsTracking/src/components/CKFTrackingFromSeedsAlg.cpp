@@ -192,6 +192,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingFromSe
 
   ACTSTracking::SourceLinkContainer  sourceLinks;
   ACTSTracking::MeasurementContainer measurements;
+  ACTSTracking::HitContainer         hitContainer;
 
   // Build measurements + source links for all hits, and keep the source link of
   // each hit so the input track candidates can be turned into seeds.
@@ -199,7 +200,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingFromSe
   slByHit.reserve(trackerHitCollection.size());
 
   ACTSTracking::prepareTrackerHits(
-      *this, *m_actsGeoSvc, geoCtx, trackerHitCollection, measurements, sourceLinks, m_numThreads.value(),
+      *this, *m_actsGeoSvc, geoCtx, trackerHitCollection, measurements, sourceLinks, hitContainer, m_numThreads.value(),
       [&](const edm4hep::TrackerHitPlane& hit, const ACTSTracking::SourceLink& sl, const Acts::Vector3& /*globalPos*/,
           const Acts::Surface& /*surface*/,
           const Acts::SquareMatrix2& /*localCov*/) { slByHit.emplace(ACTSTracking::trackerHitKey(hit), sl); });
@@ -239,7 +240,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingFromSe
         if (it == slByHit.end()) {
           continue;
         }
-        const edm4hep::Vector3d p = it->second.edm4hepHit().getPosition();
+        const edm4hep::Vector3d p = hitContainer[it->second.index()].getPosition();
         hits.push_back({Acts::Vector3(p.x, p.y, p.z), std::hypot(p.x, p.y), it->second});
       }
 
@@ -264,7 +265,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingFromSe
 
       std::optional<Acts::BoundTrackParameters> paramseed = ACTSTracking::estimateSeedParameters(
           *this, *m_actsGeoSvc, geoCtx, *bottomSurface, bottom.pos, middle.pos, top.pos,
-          bottom.sl.edm4hepHit().getTime(), magCacheLocal, m_initialTrackError_pos, m_initialTrackError_phi,
+          hitContainer[bottom.sl.index()].getTime(), magCacheLocal, m_initialTrackError_pos, m_initialTrackError_phi,
           m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time);
       if (!paramseed) {
         continue;
@@ -277,15 +278,15 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingFromSe
         std::lock_guard<std::mutex> lock(m_seedMutex);
         auto                        outSeed = seedCollection.create();
         for (const SeedHit& h : hits) {
-          outSeed.addToTrackerHits(h.sl.edm4hepHit());
+          outSeed.addToTrackerHits(hitContainer[h.sl.index()]);
         }
         outSeed.addToTrackStates(seedTrackState);
       }
     }
 
     // One CKF pass for the whole chunk.
-    m_ckfRunner->findTracks(*this, measurements, sourceLinks, paramseeds, magCacheLocal, trackCollection, m_trackMutex,
-                            &m_caloMonitor);
+    m_ckfRunner->findTracks(*this, measurements, sourceLinks, hitContainer, paramseeds, magCacheLocal, trackCollection,
+                            m_trackMutex, &m_caloMonitor);
   };
 
   const tbb::blocked_range<std::size_t> fullRange(0, seedTrackCollection.size());

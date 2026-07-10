@@ -85,14 +85,16 @@ namespace ACTSTracking {
     };
 
     /// @param measurements Event-local measurement container; must outlive the runner.
+    /// @param hits Event-local hit container parallel to @p measurements; must outlive the runner.
     KFRunner(const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx, const Acts::MagneticFieldContext& magCtx,
              const Acts::CalibrationContext& calCtx, const ACTSTracking::MeasurementContainer& measurements,
-             const Config& cfg)
+             const ACTSTracking::HitContainer& hits, const Config& cfg)
         : m_geo(geo),
           m_geoCtx(geoCtx),
           m_trackingGeometry(geo.trackingGeometry()),
           m_perigee(Acts::Surface::makeShared<Acts::PerigeeSurface>(Acts::Vector3::Zero())),
-          m_measCal(measurements) {
+          m_measCal(measurements),
+          m_hits(hits) {
       m_fitter = std::make_unique<KalmanFitter>(makePropagator(geo, false));
 
       m_surfaceAccessor.trackingGeometry = m_trackingGeometry.get();
@@ -132,7 +134,7 @@ namespace ACTSTracking {
         return std::nullopt;
       }
 
-      return ACTSTracking::ACTS2edm4hep_track(result.value(), m_geo.magneticField(), magCache);
+      return ACTSTracking::ACTS2edm4hep_track(result.value(), m_hits, m_geo.magneticField(), magCache);
     }
 
   private:
@@ -144,6 +146,7 @@ namespace ACTSTracking {
     Acts::GainMatrixUpdater             m_kfUpdater;
     Acts::GainMatrixSmoother            m_kfSmoother;
     ACTSTracking::MeasurementCalibrator m_measCal;
+    const ACTSTracking::HitContainer&   m_hits;
     GeometrySurfaceAccessor             m_surfaceAccessor;
 
     Acts::KalmanFitterExtensions<Acts::VectorMultiTrajectory> m_extensions;
