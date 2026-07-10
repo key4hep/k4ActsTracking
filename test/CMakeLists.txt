@@ -143,7 +143,14 @@ add_geometry_load_test($ENV{k4geo_DIR}/FCCee/ILD_FCCee/compact/ILD_FCCee_v01/ILD
 add_geometry_load_test($ENV{k4geo_DIR}/FCCee/ILD_FCCee/compact/ILD_FCCee_v02/ILD_FCCee_v02.xml)
 add_geometry_load_test($ENV{k4geo_DIR}/FCCee/CLD/compact/CLD_o2_v07/CLD_o2_v07.xml)
 add_geometry_load_test($ENV{k4geo_DIR}/FCCee/CLD/compact/CLD_o2_v08/CLD_o2_v08.xml)
-add_geometry_load_test($ENV{luxegeo_DIR}/LUXE/LUXE_v0.xml)
+
+# The LUXE geometry lives in luxegeo, which is only present in the LUXE software
+# stack (ghcr.io/luxesoftware/luxe-sw, see luxe-ci.yml). Guard on luxegeo_DIR so
+# these tests are not registered on the key4hep/MuColl stacks where luxegeo is
+# absent (they would otherwise fail with an unresolved compact file path).
+if(DEFINED ENV{luxegeo_DIR})
+  add_geometry_load_test($ENV{luxegeo_DIR}/LUXE/LUXE_v0.xml)
+endif()
 
 
 # === MAIA chain (no upstream config, no standard reco baseline) ===
@@ -174,28 +181,33 @@ add_k4run_test(reco_MAIA_Gen3
 # downstream ECAL slab), so it needs a forward positron gun rather than the 4pi
 # mu- gun baked into add_sim_test(). Mirror the luxegeo README example, which
 # relies on the dipole field to steer the positrons into the tracker acceptance.
-set(_luxe_compact $ENV{luxegeo_DIR}/LUXE/LUXE_v0.xml)
+#
+# Only registered when luxegeo is available (see the guard note above); on the
+# key4hep/MuColl CI stacks luxegeo_DIR is unset and this chain is skipped.
+if(DEFINED ENV{luxegeo_DIR})
+  set(_luxe_compact $ENV{luxegeo_DIR}/LUXE/LUXE_v0.xml)
 
-add_test(NAME sim_LUXE_v0
-  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-  COMMAND ddsim --compactFile ${_luxe_compact}
-                --runType batch
-                --numberOfEvents 10
-                --enableGun
-                --gun.particle e+
-                --gun.multiplicity 10
-                --outputFile particle_gun_LUXE_v0_SIM.edm4hep.root
-)
-set_tests_properties(sim_LUXE_v0 PROPERTIES FIXTURES_SETUP sim_luxe_fixture)
+  add_test(NAME sim_LUXE_v0
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMAND ddsim --compactFile ${_luxe_compact}
+                  --runType batch
+                  --numberOfEvents 10
+                  --enableGun
+                  --gun.particle e+
+                  --gun.multiplicity 10
+                  --outputFile particle_gun_LUXE_v0_SIM.edm4hep.root
+  )
+  set_tests_properties(sim_LUXE_v0 PROPERTIES FIXTURES_SETUP sim_luxe_fixture)
 
-add_k4run_test(reco_LUXE_v0
-  OPTIONS_FILE ${CMAKE_CURRENT_LIST_DIR}/options/LUXE_CKFTracking.py
-  EXTRA_ARGS --compactFile=${_luxe_compact}
-             --IOSvc.Input particle_gun_LUXE_v0_SIM.edm4hep.root
-             --IOSvc.Output particle_gun_LUXE_v0_CKFTracks.edm4hep.root
-  USE_TEST_ENV
-  FIXTURES_REQUIRED sim_luxe_fixture
-)
+  add_k4run_test(reco_LUXE_v0
+    OPTIONS_FILE ${CMAKE_CURRENT_LIST_DIR}/options/LUXE_CKFTracking.py
+    EXTRA_ARGS --compactFile=${_luxe_compact}
+               --IOSvc.Input particle_gun_LUXE_v0_SIM.edm4hep.root
+               --IOSvc.Output particle_gun_LUXE_v0_CKFTracks.edm4hep.root
+    USE_TEST_ENV
+    FIXTURES_REQUIRED sim_luxe_fixture
+  )
+endif()
 
 
 # === CLD chain ===
