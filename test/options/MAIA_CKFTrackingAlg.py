@@ -105,6 +105,14 @@ ckf_tracking = make_ckf_tracking(
     hit_merger,
     hit_rel_merger,
     seeding_cellids=["system:1", "system:2,layer:1|2|3"],
+    # Keep hits with a chi2 up to this value as outliers instead of holes
+    CKF_Chi2CutOffOutlier=25,
+    # Terminate poor CKF branches early, aligned with a typical downstream
+    # track selection (at least 8 hits, at most 2 holes)
+    UseBranchStopper=True,
+    BranchStopper_MaxHoles=2,
+    BranchStopper_MaxOutliers=2,
+    BranchStopper_MinMeasurements=8,
 )
 algList.append(ckf_tracking)
 
