@@ -73,6 +73,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -144,7 +145,8 @@ namespace ACTSTracking {
                           ACTSTracking::MeasurementContainer&       measurements,
                           ACTSTracking::SourceLinkContainer& sourceLinks, ACTSTracking::HitContainer& hits,
                           int numThreads, HitSink&& hitSink, bool useHitTime = false,
-                          double hitTimeResolution = 0.0, bool hitTimesTofCorrected = false) {
+                          const std::function<double(const edm4hep::TrackerHitPlane&)>& hitTimeResolutionFor = {},
+                          bool                                                          hitTimesTofCorrected = false) {
     const auto& cellIdToSurface = geo.cellIdToSurfaceMap();
 
     std::vector<std::pair<Acts::GeometryIdentifier, edm4hep::TrackerHitPlane>> sortedHits;
@@ -210,10 +212,11 @@ namespace ACTSTracking {
           }
           Acts::Vector3 loc3;
           loc3 << loc[0], loc[1], hitT;
-          Acts::SquareMatrix3 cov3 = Acts::SquareMatrix3::Zero();
-          cov3(0, 0)               = localCov(0, 0);
-          cov3(1, 1)               = localCov(1, 1);
-          cov3(2, 2)               = std::pow(hitTimeResolution * Acts::UnitConstants::ns, 2);
+          const double        timeRes = hitTimeResolutionFor ? hitTimeResolutionFor(hitPair.second) : 0.0;
+          Acts::SquareMatrix3 cov3    = Acts::SquareMatrix3::Zero();
+          cov3(0, 0)                  = localCov(0, 0);
+          cov3(1, 1)                  = localCov(1, 1);
+          cov3(2, 2)                  = std::pow(timeRes * Acts::UnitConstants::ns, 2);
           return ACTSTracking::makeMeasurement(srcWrap, loc3, cov3, Acts::eBoundLoc0, Acts::eBoundLoc1,
                                                Acts::eBoundTime);
         }

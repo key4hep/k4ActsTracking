@@ -185,7 +185,16 @@ private:
   Gaudi::Property<float> m_seedFinding_minPt{this, "SeedFinding_MinPt", 500.0, "Minimum pT of tracks to seed [MeV]."};
   Gaudi::Property<float> m_seedFinding_impactMax{this, "SeedFinding_ImpactMax", 3.0,
                                                  "Maximum d0 of tracks to seed [mm]."};
-  Gaudi::Property<float> m_hitTimeResolution{this, "HitTimeResolution", 0.06, "Per-hit time resolution in ns."};
+  Gaudi::Property<std::vector<std::string>> m_hitTimeResolutionCellIDs{
+      this,
+      "HitTimeResolutionCellIDs",
+      {},
+      "CellIDSelector selection strings assigning per-sensor time resolutions, paired with "
+      "HitTimeResolutionValues; the first matching selection wins. Mirror the digitiser's per-layer "
+      "ResolutionT settings here. Required when UseHitTimeInCKF is true, and the selections must "
+      "cover every tracker hit."};
+  Gaudi::Property<std::vector<double>> m_hitTimeResolutionValues{
+      this, "HitTimeResolutionValues", {}, "Time resolutions in ns, paired with HitTimeResolutionCellIDs."};
   Gaudi::Property<float> m_seedFinding_deltaTMax{
       this, "SeedFinding_DeltaTMax", -1.0f,
       "Max |TOF-corrected delta t| (ns) between doublet space points; <= 0 disables the time cut."};
@@ -366,6 +375,23 @@ private:
 
   k4ActsTracking::CellIDSelector m_seedSelector{};
 
+  // One selector per HitTimeResolutionCellIDs entry, paired with m_hitTimeResolutionValues.
+  std::vector<k4ActsTracking::CellIDSelector> m_hitTimeResolutionSelectors{};
+
+  /// Time resolution (ns) for a hit: the first matching HitTimeResolutionCellIDs
+  /// selection wins. A hit not matched by any selection is a configuration error.
+  double hitTimeResolutionFor(const edm4hep::TrackerHitPlane& hit) const {
+    for (std::size_t i = 0; i < m_hitTimeResolutionSelectors.size(); ++i) {
+      if (m_hitTimeResolutionSelectors[i].accept(hit.getCellID())) {
+        return m_hitTimeResolutionValues.value()[i];
+      }
+    }
+    throw std::runtime_error(
+        fmt::format("CKFTrackingAlg: no HitTimeResolutionCellIDs selection matches cellID {}; the selections "
+                    "must cover every tracker hit when UseHitTimeInCKF is enabled",
+                    hit.getCellID()));
+  }
+
   // Shared Combinatorial Kalman Filter, built once in initialize() (the
   // propagators/CKF depend only on geometry+field) and reused read-only across
   // events and threads.
@@ -395,6 +421,22 @@ StatusCode CKFTrackingAlg::initialize() {
 
   m_seedSelector =
       k4ActsTracking::CellIDSelector(m_actsGeoSvc->cellIDEncodingString(), m_seedingSensorsCellIDs.value());
+
+  if (m_hitTimeResolutionCellIDs.size() != m_hitTimeResolutionValues.size()) {
+    error() << "HitTimeResolutionCellIDs and HitTimeResolutionValues must have the same length ("
+            << m_hitTimeResolutionCellIDs.size() << " != " << m_hitTimeResolutionValues.size() << ")" << endmsg;
+    return StatusCode::FAILURE;
+  }
+  if (m_useHitTimeInCKF && m_hitTimeResolutionCellIDs.empty()) {
+    error() << "UseHitTimeInCKF requires the per-sensor time resolutions to be configured via "
+               "HitTimeResolutionCellIDs and HitTimeResolutionValues"
+            << endmsg;
+    return StatusCode::FAILURE;
+  }
+  for (const std::string& selection : m_hitTimeResolutionCellIDs.value()) {
+    m_hitTimeResolutionSelectors.emplace_back(m_actsGeoSvc->cellIDEncodingString(),
+                                              std::vector<std::string>{selection});
+  }
 
   // Apply deltaR fallback defaults
   if (m_seedFinding_deltaRMinTop == 0.f)
@@ -502,11 +544,14 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
         if (m_hitTimesTofCorrected) {
           sp.t += static_cast<float>(globalPos.norm());
         }
-        sp.varT       = static_cast<float>(std::pow(m_hitTimeResolution.value() * Acts::UnitConstants::ns, 2));
+        sp.varT       = m_useHitTimeInCKF
+                            ? static_cast<float>(std::pow(hitTimeResolutionFor(hit) * Acts::UnitConstants::ns, 2))
+                            : 0.f;
         sp.sourceLink = sourceLink;
         seedInputs.push_back(sp);
       },
-      m_useHitTimeInCKF.value(), m_hitTimeResolution.value(), m_hitTimesTofCorrected.value());
+      m_useHitTimeInCKF.value(), [this](const edm4hep::TrackerHitPlane& hit) { return hitTimeResolutionFor(hit); },
+      m_hitTimesTofCorrected.value());
 
   debug() << fmt::format("Created {} sourceLinks and {} space points for seeding", sourceLinks.size(),
                          seedInputs.size())
