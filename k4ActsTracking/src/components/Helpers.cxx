@@ -159,7 +159,7 @@ namespace ACTSTracking {
     // Global position of the parameters on their reference surface.
     const Acts::Vector3 global = surface.localToGlobal(gctx, params.parameters().head<2>(), params.direction());
 
-    // EDM4hep/LCIO track states use a perigee parametrization (D0, Z0, phi,
+    // EDM4hep track states use a perigee parametrization (D0, Z0, phi,
     // omega, tanLambda) defined relative to a reference point. If the parameters
     // are not already on a perigee surface, re-express them at an ad-hoc perigee
     // created at their global position, transporting parameters and covariance.

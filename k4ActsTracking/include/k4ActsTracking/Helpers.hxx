@@ -108,7 +108,7 @@ namespace ACTSTracking {
 
   //! Convert ACTS track state class to edm4hep class
   /**
- * The EDM4hep/LCIO track state uses a perigee (D0, Z0, phi, omega, tanLambda)
+ * The EDM4hep track state uses a perigee (D0, Z0, phi, omega, tanLambda)
  * parametrization defined relative to a reference point. If \p params are not
  * already expressed on a perigee surface, they are re-expressed at an ad-hoc
  * perigee surface created at their global position (transporting parameters and
@@ -125,7 +125,7 @@ namespace ACTSTracking {
   edm4hep::TrackState ACTS2edm4hep_trackState(int location, const Acts::GeometryContext& gctx,
                                               const Acts::BoundTrackParameters& params, double Bz);
   //! Helper Method for ACTS2edm4hep_trackState. Expects \p value / \p cov to
-  //! already be in the perigee (LCIO) reference frame and does NOT set the
+  //! already be in the perigee reference frame and does NOT set the
   //! referencePoint; callers holding generic on-surface parameters should use
   //! the BoundTrackParameters overload above, which re-expresses them at an
   //! ad-hoc perigee first.
