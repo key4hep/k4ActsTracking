@@ -183,9 +183,9 @@ namespace ACTSTracking {
     edm4hep::TrackState trackState = ACTS2edm4hep_trackState(location, perigeePars, perigeeCov, Bz);
 
     // Reference point = center of the (perigee) reference surface.
-    const Acts::Vector3 center     = refSurface->center(gctx);
-    trackState.referencePoint      = edm4hep::Vector3f(static_cast<float>(center.x()), static_cast<float>(center.y()),
-                                                       static_cast<float>(center.z()));
+    const Acts::Vector3 center = refSurface->center(gctx);
+    trackState.referencePoint  = edm4hep::Vector3f(static_cast<float>(center.x()), static_cast<float>(center.y()),
+                                                   static_cast<float>(center.z()));
 
     return trackState;
   }

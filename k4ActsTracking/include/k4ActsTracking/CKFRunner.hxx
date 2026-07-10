@@ -524,8 +524,8 @@ namespace ACTSTracking {
           // The calo-face parameters are local to the target surface;
           // ACTS2edm4hep_trackState re-expresses them at an ad-hoc perigee at the
           // calo-face position and sets the referencePoint accordingly.
-          auto caloState =
-              ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtCalorimeter, m_geoCtx, *caloResult.params, Bz);
+          auto caloState = ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtCalorimeter, m_geoCtx,
+                                                                 *caloResult.params, Bz);
           track.addToTrackStates(caloState);
           break;
         }
