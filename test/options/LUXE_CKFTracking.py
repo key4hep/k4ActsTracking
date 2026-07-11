@@ -73,6 +73,10 @@ ckf_tracking = make_ckf_tracking(
     # LUXE is a four-layer (layer:0..3) telescope; use all of them as the pool
     # of seed space points. Omitted cellID fields act as wildcards.
     seeding_cellids=["layer:0|1|2|3"],
+    # LUXE's tracker sits in a field-free region (the dipole is localized
+    # upstream), so the collider helix seeder finds nothing. Use the straight-
+    # line telescope seeder instead. This switch is a no-op for barrel clients.
+    SeedingMode="Telescope",
 )
 algList.append(ckf_tracking)
 
