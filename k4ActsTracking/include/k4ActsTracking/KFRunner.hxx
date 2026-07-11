@@ -134,7 +134,7 @@ namespace ACTSTracking {
         return std::nullopt;
       }
 
-      return ACTSTracking::ACTS2edm4hep_track(result.value(), m_hits, m_geo.magneticField(), magCache);
+      return ACTSTracking::ACTS2edm4hep_track(m_geoCtx, result.value(), m_hits, m_geo.magneticField(), magCache);
     }
 
   private:
