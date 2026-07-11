@@ -45,6 +45,7 @@
 #include <Acts/Visualization/ObjVisualization3D.hpp>
 #include <ActsPlugins/DD4hep/BlueprintBuilder.hpp>
 #include <ActsPlugins/DD4hep/DD4hepDetectorElement.hpp>
+#include <ActsPlugins/DD4hep/DD4hepFieldAdapter.hpp>
 
 #include <DD4hep/DD4hepUnits.h>
 #include <DD4hep/DetElement.h>
@@ -84,14 +85,23 @@ StatusCode ActsGeoSvc::initialize() {
   m_cellIDEncodingString = m_geoSvc->getDetector()->constantAsString(m_encodingStringConstant.value());
   debug() << "CellID encoding string: " << m_cellIDEncodingString << endmsg;
 
-  std::array<double, 3> magneticFieldVector = {0, 0, 0};
-  std::array<double, 3> position            = {0, 0, 0};
-  m_geoSvc->getDetector()->field().magneticField(position.data(), magneticFieldVector.data());
-  debug() << fmt::format("Retrieved magnetic field at position {}: {}", position, magneticFieldVector) << endmsg;
-  m_magneticField = std::make_shared<Acts::ConstantBField>(
-      Acts::Vector3(magneticFieldVector[0] / dd4hep::tesla * Acts::UnitConstants::T,
-                    magneticFieldVector[1] / dd4hep::tesla * Acts::UnitConstants::T,
-                    magneticFieldVector[2] / dd4hep::tesla * Acts::UnitConstants::T));
+  if (m_useDD4hepField.value()) {
+    // Wrap the real, position-dependent DD4hep field so ACTS sees localized
+    // fields (e.g. the LUXE dipole) during propagation/extrapolation, not just
+    // the constant value at the origin. Opt-in: collider/barrel clients keep the
+    // Acts::ConstantBField below by default.
+    info() << "Using the position-dependent DD4hep magnetic field (DD4hepFieldAdapter)." << endmsg;
+    m_magneticField = std::make_shared<ActsPlugins::DD4hepFieldAdapter>(m_geoSvc->getDetector()->field());
+  } else {
+    std::array<double, 3> magneticFieldVector = {0, 0, 0};
+    std::array<double, 3> position            = {0, 0, 0};
+    m_geoSvc->getDetector()->field().magneticField(position.data(), magneticFieldVector.data());
+    debug() << fmt::format("Retrieved magnetic field at position {}: {}", position, magneticFieldVector) << endmsg;
+    m_magneticField = std::make_shared<Acts::ConstantBField>(
+        Acts::Vector3(magneticFieldVector[0] / dd4hep::tesla * Acts::UnitConstants::T,
+                      magneticFieldVector[1] / dd4hep::tesla * Acts::UnitConstants::T,
+                      magneticFieldVector[2] / dd4hep::tesla * Acts::UnitConstants::T));
+  }
 
   auto gaudiLogger = makeActsGaudiLogger(this);
 

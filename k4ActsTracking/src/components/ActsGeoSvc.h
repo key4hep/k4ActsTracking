@@ -74,6 +74,11 @@ public:
   Gaudi::Property<bool> m_buildCaloSurfaces{
       this, "BuildCaloSurfaces", true,
       "Whether to build the ECAL inner-face surfaces (for track extrapolation to the calorimeter face)."};
+  Gaudi::Property<bool> m_useDD4hepField{
+      this, "UseDD4hepBField", false,
+      "Use the real, position-dependent DD4hep magnetic field (via ACTS' DD4hepFieldAdapter) for all propagation, "
+      "instead of a uniform Acts::ConstantBField sampled at the origin. Needed for localized fields such as the LUXE "
+      "dipole; the default (false) preserves the constant-field behaviour of the collider/barrel clients."};
 
   const CellIDSurfaceMap& cellIdToSurfaceMap() const override { return m_cellIDToSurface; }
   std::string             cellIDEncodingString() const override { return m_cellIDEncodingString; }

@@ -42,13 +42,18 @@ def _get_compact_file():
     return args.compactFile
 
 
-def make_services():
+def make_services(use_dd4hep_field=False):
     """Configure all the necessary services (including getting the geometry from
-    the command line geometry)"""
+    the command line geometry).
+
+    Set use_dd4hep_field=True to make ACTS use the real, position-dependent
+    DD4hep field (needed for localized fields such as the LUXE dipole). The
+    default keeps the constant-field behaviour used by the collider clients.
+    """
     compact_file = _get_compact_file()
     return [
         GeoSvc("GeoSvc", detectors=[compact_file], EnableGeant4Geo=False),
-        ActsGeoSvc("ActsGeoSvc"),
+        ActsGeoSvc("ActsGeoSvc", UseDD4hepBField=use_dd4hep_field),
         EventDataSvc("EventDataSvc"),
     ]
 

@@ -33,7 +33,9 @@ from _ckf_helpers import (
     make_hit_mergers,
 )
 
-svcList = make_services()
+# Use the real DD4hep field so ACTS accounts for the localized LUXE dipole when
+# extrapolating back to the IP (the tracker itself is field-free).
+svcList = make_services(use_dd4hep_field=True)
 iosvc = IOSvc("IOSvc")
 
 algList = []
