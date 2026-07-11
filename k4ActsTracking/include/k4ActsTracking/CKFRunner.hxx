@@ -134,7 +134,7 @@ namespace ACTSTracking {
       throw std::runtime_error("Field lookup error: " + std::to_string(hitField.error().value()));
     }
 
-    return ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtFirstHit, paramseed,
+    return ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtFirstHit, geoCtx, paramseed,
                                                  (*hitField)[2] / Acts::UnitConstants::T);
   }
 
@@ -173,17 +173,27 @@ namespace ACTSTracking {
       int    bsMinMeasurements   = 6;
       double bsPtMin             = 0.0;  ///< GeV; <= 0 disables the pT branch stop
       int    bsPtMinMeasurements = 3;
+
+      /// Surface the fitted tracks are extrapolated to for the AtIP track state.
+      /// When null (the default) a PerigeeSurface at the origin is used, i.e. the
+      /// standard collider beamline parameterisation (d0/z0). A telescope client
+      /// can instead pass a plane perpendicular to the beam so that beam-parallel
+      /// tracks - which never approach the z-axis line - still have a reachable,
+      /// well-defined reference.
+      std::shared_ptr<const Acts::Surface> referenceSurface{nullptr};
     };
 
     /// Builds the event-independent propagators and CKF once. The event-local
     /// measurements and source links are bound per call in findTracks().
     ///
-    /// The CKF propagator, the IP-perigee extrapolator and (optionally) the
-    /// calorimeter-face propagator depend only on the tracking geometry and
+    /// The CKF propagator, the reference-surface extrapolator and (optionally)
+    /// the calorimeter-face propagator depend only on the tracking geometry and
     /// field, so they are constructed here and reused read-only across events
-    /// and threads. Without the separate IP extrapolator the CKF tracks would
-    /// keep their parameters at a measurement surface and the AtIP track state
-    /// would come out degenerate (omega=nan, D0=Z0=0).
+    /// and threads. Without the separate reference extrapolator the CKF tracks
+    /// would keep their parameters at a measurement surface and the AtIP track
+    /// state would come out degenerate (omega=nan, D0=Z0=0). The reference is a
+    /// PerigeeSurface at the origin unless Config::referenceSurface overrides it
+    /// (e.g. a plane perpendicular to the beam for a telescope geometry).
     CKFRunner(const IActsGeoSvc& geo, const Config& cfg)
         : m_geo(geo),
           m_geoCtx(Acts::GeometryContext::dangerouslyDefaultConstruct()),
@@ -197,7 +207,9 @@ namespace ACTSTracking {
           m_bsPtMinMeasurements(cfg.bsPtMinMeasurements),
           m_measSelConfig(makeSelectorConfig(cfg)),
           m_trackFinder(std::make_unique<CombKalmanFilter>(makePropagator(geo, false))),
-          m_perigee(Acts::Surface::makeShared<Acts::PerigeeSurface>(Acts::Vector3::Zero())),
+          m_referenceSurface(cfg.referenceSurface
+                                 ? cfg.referenceSurface
+                                 : Acts::Surface::makeShared<Acts::PerigeeSurface>(Acts::Vector3::Zero())),
           m_extrapolator(std::make_unique<CKFPropagator>(makePropagator(geo, false))) {
       // The calorimeter inner-face surfaces are passive surfaces of the tracking
       // geometry, so the calo propagator's navigator must resolve passive
@@ -275,21 +287,23 @@ namespace ACTSTracking {
               continue;
             }
 
-            // Extrapolate the smoothed track to the perigee at the IP so its
-            // track-level parameters (and hence the AtIP edm4hep TrackState) are
-            // defined there, not at the innermost measurement surface. Must
-            // happen before ACTS2edm4hep_track, which fills the AtIP state.
+            // Extrapolate the smoothed track to the reference surface (the IP
+            // perigee by default, or a beam-perpendicular plane for telescope
+            // clients) so its track-level parameters (and hence the AtIP edm4hep
+            // TrackState) are defined there, not at the innermost measurement
+            // surface. Must happen before ACTS2edm4hep_track, which fills the
+            // AtIP state.
             typename CKFPropagator::template Options<> exOptions(m_geoCtx, m_magCtx);
             exOptions.maxSteps                = m_maxSteps;
             const CKFPropagator& extrapolator = *m_extrapolator;
-            auto exResult = Acts::extrapolateTrackToReferenceSurface(trackTip, *m_perigee, extrapolator, exOptions,
-                                                                     Acts::TrackExtrapolationStrategy::firstOrLast);
+            auto                 exResult     = Acts::extrapolateTrackToReferenceSurface(
+                trackTip, *m_referenceSurface, extrapolator, exOptions, Acts::TrackExtrapolationStrategy::firstOrLast);
             if (!exResult.ok()) {
-              alg.warning() << "IP extrapolation error: " << exResult.error() << endmsg;
+              alg.warning() << "Reference-surface extrapolation error: " << exResult.error() << endmsg;
               continue;
             }
 
-            auto track = ACTSTracking::ACTS2edm4hep_track(trackTip, hits, m_geo.magneticField(), magCache);
+            auto track = ACTSTracking::ACTS2edm4hep_track(m_geoCtx, trackTip, hits, m_geo.magneticField(), magCache);
 
             addCaloState(alg, trackTip, track, magCache, caloMonitor);
 
@@ -392,15 +406,11 @@ namespace ACTSTracking {
           const Acts::Vector3 caloPos  = caloResult.params->position(m_geoCtx);
           auto                fieldRes = m_geo.magneticField()->getField(caloPos, magCache);
           const double        Bz       = fieldRes.ok() ? (*fieldRes)[2] / Acts::UnitConstants::T : 0.0;
-          auto                caloState =
-              ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtCalorimeter, *caloResult.params, Bz);
-          // The calo-face parameters are local to the target surface, so the
-          // edm4hep D0/Z0 from the generic conversion are not meaningful here.
-          // Express the state at the impact point instead: set the reference
-          // point to the global calo-face position (D0 = Z0 = 0 there).
-          caloState.referencePoint = edm4hep::Vector3f(caloPos.x(), caloPos.y(), caloPos.z());
-          caloState.D0             = 0;
-          caloState.Z0             = 0;
+          // The calo-face parameters are local to the target surface;
+          // ACTS2edm4hep_trackState re-expresses them at an ad-hoc perigee at the
+          // calo-face position and sets the referencePoint accordingly.
+          auto caloState = ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtCalorimeter, m_geoCtx,
+                                                                 *caloResult.params, Bz);
           track.addToTrackStates(caloState);
           break;
         }
@@ -439,7 +449,7 @@ namespace ACTSTracking {
     Acts::MeasurementSelector::Config m_measSelConfig;
 
     std::unique_ptr<CombKalmanFilter>                 m_trackFinder;
-    std::shared_ptr<Acts::PerigeeSurface>             m_perigee;
+    std::shared_ptr<const Acts::Surface>              m_referenceSurface;
     std::unique_ptr<CKFPropagator>                    m_extrapolator;
     std::unique_ptr<ACTSTracking::CaloFacePropagator> m_caloPropagator;
   };

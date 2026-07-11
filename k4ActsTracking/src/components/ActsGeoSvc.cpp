@@ -45,11 +45,13 @@
 #include <Acts/Visualization/ObjVisualization3D.hpp>
 #include <ActsPlugins/DD4hep/BlueprintBuilder.hpp>
 #include <ActsPlugins/DD4hep/DD4hepDetectorElement.hpp>
+#include <ActsPlugins/DD4hep/DD4hepFieldAdapter.hpp>
 
 #include <DD4hep/DD4hepUnits.h>
 #include <DD4hep/DetElement.h>
 #include <DD4hep/DetType.h>
 #include <DD4hep/Detector.h>
+#include <DD4hep/Shapes.h>
 #include <DDRec/DetectorData.h>
 
 #include <GaudiKernel/StatusCode.h>
@@ -83,14 +85,23 @@ StatusCode ActsGeoSvc::initialize() {
   m_cellIDEncodingString = m_geoSvc->getDetector()->constantAsString(m_encodingStringConstant.value());
   debug() << "CellID encoding string: " << m_cellIDEncodingString << endmsg;
 
-  std::array<double, 3> magneticFieldVector = {0, 0, 0};
-  std::array<double, 3> position            = {0, 0, 0};
-  m_geoSvc->getDetector()->field().magneticField(position.data(), magneticFieldVector.data());
-  debug() << fmt::format("Retrieved magnetic field at position {}: {}", position, magneticFieldVector) << endmsg;
-  m_magneticField = std::make_shared<Acts::ConstantBField>(
-      Acts::Vector3(magneticFieldVector[0] / dd4hep::tesla * Acts::UnitConstants::T,
-                    magneticFieldVector[1] / dd4hep::tesla * Acts::UnitConstants::T,
-                    magneticFieldVector[2] / dd4hep::tesla * Acts::UnitConstants::T));
+  if (m_useDD4hepField.value()) {
+    // Wrap the real, position-dependent DD4hep field so ACTS sees localized
+    // fields (e.g. the LUXE dipole) during propagation/extrapolation, not just
+    // the constant value at the origin. Opt-in: collider/barrel clients keep the
+    // Acts::ConstantBField below by default.
+    info() << "Using the position-dependent DD4hep magnetic field (DD4hepFieldAdapter)." << endmsg;
+    m_magneticField = std::make_shared<ActsPlugins::DD4hepFieldAdapter>(m_geoSvc->getDetector()->field());
+  } else {
+    std::array<double, 3> magneticFieldVector = {0, 0, 0};
+    std::array<double, 3> position            = {0, 0, 0};
+    m_geoSvc->getDetector()->field().magneticField(position.data(), magneticFieldVector.data());
+    debug() << fmt::format("Retrieved magnetic field at position {}: {}", position, magneticFieldVector) << endmsg;
+    m_magneticField = std::make_shared<Acts::ConstantBField>(
+        Acts::Vector3(magneticFieldVector[0] / dd4hep::tesla * Acts::UnitConstants::T,
+                      magneticFieldVector[1] / dd4hep::tesla * Acts::UnitConstants::T,
+                      magneticFieldVector[2] / dd4hep::tesla * Acts::UnitConstants::T));
+  }
 
   auto gaudiLogger = makeActsGaudiLogger(this);
 
@@ -193,6 +204,7 @@ StatusCode ActsGeoSvc::initialize() {
     }
     collect(m_caloFaceSurfaces.endcapPos);
     collect(m_caloFaceSurfaces.endcapNeg);
+    collect(m_caloFaceSurfaces.planarFace);
     info() << fmt::format("Collected {} calorimeter-face surface geometry ids.", m_caloSurfaceGeoIds.size()) << endmsg;
   }
 
@@ -355,8 +367,86 @@ void ActsGeoSvc::buildCaloFaceSurfaces() {
            << endmsg;
   }
 
-  info() << fmt::format("Calo-face surfaces built: {} barrel faces, {} endcap discs",
+  // --- Telescope (LUXE) fallback: a single rectangular calo face -----------
+  // Telescope-style detectors have no cylindrical barrel/endcap calorimeter;
+  // the ECAL is a single rectangular slab, possibly offset from the beam axis,
+  // and carries no LayeredCalorimeterData extension. Only look for it when the
+  // cylindrical search above found nothing, and identify it as an EM
+  // calorimeter that is neither barrel nor endcap. Its geometry is taken
+  // directly from the DetElement's box shape and world placement.
+  if (!haveBarrel && !haveEndcap) {
+    const auto ecalPlanar =
+        dd4hepDet->detectors(DetType::CALORIMETER | DetType::ELECTROMAGNETIC, DetType::BARREL | DetType::ENDCAP);
+    if (ecalPlanar.empty()) {
+      warning() << "No electromagnetic calorimeter found via DetType flags; no calo-face surfaces will be built."
+                << endmsg;
+    } else {
+      if (ecalPlanar.size() > 1) {
+        warning() << fmt::format("Found {} planar EM calorimeters; building a calo face only for the first ({}).",
+                                 ecalPlanar.size(), ecalPlanar.front().name())
+                  << endmsg;
+      }
+      buildPlanarCaloFace(ecalPlanar.front(), lengthScale);
+    }
+  }
+
+  info() << fmt::format("Calo-face surfaces built: {} barrel faces, {} endcap discs, {} planar face",
                         m_caloFaceSurfaces.barrelFaces.size(),
-                        (m_caloFaceSurfaces.endcapPos ? 1 : 0) + (m_caloFaceSurfaces.endcapNeg ? 1 : 0))
+                        (m_caloFaceSurfaces.endcapPos ? 1 : 0) + (m_caloFaceSurfaces.endcapNeg ? 1 : 0),
+                        m_caloFaceSurfaces.planarFace ? 1 : 0)
+         << endmsg;
+}
+
+void ActsGeoSvc::buildPlanarCaloFace(const dd4hep::DetElement& ecal, double lengthScale) {
+  namespace UC = Acts::UnitConstants;
+
+  // The calorimeter envelope is a Box; its half-lengths give the transverse
+  // (x, y) extent of the face and the z half-length of the enclosing volume.
+  const dd4hep::Box box = ecal.solid();
+  if (!box.isValid()) {
+    warning() << fmt::format("Planar EM calorimeter '{}' has no box-shaped envelope; skipping planar calo face.",
+                             ecal.name())
+              << endmsg;
+    return;
+  }
+  const double halfX = box.x() * lengthScale;
+  const double halfY = box.y() * lengthScale;
+  const double halfZ = box.z() * lengthScale;
+
+  // World placement of the calorimeter. The LUXE ECAL slab is axis-aligned, so
+  // we take the translation and assume the face normal is along global z (the
+  // beam / tracking direction). Warn if the placement carries a rotation.
+  // Copy the matrix by value: ecal.nominal() is a temporary handle, so a
+  // reference into its worldTransformation() would dangle.
+  const TGeoHMatrix world       = ecal.nominal().worldTransformation();
+  const Double_t*   t           = world.GetTranslation();
+  const Double_t*   r           = world.GetRotationMatrix();
+  const bool        axisAligned = std::abs(r[0] - 1) < 1e-6 && std::abs(r[4] - 1) < 1e-6 && std::abs(r[8] - 1) < 1e-6;
+  if (!axisAligned) {
+    warning() << fmt::format(
+                     "Planar EM calorimeter '{}' has a rotated placement; the calo face is built assuming a "
+                     "z-normal axis-aligned slab and may be misoriented.",
+                     ecal.name())
+              << endmsg;
+  }
+  const double cx = t[0] * lengthScale;
+  const double cy = t[1] * lengthScale;
+  const double cz = t[2] * lengthScale;
+
+  // The inner (upstream) face is the -z side of the slab. Build a rectangular
+  // plane there with its normal (local z) along global +z.
+  Acts::Transform3 transform    = Acts::Transform3::Identity();
+  transform.translation()       = Acts::Vector3{cx, cy, cz - halfZ};
+  auto bounds                   = std::make_shared<Acts::RectangleBounds>(halfX, halfY);
+  m_caloFaceSurfaces.planarFace = Acts::Surface::makeShared<Acts::PlaneSurface>(transform, bounds);
+
+  m_caloFaceSurfaces.planarVolumeCenter  = {cx, cy, cz};
+  m_caloFaceSurfaces.planarVolumeHalfLen = {halfX, halfY, halfZ};
+
+  info() << fmt::format(
+                "Built planar ECAL calo face for '{}': center=({:.1f}, {:.1f}, {:.1f}) mm, "
+                "halfLengths=({:.1f}, {:.1f}, {:.1f}) mm, inner face at z={:.1f} mm",
+                ecal.name(), cx / UC::mm, cy / UC::mm, cz / UC::mm, halfX / UC::mm, halfY / UC::mm, halfZ / UC::mm,
+                (cz - halfZ) / UC::mm)
          << endmsg;
 }

@@ -24,6 +24,7 @@
 #include <Acts/Geometry/BlueprintBuilder.hpp>
 #include <Acts/Geometry/BlueprintNode.hpp>
 #include <Acts/Geometry/ContainerBlueprintNode.hpp>
+#include <Acts/Geometry/CuboidVolumeBounds.hpp>
 #include <Acts/Geometry/CylinderVolumeBounds.hpp>
 #include <Acts/Geometry/Extent.hpp>
 #include <Acts/Geometry/LayerBlueprintNode.hpp>
@@ -645,6 +646,41 @@ namespace Blueprints {
     parent.addStaticVolume(std::move(vol)).setNavigationPolicyFactory(makeCaloNavigationPolicyFactory());
   }
 
+  /// Add the single rectangular calorimeter face of a telescope geometry (e.g.
+  /// LUXE) as a passive static cuboid volume to @p parent (a cuboid container
+  /// stacked along z). The volume is the calorimeter slab's bounding box and
+  /// holds one planar surface at its upstream face.
+  ///
+  /// This is the telescope analogue of @c addCaloBarrel / @c addCaloEndcap: the
+  /// cylindrical detectors wrap the tracker with polygon/disc calo volumes,
+  /// whereas a telescope simply stacks a cuboid calo volume behind the tracker
+  /// layers along the beam (z) axis.
+  void addCaloPlanarFace(BlueprintNode& parent, const IActsGeoSvc::CaloFaceSurfaces& calo) {
+    if (!calo.planarFace) {
+      return;
+    }
+    constexpr double pad = 1_mm;
+    // The parent cuboid container stacks its children along z, which requires
+    // every child to share the same transverse (x, y) center. The tracker
+    // layers are forced onto the beam axis (x = y = 0, via unsetXYCoG), so the
+    // calo volume is centered there too and made wide enough to still enclose
+    // the (transversely offset) calo slab. Only the z position follows the
+    // slab.
+    const double cx     = calo.planarVolumeCenter[0];
+    const double cy     = calo.planarVolumeCenter[1];
+    const double cz     = calo.planarVolumeCenter[2];
+    const double halfX  = std::abs(cx) + calo.planarVolumeHalfLen[0] + pad;
+    const double halfY  = std::abs(cy) + calo.planarVolumeHalfLen[1] + pad;
+    const double halfZ  = calo.planarVolumeHalfLen[2] + pad;
+    auto         bounds = std::make_shared<Acts::CuboidVolumeBounds>(halfX, halfY, halfZ);
+
+    Acts::Transform3 transform = Acts::Transform3::Identity();
+    transform.translation()    = Acts::Vector3{0, 0, cz};
+    auto vol                   = std::make_unique<Acts::TrackingVolume>(transform, std::move(bounds), "CaloFace");
+    vol->addSurface(calo.planarFace);
+    parent.addStaticVolume(std::move(vol)).setNavigationPolicyFactory(makeCaloNavigationPolicyFactory());
+  }
+
 }  // namespace Blueprints
 
 namespace MuColl {
@@ -832,9 +868,11 @@ namespace FCCee {
 namespace LUXE {
   namespace LUXE_v0 {
     void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
-                           ActsPlugins::DD4hep::BlueprintBuilder&                builder,
-                           [[maybe_unused]] const IActsGeoSvc::CaloFaceSurfaces& calo) {
-      // No electromagnetic calorimeter face integration for LUXE.
+                           ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo) {
+      // LUXE has a telescope-like geometry: the tracker planar layers are
+      // stacked along the beam (z) axis, and the electromagnetic calorimeter is
+      // a single rectangular slab downstream. Both live in a cuboid container
+      // stacked along z (the calo cuboid sits behind the tracker layers).
       auto& tracker = root.addCuboidContainer(detName, AxisZ);
       auto  envelope =
           Acts::ExtentEnvelope{}.set(AxisZ, {0.4_mm, 0.4_mm}).set(AxisX, {0.4_mm, 0.4_mm}).set(AxisY, {0.4_mm, 0.4_mm});
@@ -846,7 +884,13 @@ namespace LUXE {
           .setContainer("Tracker")
           .setEnvelope(envelope)
           .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::Gap)
+          // Force the layer volumes onto the beam axis (x = y = 0) so they share
+          // a common transverse center with the calo volume for the z-stack.
+          .onLayer(Blueprints::unsetXYCoG)
           .addTo(tracker);
+
+      // Insert the ECAL front face as an extrapolation target, if it was built.
+      Blueprints::addCaloPlanarFace(tracker, calo);
     }
   }  // namespace LUXE_v0
 }  // namespace LUXE

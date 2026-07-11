@@ -1,0 +1,71 @@
+name: LUXE Image Build
+
+on:
+  push:
+    branches:
+    - main
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-luxe-image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: endersonmenezes/free-disk-space@v3
+        with:
+          remove_android: true
+          remove_dotnet: true
+          remove_haskell: true
+          remove_tool_cache: true
+          remove_swap: true
+          remove_packages: "azure-cli google-cloud-cli microsoft-edge-stable google-chrome-stable firefox postgresql* temurin-* *llvm* mysql* dotnet-sdk-*"
+          remove_packages_one_command: true
+          remove_folders: "/usr/share/swift /usr/share/miniconda /usr/share/az* /usr/local/lib/node_modules /usr/local/share/chromium /usr/local/share/powershell /usr/local/julia /usr/local/aws-cli /usr/local/aws-sam-cli /usr/share/gradle"
+          rm_cmd: "rmz"  # Use 'rmz' for faster deletion (default: 'rm')
+          rmz_version: "3.1.1"  # Required when rm_cmd is 'rmz'
+          testing: false
+      - uses: actions/checkout@v6
+      - name: Launch Container
+        # The luxe-sw image auto-sources the LUXE stack from its ENTRYPOINT and
+        # then execs an interactive shell, which would immediately exit under
+        # `-d`. Override the entrypoint with a keep-alive and source the stack
+        # explicitly inside every `docker exec` instead.
+        run: |
+          docker run -it --name ci_container --privileged \
+            -v ${GITHUB_WORKSPACE}:/packages \
+            --entrypoint tail \
+            -d ghcr.io/luxesoftware/luxe-sw:latest -f /dev/null
+      - name: Build and test
+        run: |
+          cat << 'EOF' > ${GITHUB_WORKSPACE}/build.sh
+          set -e
+          source /opt/setup_luxe.sh
+
+          # The LUXE stack exports luxegeo_DIR=<prefix>/share/luxegeo; the compact
+          # files live under ${luxegeo_DIR}/compact. If the stack did not set it,
+          # locate the compact dir and point luxegeo_DIR at its parent.
+          if [ -z "${luxegeo_DIR}" ]; then
+            export luxegeo_DIR=$(dirname "$(find / -type d -path '*share/luxegeo/compact' 2>/dev/null | head -1)")
+          fi
+          echo "Using luxegeo_DIR=${luxegeo_DIR}"
+
+          cd /packages
+          cmake -B build -S . -GNinja \
+            -DCMAKE_CXX_STANDARD=20 \
+            -DCMAKE_INSTALL_PREFIX=$(pwd)/install \
+            -DCMAKE_CXX_FLAGS=" -fdiagnostics-color=always -Werror -Wno-error=deprecated-declarations"
+          cmake --build build
+          # Only exercise the LUXE tracking chain here; the MuColl/FCCee chains
+          # are covered by mucoll-ci.yml and rely on k4geo geometries.
+          ctest --test-dir build -j$(nproc) --output-on-failure -R "LUXE"
+          cmake --build build --target install
+          EOF
+
+          chmod +x ${GITHUB_WORKSPACE}/build.sh
+
+          docker exec ci_container /bin/bash /packages/build.sh
