@@ -263,7 +263,7 @@ namespace ACTSTracking {
       throw std::runtime_error("Field lookup error: " + std::to_string(hitField.error().value()));
     }
 
-    return ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtFirstHit, paramseed,
+    return ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtFirstHit, geoCtx, paramseed,
                                                  (*hitField)[2] / Acts::UnitConstants::T);
   }
 
@@ -432,7 +432,7 @@ namespace ACTSTracking {
               continue;
             }
 
-            auto track = ACTSTracking::ACTS2edm4hep_track(trackTip, hits, m_geo.magneticField(), magCache);
+            auto track = ACTSTracking::ACTS2edm4hep_track(m_geoCtx, trackTip, hits, m_geo.magneticField(), magCache);
 
             addCaloState(alg, trackTip, track, magCache, caloMonitor);
 
@@ -535,15 +535,11 @@ namespace ACTSTracking {
           const Acts::Vector3 caloPos  = caloResult.params->position(m_geoCtx);
           auto                fieldRes = m_geo.magneticField()->getField(caloPos, magCache);
           const double        Bz       = fieldRes.ok() ? (*fieldRes)[2] / Acts::UnitConstants::T : 0.0;
-          auto                caloState =
-              ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtCalorimeter, *caloResult.params, Bz);
-          // The calo-face parameters are local to the target surface, so the
-          // edm4hep D0/Z0 from the generic conversion are not meaningful here.
-          // Express the state at the impact point instead: set the reference
-          // point to the global calo-face position (D0 = Z0 = 0 there).
-          caloState.referencePoint = edm4hep::Vector3f(caloPos.x(), caloPos.y(), caloPos.z());
-          caloState.D0             = 0;
-          caloState.Z0             = 0;
+          // The calo-face parameters are local to the target surface;
+          // ACTS2edm4hep_trackState re-expresses them at an ad-hoc perigee at the
+          // calo-face position and sets the referencePoint accordingly.
+          auto caloState = ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtCalorimeter, m_geoCtx,
+                                                                 *caloResult.params, Bz);
           track.addToTrackStates(caloState);
           break;
         }
