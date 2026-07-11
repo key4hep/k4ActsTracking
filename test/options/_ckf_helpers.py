@@ -106,3 +106,49 @@ def make_ckf_tracking(
         OutputLevel=INFO,
         **ckf_args,
     )
+
+
+def make_telescope_ckf_tracking(
+    hit_merger,
+    hit_rel_merger,
+    seeding_cellids,
+    layer_z_tolerance=20.0,
+    collinearity_cut=2.0,
+    nominal_momentum=5.0,
+    reference_z=0.0,
+    **ckf_args,
+):
+    """Configure the CKFTrackingAlg with the straight-line *telescope* seeder.
+
+    For field-free planar geometries (e.g. LUXE), where the default collider
+    helix seeder finds nothing. This is a thin wrapper over make_ckf_tracking
+    that flips SeedingMode to "Telescope" and exposes the telescope-specific
+    knobs as named arguments (the cylindrical SeedFinding_* values set by
+    make_ckf_tracking are ignored in this mode). It does not affect the
+    collider/barrel configuration.
+
+    Parameters
+    ----------
+    layer_z_tolerance : float
+        Max |dz| [mm] between space points assigned to the same layer.
+    collinearity_cut : float
+        Max transverse distance [mm] of the middle hit from the bottom-top line.
+    nominal_momentum : float
+        Nominal seed momentum [GeV] for the field-free straight-line seeds.
+    reference_z : float
+        z [mm] of the beam-perpendicular plane the fitted tracks are
+        extrapolated to for the AtIP state (replaces the beamline perigee,
+        which is unreachable for beam-parallel tracks).
+    """
+
+    return make_ckf_tracking(
+        hit_merger,
+        hit_rel_merger,
+        seeding_cellids,
+        SeedingMode="Telescope",
+        Telescope_LayerZTolerance=layer_z_tolerance,
+        Telescope_CollinearityCut=collinearity_cut,
+        Telescope_NominalMomentum=nominal_momentum,
+        Telescope_ReferenceZ=reference_z,
+        **ckf_args,
+    )

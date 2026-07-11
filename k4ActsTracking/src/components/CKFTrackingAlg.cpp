@@ -67,6 +67,7 @@
 #include <Acts/Seeding2/TripletSeedFinder.hpp>
 #include <Acts/Seeding2/TripletSeeder.hpp>
 #include <Acts/Surfaces/PerigeeSurface.hpp>
+#include <Acts/Surfaces/PlaneSurface.hpp>
 #include <Acts/TrackFinding/CombinatorialKalmanFilter.hpp>
 #include <Acts/TrackFinding/MeasurementSelector.hpp>
 #include <Acts/TrackFinding/TrackStateCreator.hpp>
@@ -225,6 +226,10 @@ private:
   Gaudi::Property<float> m_telescope_nominalMomentum{
       this, "Telescope_NominalMomentum", 5.0,
       "Nominal seed momentum [GeV] used for the straight-line (field-free) seed parameters."};
+  Gaudi::Property<float> m_telescope_referenceZ{
+      this, "Telescope_ReferenceZ", 0.0,
+      "z [mm] of the beam-perpendicular reference plane the fitted tracks are extrapolated to for the AtIP track "
+      "state. Replaces the beamline perigee, which is unreachable for beam-parallel telescope tracks."};
   ///@}
 
   /// @name Seed-finding configuration
@@ -476,6 +481,19 @@ StatusCode CKFTrackingAlg::initialize() {
               << endmsg;
   }
 
+  // In telescope mode the tracks run almost parallel to the beamline, so the
+  // default perigee (a line along z) is unreachable. Extrapolate the AtIP state
+  // to a plane perpendicular to the beam at Telescope_ReferenceZ instead; every
+  // forward track crosses it, and D0/Z0 then read as the track's (x, y) there.
+  std::shared_ptr<const Acts::Surface> referenceSurface;  // null => CKFRunner keeps the beamline perigee
+  if (m_seedingMode.value() == "Telescope") {
+    // Unbounded plane at z = Telescope_ReferenceZ with its normal along the beam
+    // (identity rotation => local z = global z), so any forward track crosses it.
+    Acts::Transform3 refTransform = Acts::Transform3::Identity();
+    refTransform.translation()    = Acts::Vector3(0, 0, m_telescope_referenceZ * Acts::UnitConstants::mm);
+    referenceSurface              = Acts::Surface::makeShared<Acts::PlaneSurface>(refTransform);
+  }
+
   m_ckfRunner.emplace(*m_actsGeoSvc,
                       ACTSTracking::CKFRunner::Config{.chi2CutOff            = m_CKF_chi2CutOff,
                                                       .numMeasurementsCutOff = m_CKF_numMeasurementsCutOff,
@@ -487,7 +505,8 @@ StatusCode CKFTrackingAlg::initialize() {
                                                       .bsMaxOutliers         = m_bsMaxOutliers,
                                                       .bsMinMeasurements     = m_bsMinMeasurements,
                                                       .bsPtMin               = m_bsPtMin,
-                                                      .bsPtMinMeasurements   = m_bsPtMinMeasurements});
+                                                      .bsPtMinMeasurements   = m_bsPtMinMeasurements,
+                                                      .referenceSurface      = referenceSurface});
 
   return StatusCode::SUCCESS;
 }

@@ -28,7 +28,7 @@ from k4FWCore import ApplicationMgr, IOSvc
 sys.path.insert(0, os.path.dirname(__file__))
 
 from _ckf_helpers import (
-    make_ckf_tracking,
+    make_telescope_ckf_tracking,
     make_services,
     make_hit_mergers,
 )
@@ -67,16 +67,15 @@ hit_merger, hit_rel_merger = make_hit_mergers(
 )
 algList.extend([hit_merger, hit_rel_merger])
 
-ckf_tracking = make_ckf_tracking(
+# LUXE's tracker sits in a field-free region (the dipole is localized upstream),
+# so the collider helix seeder finds nothing. Use the straight-line telescope
+# seeder instead; this configuration does not affect the barrel/collider clients.
+ckf_tracking = make_telescope_ckf_tracking(
     hit_merger,
     hit_rel_merger,
     # LUXE is a four-layer (layer:0..3) telescope; use all of them as the pool
     # of seed space points. Omitted cellID fields act as wildcards.
     seeding_cellids=["layer:0|1|2|3"],
-    # LUXE's tracker sits in a field-free region (the dipole is localized
-    # upstream), so the collider helix seeder finds nothing. Use the straight-
-    # line telescope seeder instead. This switch is a no-op for barrel clients.
-    SeedingMode="Telescope",
 )
 algList.append(ckf_tracking)
 
