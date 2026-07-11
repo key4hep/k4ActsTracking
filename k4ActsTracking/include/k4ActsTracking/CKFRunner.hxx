@@ -302,17 +302,27 @@ namespace ACTSTracking {
       int    bsMinMeasurements   = 6;
       double bsPtMin             = 0.0;  ///< GeV; <= 0 disables the pT branch stop
       int    bsPtMinMeasurements = 3;
+
+      /// Surface the fitted tracks are extrapolated to for the AtIP track state.
+      /// When null (the default) a PerigeeSurface at the origin is used, i.e. the
+      /// standard collider beamline parameterisation (d0/z0). A telescope client
+      /// can instead pass a plane perpendicular to the beam so that beam-parallel
+      /// tracks - which never approach the z-axis line - still have a reachable,
+      /// well-defined reference.
+      std::shared_ptr<const Acts::Surface> referenceSurface{nullptr};
     };
 
     /// Builds the event-independent propagators and CKF once. The event-local
     /// measurements and source links are bound per call in findTracks().
     ///
-    /// The CKF propagator, the IP-perigee extrapolator and (optionally) the
-    /// calorimeter-face propagator depend only on the tracking geometry and
+    /// The CKF propagator, the reference-surface extrapolator and (optionally)
+    /// the calorimeter-face propagator depend only on the tracking geometry and
     /// field, so they are constructed here and reused read-only across events
-    /// and threads. Without the separate IP extrapolator the CKF tracks would
-    /// keep their parameters at a measurement surface and the AtIP track state
-    /// would come out degenerate (omega=nan, D0=Z0=0).
+    /// and threads. Without the separate reference extrapolator the CKF tracks
+    /// would keep their parameters at a measurement surface and the AtIP track
+    /// state would come out degenerate (omega=nan, D0=Z0=0). The reference is a
+    /// PerigeeSurface at the origin unless Config::referenceSurface overrides it
+    /// (e.g. a plane perpendicular to the beam for a telescope geometry).
     CKFRunner(const IActsGeoSvc& geo, const Config& cfg)
         : m_geo(geo),
           m_geoCtx(Acts::GeometryContext::dangerouslyDefaultConstruct()),
@@ -326,7 +336,9 @@ namespace ACTSTracking {
           m_bsPtMinMeasurements(cfg.bsPtMinMeasurements),
           m_measSelConfig(makeSelectorConfig(cfg)),
           m_trackFinder(std::make_unique<CombKalmanFilter>(makePropagator(geo, false))),
-          m_perigee(Acts::Surface::makeShared<Acts::PerigeeSurface>(Acts::Vector3::Zero())),
+          m_referenceSurface(cfg.referenceSurface
+                                 ? cfg.referenceSurface
+                                 : Acts::Surface::makeShared<Acts::PerigeeSurface>(Acts::Vector3::Zero())),
           m_extrapolator(std::make_unique<CKFPropagator>(makePropagator(geo, false))) {
       // The calorimeter inner-face surfaces are passive surfaces of the tracking
       // geometry, so the calo propagator's navigator must resolve passive
@@ -404,17 +416,19 @@ namespace ACTSTracking {
               continue;
             }
 
-            // Extrapolate the smoothed track to the perigee at the IP so its
-            // track-level parameters (and hence the AtIP edm4hep TrackState) are
-            // defined there, not at the innermost measurement surface. Must
-            // happen before ACTS2edm4hep_track, which fills the AtIP state.
+            // Extrapolate the smoothed track to the reference surface (the IP
+            // perigee by default, or a beam-perpendicular plane for telescope
+            // clients) so its track-level parameters (and hence the AtIP edm4hep
+            // TrackState) are defined there, not at the innermost measurement
+            // surface. Must happen before ACTS2edm4hep_track, which fills the
+            // AtIP state.
             typename CKFPropagator::template Options<> exOptions(m_geoCtx, m_magCtx);
             exOptions.maxSteps                = m_maxSteps;
             const CKFPropagator& extrapolator = *m_extrapolator;
-            auto exResult = Acts::extrapolateTrackToReferenceSurface(trackTip, *m_perigee, extrapolator, exOptions,
-                                                                     Acts::TrackExtrapolationStrategy::firstOrLast);
+            auto                 exResult     = Acts::extrapolateTrackToReferenceSurface(
+                trackTip, *m_referenceSurface, extrapolator, exOptions, Acts::TrackExtrapolationStrategy::firstOrLast);
             if (!exResult.ok()) {
-              alg.warning() << "IP extrapolation error: " << exResult.error() << endmsg;
+              alg.warning() << "Reference-surface extrapolation error: " << exResult.error() << endmsg;
               continue;
             }
 
@@ -564,7 +578,7 @@ namespace ACTSTracking {
     Acts::MeasurementSelector::Config m_measSelConfig;
 
     std::unique_ptr<CombKalmanFilter>                 m_trackFinder;
-    std::shared_ptr<Acts::PerigeeSurface>             m_perigee;
+    std::shared_ptr<const Acts::Surface>              m_referenceSurface;
     std::unique_ptr<CKFPropagator>                    m_extrapolator;
     std::unique_ptr<ACTSTracking::CaloFacePropagator> m_caloPropagator;
   };

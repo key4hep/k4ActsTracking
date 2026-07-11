@@ -144,6 +144,14 @@ add_geometry_load_test($ENV{k4geo_DIR}/FCCee/ILD_FCCee/compact/ILD_FCCee_v02/ILD
 add_geometry_load_test($ENV{k4geo_DIR}/FCCee/CLD/compact/CLD_o2_v07/CLD_o2_v07.xml)
 add_geometry_load_test($ENV{k4geo_DIR}/FCCee/CLD/compact/CLD_o2_v08/CLD_o2_v08.xml)
 
+# The LUXE geometry lives in luxegeo, which is only present in the LUXE software
+# stack (ghcr.io/luxesoftware/luxe-sw, see luxe-ci.yml). Guard on luxegeo_DIR so
+# these tests are not registered on the key4hep/MuColl stacks where luxegeo is
+# absent (they would otherwise fail with an unresolved compact file path).
+if(DEFINED ENV{luxegeo_DIR})
+  add_geometry_load_test($ENV{luxegeo_DIR}/compact/LUXE/LUXE_v0.xml)
+endif()
+
 
 # === MAIA chain (no upstream config, no standard reco baseline) ===
 set(_maia_compact $ENV{k4geo_DIR}/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml)
@@ -165,6 +173,54 @@ add_k4run_test(reco_MAIA_Gen3
   USE_TEST_ENV
   FIXTURES_REQUIRED sim_maia_fixture
 )
+
+
+# === LUXE chain (self-contained: particle gun + digitization + CKF) ===
+#
+# LUXE_v0 is a forward "telescope" (planar tracker layers stacked along z plus a
+# downstream ECAL slab), so it needs a forward positron gun rather than the 4pi
+# mu- gun baked into add_sim_test(). Mirror the luxegeo README example, which
+# relies on the dipole field to steer the positrons into the tracker acceptance.
+#
+# Only registered when luxegeo is available (see the guard note above); on the
+# key4hep/MuColl CI stacks luxegeo_DIR is unset and this chain is skipped.
+if(DEFINED ENV{luxegeo_DIR})
+  set(_luxe_compact $ENV{luxegeo_DIR}/compact/LUXE/LUXE_v0.xml)
+
+  add_test(NAME sim_LUXE_v0
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMAND ddsim --compactFile ${_luxe_compact}
+                  --runType batch
+                  --numberOfEvents 10
+                  --enableGun
+                  --gun.particle e+
+                  --gun.multiplicity 10
+                  # Shoot every positron in the same fixed direction, along the
+                  # beam axis (+z) towards the instrumented tracker/ECAL region.
+                  # Setting --gun.direction alone gives a fixed direction (the
+                  # gun is non-isotropic by default); the localized upstream
+                  # dipole then steers the positrons into the tracker acceptance.
+                  # NB: do NOT add "--gun.isotrop false" - ddsim parses the
+                  # string as truthy and would randomize the directions instead.
+                  --gun.direction "0 0 1"
+                  # Uniform momentum between 2 and 8 GeV (bare numbers are MeV,
+                  # as in the MAIA chain). At these energies E ~= p for the
+                  # positrons, so this is effectively a uniform 2-8 GeV energy.
+                  --gun.momentumMin 2000
+                  --gun.momentumMax 8000
+                  --outputFile particle_gun_LUXE_v0_SIM.edm4hep.root
+  )
+  set_tests_properties(sim_LUXE_v0 PROPERTIES FIXTURES_SETUP sim_luxe_fixture)
+
+  add_k4run_test(reco_LUXE_v0
+    OPTIONS_FILE ${CMAKE_CURRENT_LIST_DIR}/options/LUXE_CKFTracking.py
+    EXTRA_ARGS --compactFile=${_luxe_compact}
+               --IOSvc.Input particle_gun_LUXE_v0_SIM.edm4hep.root
+               --IOSvc.Output particle_gun_LUXE_v0_CKFTracks.edm4hep.root
+    USE_TEST_ENV
+    FIXTURES_REQUIRED sim_luxe_fixture
+  )
+endif()
 
 
 # === CLD chain ===

@@ -42,13 +42,18 @@ def _get_compact_file():
     return args.compactFile
 
 
-def make_services():
+def make_services(use_dd4hep_field=False):
     """Configure all the necessary services (including getting the geometry from
-    the command line geometry)"""
+    the command line geometry).
+
+    Set use_dd4hep_field=True to make ACTS use the real, position-dependent
+    DD4hep field (needed for localized fields such as the LUXE dipole). The
+    default keeps the constant-field behaviour used by the collider clients.
+    """
     compact_file = _get_compact_file()
     return [
         GeoSvc("GeoSvc", detectors=[compact_file], EnableGeant4Geo=False),
-        ActsGeoSvc("ActsGeoSvc"),
+        ActsGeoSvc("ActsGeoSvc", UseDD4hepBField=use_dd4hep_field),
         EventDataSvc("EventDataSvc"),
     ]
 
@@ -104,5 +109,51 @@ def make_ckf_tracking(
         InputTrackerHitCollection=hit_merger.OutputCollection,
         InputTrackerHitRelationCollection=hit_rel_merger.OutputCollection,
         OutputLevel=INFO,
+        **ckf_args,
+    )
+
+
+def make_telescope_ckf_tracking(
+    hit_merger,
+    hit_rel_merger,
+    seeding_cellids,
+    layer_z_tolerance=20.0,
+    collinearity_cut=2.0,
+    nominal_momentum=5.0,
+    reference_z=0.0,
+    **ckf_args,
+):
+    """Configure the CKFTrackingAlg with the straight-line *telescope* seeder.
+
+    For field-free planar geometries (e.g. LUXE), where the default collider
+    helix seeder finds nothing. This is a thin wrapper over make_ckf_tracking
+    that flips SeedingMode to "Telescope" and exposes the telescope-specific
+    knobs as named arguments (the cylindrical SeedFinding_* values set by
+    make_ckf_tracking are ignored in this mode). It does not affect the
+    collider/barrel configuration.
+
+    Parameters
+    ----------
+    layer_z_tolerance : float
+        Max |dz| [mm] between space points assigned to the same layer.
+    collinearity_cut : float
+        Max transverse distance [mm] of the middle hit from the bottom-top line.
+    nominal_momentum : float
+        Nominal seed momentum [GeV] for the field-free straight-line seeds.
+    reference_z : float
+        z [mm] of the beam-perpendicular plane the fitted tracks are
+        extrapolated to for the AtIP state (replaces the beamline perigee,
+        which is unreachable for beam-parallel tracks).
+    """
+
+    return make_ckf_tracking(
+        hit_merger,
+        hit_rel_merger,
+        seeding_cellids,
+        SeedingMode="Telescope",
+        Telescope_LayerZTolerance=layer_z_tolerance,
+        Telescope_CollinearityCut=collinearity_cut,
+        Telescope_NominalMomentum=nominal_momentum,
+        Telescope_ReferenceZ=reference_z,
         **ckf_args,
     )
