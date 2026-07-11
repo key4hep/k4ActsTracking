@@ -197,11 +197,12 @@ if(DEFINED ENV{luxegeo_DIR})
                   --gun.multiplicity 10
                   # Shoot every positron in the same fixed direction, along the
                   # beam axis (+z) towards the instrumented tracker/ECAL region.
-                  # isotrop=False disables the random per-particle directions of
-                  # the default gun distribution; the dipole field then steers
-                  # the positrons into the tracker acceptance.
+                  # Setting --gun.direction alone gives a fixed direction (the
+                  # gun is non-isotropic by default); the localized upstream
+                  # dipole then steers the positrons into the tracker acceptance.
+                  # NB: do NOT add "--gun.isotrop false" - ddsim parses the
+                  # string as truthy and would randomize the directions instead.
                   --gun.direction "0 0 1"
-                  --gun.isotrop false
                   # Uniform momentum between 2 and 8 GeV (bare numbers are MeV,
                   # as in the MAIA chain). At these energies E ~= p for the
                   # positrons, so this is effectively a uniform 2-8 GeV energy.

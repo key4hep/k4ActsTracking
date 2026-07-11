@@ -49,6 +49,12 @@ algList.append(
         ResolutionT=[0.03],
         ResolutionU=[0.007],
         ResolutionV=[0.007],
+        # The LUXE "SiHits" readout encodes a fine CartesianGridXY (the x/y
+        # segmentation sits in bits 32-63), while the DD4hep surface map is keyed
+        # at sensor level (system:1,side:1,layer:2,module:1,sensor:5 -> bits 0-9).
+        # DDPlanarDigi looks up the surface with the *full* cellID, so mask it to
+        # the low 32 bits to drop the segmentation and match the surface volumeID.
+        CellIDBits=32,
         SimTrackHitCollectionName=["SiHits"],
         SimTrkHitRelCollection=["SiHitsRelations"],
         TrackerHitCollectionName=["SiTrackerHits"],
