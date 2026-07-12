@@ -141,6 +141,7 @@ def make_telescope_ckf_tracking(
     collinearity_cut=2.0,
     nominal_momentum=5.0,
     reference_z=0.0,
+    constrain_momentum=True,
     **ckf_args,
 ):
     """Configure the TelescopeCKFTrackingAlg (straight-line telescope seeding).
@@ -163,6 +164,15 @@ def make_telescope_ckf_tracking(
         z [mm] of the beam-perpendicular plane the fitted tracks are
         extrapolated to for the AtIP state (replaces the beamline perigee,
         which is unreachable for beam-parallel tracks).
+    constrain_momentum : bool
+        Determine each track's otherwise-unconstrained q/p from the requirement
+        that it originates at the target (the reference_z plane centre), so the
+        field-aware back-extrapolation lands on the target and the reconstructed
+        momentum matches the dipole deflection. On by default; set False to keep
+        the seed's nominal momentum. Requires the real DD4hep field (see
+        make_services(use_dd4hep_field=True)). The companion option
+        MomentumReportZ (the in-magnet plane where a momentum-carrying track
+        state is added) can be passed through **ckf_args.
     """
 
     props = dict(
@@ -173,6 +183,7 @@ def make_telescope_ckf_tracking(
         CollinearityCut=collinearity_cut,
         NominalMomentum=nominal_momentum,
         ReferenceZ=reference_z,
+        ConstrainMomentum=constrain_momentum,
         SeedingSensorsCellIDs=seeding_cellids,
         OutputTrackCollection="CKFTracks",
         OutputSeedCollection="CKFTrackSeeds",
