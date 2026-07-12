@@ -22,7 +22,7 @@ import os
 import sys
 
 from Gaudi.Configuration import INFO
-from Gaudi.Configurables import DDPlanarDigi
+from Gaudi.Configurables import ACTSDuplicateRemoval, DDPlanarDigi, FilterTracksAlg
 from k4FWCore import ApplicationMgr, IOSvc
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -48,9 +48,9 @@ algList.append(
         "TrackerDigitizer",
         SubDetectorName="Tracker",
         IsStrip=False,
-        ResolutionT=[0.03],
-        ResolutionU=[0.007],
-        ResolutionV=[0.007],
+        ResolutionT=[2000.],
+        ResolutionU=[0.005],
+        ResolutionV=[0.005],
         # The LUXE "SiHits" readout encodes a fine CartesianGridXY (the x/y
         # segmentation sits in bits 32-63), while the DD4hep surface map is keyed
         # at sensor level (system:1,side:1,layer:2,module:1,sensor:5 -> bits 0-9).
@@ -80,6 +80,36 @@ ckf_tracking = make_telescope_ckf_tracking(
     seeding_cellids=["layer:0|1|2|3"],
 )
 algList.append(ckf_tracking)
+
+# The straight-line seeder is combinatorial (~5x more tracks than true e+), so
+# clean the output: remove duplicates that share >50% of hits, then keep only
+# well-formed telescope tracks. These are LUXE-only; the collider clients run
+# their own selection. FilterTracksAlg's collider-oriented cuts that don't apply
+# to a planar telescope are disabled here:
+#  - the vertex/inner/outer subdetector-hit cuts (LUXE fills no such subdetectors),
+#  - the pT cut (omega, hence pT, is degenerate in the field-free AtIP reference).
+# What remains is the requirement of a complete four-hit track with no holes.
+algList.append(
+    ACTSDuplicateRemoval(
+        "TrackDuplicateRemoval",
+        InputTrackCollectionName=["CKFTracks"],
+        OutputTrackCollectionName=["CKFTracksDeduped"],
+    )
+)
+algList.append(
+    FilterTracksAlg(
+        "FilterTracks",
+        InputTrackCollectionName=["CKFTracksDeduped"],
+        OutputTrackCollectionName=["CKFTracksFiltered"],
+        NHitsTotal=3,  # keep tracks with > 3 hits, i.e. the full four-layer telescope
+        NHitsVertex=0,  # disable: LUXE has no vertex subdetector
+        NHitsInner=0,  # disable: LUXE has no inner-tracker subdetector
+        NHitsOuter=0,  # disable: LUXE has no outer-tracker subdetector
+        MinPt=0.0,  # disable: pT is degenerate where the field vanishes (omega ~ 0)
+        MaxHoles=0,  # require no holes
+        OutputLevel=INFO,
+    )
+)
 
 ApplicationMgr(
     TopAlg=algList, ExtSvc=svcList, OutputLevel=INFO, EvtSel="NONE", EvtMax=-1

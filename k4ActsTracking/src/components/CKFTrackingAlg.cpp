@@ -230,6 +230,16 @@ private:
       this, "Telescope_ReferenceZ", 0.0,
       "z [mm] of the beam-perpendicular reference plane the fitted tracks are extrapolated to for the AtIP track "
       "state. Replaces the beamline perigee, which is unreachable for beam-parallel telescope tracks."};
+  Gaudi::Property<bool> m_telescope_constrainMomentum{
+      this, "Telescope_ConstrainMomentum", true,
+      "Determine each track's otherwise-unconstrained q/p from the requirement that it originates at the target "
+      "(the Telescope_ReferenceZ plane centre), so the field-aware back-extrapolation lands on the target and the "
+      "reconstructed momentum matches the dipole deflection. Only used in Telescope seeding mode."};
+  Gaudi::Property<float> m_telescope_momentumReportZ{
+      this, "Telescope_MomentumReportZ", 2053.0,
+      "z [mm] of a plane inside the bending magnet where a momentum-carrying track state is added so the "
+      "reconstructed p is recoverable (the AtIP omega is degenerate in the field-free reference plane). Default is "
+      "the LUXE dipole centre (z in [1434, 2672] mm). <= 0 disables it. Only used with Telescope_ConstrainMomentum."};
   ///@}
 
   /// @name Seed-finding configuration
@@ -486,27 +496,36 @@ StatusCode CKFTrackingAlg::initialize() {
   // to a plane perpendicular to the beam at Telescope_ReferenceZ instead; every
   // forward track crosses it, and D0/Z0 then read as the track's (x, y) there.
   std::shared_ptr<const Acts::Surface> referenceSurface;  // null => CKFRunner keeps the beamline perigee
+  bool                                 constrainMomentum = false;
+  double                               momentumReportZ   = 0.0;
   if (m_seedingMode.value() == "Telescope") {
     // Unbounded plane at z = Telescope_ReferenceZ with its normal along the beam
     // (identity rotation => local z = global z), so any forward track crosses it.
     Acts::Transform3 refTransform = Acts::Transform3::Identity();
     refTransform.translation()    = Acts::Vector3(0, 0, m_telescope_referenceZ * Acts::UnitConstants::mm);
     referenceSurface              = Acts::Surface::makeShared<Acts::PlaneSurface>(refTransform);
+
+    // The field-free tracker leaves q/p unconstrained; optionally solve it from
+    // the IP/target constraint and add a momentum-carrying in-magnet state.
+    constrainMomentum = m_telescope_constrainMomentum.value();
+    momentumReportZ   = constrainMomentum ? m_telescope_momentumReportZ.value() : 0.0;
   }
 
   m_ckfRunner.emplace(*m_actsGeoSvc,
-                      ACTSTracking::CKFRunner::Config{.chi2CutOff            = m_CKF_chi2CutOff,
-                                                      .numMeasurementsCutOff = m_CKF_numMeasurementsCutOff,
-                                                      .chi2CutOffOutlier     = m_CKF_chi2CutOffOutlier,
-                                                      .propagateBackward     = m_propagateBackward,
-                                                      .extrapolateToCalo     = m_extrapolateToCalo,
-                                                      .useBranchStopper      = m_useBranchStopper,
-                                                      .bsMaxHoles            = m_bsMaxHoles,
-                                                      .bsMaxOutliers         = m_bsMaxOutliers,
-                                                      .bsMinMeasurements     = m_bsMinMeasurements,
-                                                      .bsPtMin               = m_bsPtMin,
-                                                      .bsPtMinMeasurements   = m_bsPtMinMeasurements,
-                                                      .referenceSurface      = referenceSurface});
+                      ACTSTracking::CKFRunner::Config{.chi2CutOff                = m_CKF_chi2CutOff,
+                                                      .numMeasurementsCutOff     = m_CKF_numMeasurementsCutOff,
+                                                      .chi2CutOffOutlier         = m_CKF_chi2CutOffOutlier,
+                                                      .propagateBackward         = m_propagateBackward,
+                                                      .extrapolateToCalo         = m_extrapolateToCalo,
+                                                      .useBranchStopper          = m_useBranchStopper,
+                                                      .bsMaxHoles                = m_bsMaxHoles,
+                                                      .bsMaxOutliers             = m_bsMaxOutliers,
+                                                      .bsMinMeasurements         = m_bsMinMeasurements,
+                                                      .bsPtMin                   = m_bsPtMin,
+                                                      .bsPtMinMeasurements       = m_bsPtMinMeasurements,
+                                                      .referenceSurface          = referenceSurface,
+                                                      .constrainMomentumToTarget = constrainMomentum,
+                                                      .momentumReportZ           = momentumReportZ});
 
   return StatusCode::SUCCESS;
 }

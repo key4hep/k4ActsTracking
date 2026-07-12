@@ -54,6 +54,7 @@
 #include <Acts/Propagator/Propagator.hpp>
 #include <Acts/Seeding/EstimateTrackParamsFromSeed.hpp>
 #include <Acts/Surfaces/PerigeeSurface.hpp>
+#include <Acts/Surfaces/PlaneSurface.hpp>
 #include <Acts/Surfaces/Surface.hpp>
 #include <Acts/TrackFinding/CombinatorialKalmanFilter.hpp>
 #include <Acts/TrackFinding/MeasurementSelector.hpp>
@@ -310,6 +311,25 @@ namespace ACTSTracking {
       /// tracks - which never approach the z-axis line - still have a reachable,
       /// well-defined reference.
       std::shared_ptr<const Acts::Surface> referenceSurface{nullptr};
+
+      /// Telescope (field-free tracker) clients only. When true, the otherwise
+      /// unconstrained q/p of each fitted track is determined from the physics
+      /// constraint that the track originates at the target (the reference-surface
+      /// centre): q/p is solved so the field-aware back-extrapolation lands on the
+      /// target in the bending plane (local x = eBoundLoc0). A downstream tracker
+      /// measures the position and direction but not the momentum (no curvature in
+      /// the field-free region), so without this the seed's nominal q/p survives
+      /// and the back-extrapolation mis-lands. Default false keeps the collider
+      /// behaviour (q/p from the seed/CKF fit) byte-identical.
+      bool constrainMomentumToTarget = false;
+
+      /// Telescope clients only, and only meaningful with constrainMomentumToTarget.
+      /// z [mm] of a plane inside the bending magnet where a momentum-carrying
+      /// track state (edm4hep AtOther) is added so the reconstructed p is
+      /// recoverable: p [GeV] = 0.3 * |B| [T] / (|omega| [1/mm] * 1e3). This is
+      /// necessary because the AtIP omega is degenerate wherever the field
+      /// vanishes (e.g. the LUXE reference plane at z=0). <= 0 disables it.
+      double momentumReportZ = 0.0;
     };
 
     /// Builds the event-independent propagators and CKF once. The event-local
@@ -339,7 +359,15 @@ namespace ACTSTracking {
           m_referenceSurface(cfg.referenceSurface
                                  ? cfg.referenceSurface
                                  : Acts::Surface::makeShared<Acts::PerigeeSurface>(Acts::Vector3::Zero())),
+          m_constrainMomentum(cfg.constrainMomentumToTarget),
           m_extrapolator(std::make_unique<CKFPropagator>(makePropagator(geo, false))) {
+      // In-magnet plane where the momentum-carrying track state is added (only
+      // for telescope clients that both constrain the momentum and request it).
+      if (m_constrainMomentum && cfg.momentumReportZ > 0.0) {
+        Acts::Transform3 reportTransform = Acts::Transform3::Identity();
+        reportTransform.translation()    = Acts::Vector3(0, 0, cfg.momentumReportZ * Acts::UnitConstants::mm);
+        m_momentumReportSurface          = Acts::Surface::makeShared<Acts::PlaneSurface>(reportTransform);
+      }
       // The calorimeter inner-face surfaces are passive surfaces of the tracking
       // geometry, so the calo propagator's navigator must resolve passive
       // surfaces. Only built when requested and when the geometry provides them.
@@ -416,6 +444,28 @@ namespace ACTSTracking {
               continue;
             }
 
+            // Telescope clients: the field-free tracker fixes the track's
+            // position and direction but not its momentum (no curvature), so the
+            // seed's nominal q/p survives the fit. Solve q/p from the requirement
+            // that the field-aware back-extrapolation lands on the target (the
+            // reference-surface centre) in the bending plane, and write it into
+            // the smoothed states so the reference extrapolation below carries the
+            // constrained momentum. Gated on Config::constrainMomentumToTarget;
+            // the collider path is byte-identical when it is false.
+            std::optional<Acts::BoundTrackParameters> innermost;
+            std::optional<double>                     solvedQOverP;
+            if (m_constrainMomentum) {
+              innermost = innermostMeasuredParams(trackTip);
+              if (innermost) {
+                solvedQOverP = solveMomentumToTarget(*innermost);
+                if (solvedQOverP) {
+                  constrainTrackMomentum(trackTip, *solvedQOverP);
+                } else {
+                  alg.debug() << "Momentum constraint did not converge; keeping the seed q/p for this track." << endmsg;
+                }
+              }
+            }
+
             // Extrapolate the smoothed track to the reference surface (the IP
             // perigee by default, or a beam-perpendicular plane for telescope
             // clients) so its track-level parameters (and hence the AtIP edm4hep
@@ -436,6 +486,13 @@ namespace ACTSTracking {
 
             addCaloState(alg, trackTip, track, magCache, caloMonitor);
 
+            // Momentum-carrying in-magnet track state (telescope reporting): the
+            // AtIP omega is degenerate where the field vanishes, so add a state
+            // inside the bending magnet whose omega encodes the reconstructed p.
+            if (m_momentumReportSurface && innermost && solvedQOverP) {
+              addMomentumReportState(alg, *innermost, *solvedQOverP, track, magCache);
+            }
+
             {
               std::lock_guard lock{trackMutex};
               trackCollection.push_back(track);
@@ -454,6 +511,172 @@ namespace ACTSTracking {
     static Acts::MeasurementSelector::Config makeSelectorConfig(const Config& cfg) {
       return {{Acts::GeometryIdentifier(),
                {{}, {cfg.chi2CutOff}, {static_cast<std::size_t>(cfg.numMeasurementsCutOff)}, {cfg.chi2CutOffOutlier}}}};
+    }
+
+    // ---- Telescope momentum constraint (only used when m_constrainMomentum) ----
+
+    /// Bound parameters of the innermost measured, smoothed state (the hit closest
+    /// to the target), used as the fixed position+direction ray whose momentum is
+    /// solved for. Empty if the track has no usable measured state.
+    template <class TrackProxy>
+    std::optional<Acts::BoundTrackParameters> innermostMeasuredParams(const TrackProxy& trackTip) const {
+      std::optional<Acts::BoundTrackParameters> params;
+      // trackStatesReversed() runs outermost -> innermost, so keep overwriting to
+      // end on the innermost measured state.
+      for (const auto& state : trackTip.trackStatesReversed()) {
+        const auto flags = state.typeFlags();
+        if (state.hasSmoothed() && flags.test(Acts::TrackStateFlag::HasMeasurement) &&
+            !flags.test(Acts::TrackStateFlag::IsOutlier)) {
+          params.emplace(state.referenceSurface().getSharedPtr(), state.smoothed(), state.smoothedCovariance(),
+                         trackTip.particleHypothesis());
+        }
+      }
+      return params;
+    }
+
+    /// Propagate @p start, reparameterised with @p qOverP but the same position and
+    /// direction, to @p target using the field-aware extrapolator. Returns the
+    /// bound parameters on @p target, or nullopt on propagation failure.
+    std::optional<Acts::BoundTrackParameters> propagateWithQOverP(const Acts::BoundTrackParameters& start,
+                                                                  double qOverP, const Acts::Surface& target) const {
+      Acts::BoundVector pars   = start.parameters();
+      pars[Acts::eBoundQOverP] = qOverP;
+      const Acts::BoundTrackParameters trial(start.referenceSurface().getSharedPtr(), pars, start.covariance(),
+                                             start.particleHypothesis());
+
+      typename CKFPropagator::template Options<> opts(m_geoCtx, m_magCtx);
+      opts.maxSteps  = m_maxSteps;
+      opts.direction = Acts::Direction::Backward();  // target is upstream of the tracker
+
+      auto result = m_extrapolator->propagate(trial, target, opts);
+      if (!result.ok()) {
+        return std::nullopt;
+      }
+      const auto& output = result.value();
+      if (!output.endParameters.has_value()) {
+        return std::nullopt;
+      }
+      return output.endParameters.value();
+    }
+
+    /// Solve q/p so the field-aware back-extrapolation of @p start lands on the
+    /// target (the reference-surface centre) in the bending plane (loc0 -> 0). The
+    /// bending-plane miss is ~linear in q/p (deflection ∝ ∫B·dl / p), so a few
+    /// secant iterations converge. |p| is clamped to a sane range. Returns the
+    /// solved q/p [1/GeV], or nullopt if a propagation failed.
+    std::optional<double> solveMomentumToTarget(const Acts::BoundTrackParameters& start) const {
+      constexpr int    kMaxIter = 12;
+      constexpr double kTolMm   = 0.02;  // sub-resolution landing accuracy
+      const double     seedQ    = start.parameters()[Acts::eBoundQOverP];
+      const double     qSign    = (seedQ >= 0.0) ? 1.0 : -1.0;
+      const double     qAbsMin  = 1.0 / 200.0;  // |p| <= 200 GeV
+      const double     qAbsMax  = 1.0 / 0.05;   // |p| >= 0.05 GeV
+      auto             clampQ   = [&](double q) { return qSign * std::clamp(std::abs(q), qAbsMin, qAbsMax); };
+      auto             missX    = [&](double q) -> std::optional<double> {
+        auto p = propagateWithQOverP(start, q, *m_referenceSurface);
+        if (!p) {
+          return std::nullopt;
+        }
+        return p->parameters()[Acts::eBoundLoc0];
+      };
+
+      double q0 = clampQ(seedQ != 0.0 ? seedQ : qSign * qAbsMin);
+      auto   m0 = missX(q0);
+      if (!m0) {
+        return std::nullopt;
+      }
+      double f0 = *m0;
+      if (std::abs(f0) < kTolMm) {
+        return q0;
+      }
+
+      double q1 = clampQ(q0 * 1.5);
+      if (q1 == q0) {
+        q1 = clampQ(q0 + qSign * 0.02);
+      }
+      auto m1 = missX(q1);
+      if (!m1) {
+        return std::nullopt;
+      }
+      double f1 = *m1;
+
+      for (int it = 0; it < kMaxIter && std::abs(f1) >= kTolMm; ++it) {
+        const double denom = f1 - f0;
+        if (std::abs(denom) < 1e-12) {
+          break;
+        }
+        const double q2 = clampQ(q1 - f1 * (q1 - q0) / denom);
+        auto         m2 = missX(q2);
+        if (!m2) {
+          return std::nullopt;
+        }
+        q0 = q1;
+        f0 = f1;
+        q1 = q2;
+        f1 = *m2;
+      }
+      return q1;
+    }
+
+    /// Write the solved q/p into every state of the track. The tracker is
+    /// field-free, so q/p is constant along it; setting it on all states makes the
+    /// reference extrapolation (firstOrLast) and any later use carry the
+    /// constrained momentum regardless of which end it starts from.
+    template <class TrackProxy> void constrainTrackMomentum(TrackProxy& trackTip, double qOverP) const {
+      for (auto state : trackTip.trackStatesReversed()) {
+        if (state.hasSmoothed()) {
+          state.smoothed()[Acts::eBoundQOverP] = qOverP;
+        }
+        if (state.hasFiltered()) {
+          state.filtered()[Acts::eBoundQOverP] = qOverP;
+        }
+        if (state.hasPredicted()) {
+          state.predicted()[Acts::eBoundQOverP] = qOverP;
+        }
+      }
+    }
+
+    /// Add a momentum-carrying edm4hep track state inside the bending magnet, where
+    /// the field is non-zero, so the reconstructed p is recoverable even though the
+    /// AtIP omega is degenerate at the (field-free) reference plane. The state's
+    /// omega encodes p via |omega| [1/mm] = 0.3 * |B| [T] / p [GeV] * 1e-3, so
+    /// p [GeV] = 0.3 * |B| / (|omega| * 1e3) with |B| the local dipole field.
+    template <class Alg>
+    void addMomentumReportState(const Alg& alg, const Acts::BoundTrackParameters& innermost, double qOverP,
+                                edm4hep::MutableTrack& track, Acts::MagneticFieldProvider::Cache& magCache) const {
+      auto atField = propagateWithQOverP(innermost, qOverP, *m_momentumReportSurface);
+      if (!atField) {
+        alg.debug() << "Momentum-report extrapolation into the magnet failed; no momentum state added." << endmsg;
+        return;
+      }
+      const Acts::Vector3 posv     = atField->position(m_geoCtx);
+      auto                fieldRes = m_geo.magneticField()->getField(posv, magCache);
+      if (!fieldRes.ok()) {
+        return;
+      }
+      const double Btesla = (*fieldRes).norm() / Acts::UnitConstants::T;
+      const double absP   = (qOverP != 0.0) ? 1.0 / std::abs(qOverP) : 0.0;  // native q/p is 1/GeV
+      if (!(absP > 0.0) || !(Btesla > 0.0)) {
+        alg.debug() << "Momentum-report state skipped: no local field or degenerate q/p." << endmsg;
+        return;
+      }
+
+      const Acts::Vector3 dir   = atField->direction();
+      const double        omega = std::copysign(1.0, qOverP) * 0.3 * Btesla / absP * 1e-3;
+      const double        phi   = std::atan2(dir.y(), dir.x());
+      const double        tanL  = dir.z() / std::hypot(dir.x(), dir.y());
+
+      edm4hep::TrackState state{};
+      state.location  = edm4hep::TrackState::AtOther;
+      state.D0        = 0.0f;
+      state.Z0        = 0.0f;
+      state.phi       = static_cast<float>(phi);
+      state.omega     = static_cast<float>(omega);
+      state.tanLambda = static_cast<float>(tanL);
+      state.time      = 0.0f;
+      state.referencePoint =
+          edm4hep::Vector3f(static_cast<float>(posv.x()), static_cast<float>(posv.y()), static_cast<float>(posv.z()));
+      track.addToTrackStates(state);
     }
 
     /// CKF branch stopper: drop a branch whose |pT| falls below threshold, or
@@ -579,7 +802,9 @@ namespace ACTSTracking {
 
     std::unique_ptr<CombKalmanFilter>                 m_trackFinder;
     std::shared_ptr<const Acts::Surface>              m_referenceSurface;
+    bool                                              m_constrainMomentum = false;
     std::unique_ptr<CKFPropagator>                    m_extrapolator;
+    std::shared_ptr<const Acts::Surface>              m_momentumReportSurface;
     std::unique_ptr<ACTSTracking::CaloFacePropagator> m_caloPropagator;
   };
 
