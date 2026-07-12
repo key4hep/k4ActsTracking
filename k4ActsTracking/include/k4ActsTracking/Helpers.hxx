@@ -132,6 +132,22 @@ namespace ACTSTracking {
   edm4hep::TrackState ACTS2edm4hep_trackState(int location, const Acts::BoundVector& value,
                                               const Acts::BoundMatrix& cov, double Bz);
 
+  //! Get the track state at a given location, keyed by its `location` field.
+  /**
+ * edm4hep's `Track::getTrackStates(i)` accesses states by array **position**,
+ * not by location, and the location enum values are non-zero (`AtIP == 1`), so
+ * `getTrackStates(AtIP)` returns the wrong (index-1) state. This searches the
+ * track's states for the first one whose `location` matches, letting callers
+ * fetch e.g. the AtIP parameters by meaning rather than by array index.
+ *
+ * \param track    Track to inspect
+ * \param location edm4hep::TrackState location (e.g. `AtIP`, `AtFirstHit`)
+ *
+ * \return The matching track state, or std::nullopt if the track has none at
+ *         that location.
+ */
+  std::optional<edm4hep::TrackState> trackStateAt(const edm4hep::Track& track, int location);
+
   //! Get particle hypothesis in ACTS format
   /**
  * \param MCParticle

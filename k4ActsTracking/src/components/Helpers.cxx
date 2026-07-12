@@ -27,6 +27,7 @@
 #include <cassert>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <vector>
 
 // ACTS
@@ -242,6 +243,15 @@ namespace ACTSTracking {
     }
 
     return trackState;
+  }
+
+  std::optional<edm4hep::TrackState> trackStateAt(const edm4hep::Track& track, int location) {
+    for (const auto& state : track.getTrackStates()) {
+      if (state.location == location) {
+        return state;
+      }
+    }
+    return std::nullopt;
   }
 
   Acts::ParticleHypothesis convertParticle(const edm4hep::MCParticle mcParticle) {

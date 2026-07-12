@@ -31,6 +31,7 @@
 
 // Standard
 #include <math.h>
+#include <optional>
 
 DECLARE_COMPONENT(FilterTracksAlg)
 
@@ -84,14 +85,22 @@ edm4hep::TrackCollection FilterTracksAlg::operator()(const edm4hep::TrackCollect
       if (nhitouter <= m_NHitsOuter)
         continue;
     }
-    float trackD0 = trk.getTrackStates(0).D0;
-    float trackZ0 = trk.getTrackStates(0).Z0;
+    // Fetch the IP parameters by location. NB: Track::getTrackStates(i) is
+    // positional, not by-location, so getTrackStates(AtIP) would return the
+    // wrong state (edm4hep AtIP == 1, i.e. the first-hit state).
+    const std::optional<edm4hep::TrackState> ipState = ACTSTracking::trackStateAt(trk, edm4hep::TrackState::AtIP);
+    if (!ipState) {
+      warning() << "Track has no AtIP track state; skipping it in the filter." << endmsg;
+      continue;
+    }
+    float trackD0 = ipState->D0;
+    float trackZ0 = ipState->Z0;
     if (fabs(trackD0) > m_MaxD0)
       continue;
     if (fabs(trackZ0) > m_MaxZ0)
       continue;
 
-    float pt = fabs(0.3 * m_Bz / trk.getTrackStates(edm4hep::TrackState::AtIP).omega / 1000);
+    float pt = fabs(0.3 * m_Bz / ipState->omega / 1000);
     if (m_MinPt > 0 && pt < m_MinPt)
       continue;  // pT check
 

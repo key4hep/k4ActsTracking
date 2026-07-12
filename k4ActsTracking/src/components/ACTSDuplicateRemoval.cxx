@@ -75,8 +75,15 @@ namespace ACTSTracking {
  * @return True if the first track has lower tan(lambda) in the first track state
  */
   inline bool track_duplicate_compare(const edm4hep::Track& trk1, const edm4hep::Track& trk2) {
-    return trk1.getTrackStates(edm4hep::TrackState::AtIP).tanLambda <
-           trk2.getTrackStates(edm4hep::TrackState::AtIP).tanLambda;
+    // Order by the AtIP tanLambda, fetched by location. NB: getTrackStates(i) is
+    // positional, so getTrackStates(AtIP) would return the wrong state (edm4hep
+    // AtIP == 1, i.e. the first-hit state). Tracks without an AtIP state sort as
+    // tanLambda 0, keeping a valid strict-weak ordering for the stable_sort.
+    const auto  ts1 = ACTSTracking::trackStateAt(trk1, edm4hep::TrackState::AtIP);
+    const auto  ts2 = ACTSTracking::trackStateAt(trk2, edm4hep::TrackState::AtIP);
+    const float tanLambda1 = ts1 ? ts1->tanLambda : 0.f;
+    const float tanLambda2 = ts2 ? ts2->tanLambda : 0.f;
+    return tanLambda1 < tanLambda2;
   }
 }  // namespace ACTSTracking
 
