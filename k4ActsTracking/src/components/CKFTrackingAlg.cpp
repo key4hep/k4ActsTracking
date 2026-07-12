@@ -87,6 +87,7 @@
 
 // Standard
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <limits>
@@ -865,14 +866,9 @@ std::vector<Acts::BoundTrackParameters> CKFTrackingAlg::seedsToParameters(
 
     auto seedTrackState = ACTSTracking::makeSeedTrackState(*this, *m_actsGeoSvc, geoCtx, *paramseed, magCache);
 
-    {
-      std::lock_guard<std::mutex> lock(m_seedMutex);
-      auto                        seedTrack = seedCollection.create();
-      seedTrack.addToTrackerHits(hits[bottomSL.index()]);
-      seedTrack.addToTrackerHits(hits[sourceLinkOf(middleSp).index()]);
-      seedTrack.addToTrackerHits(hits[sourceLinkOf(topSp).index()]);
-      seedTrack.addToTrackStates(seedTrackState);
-    }
+    ACTSTracking::appendSeedTrack(
+        seedCollection, m_seedMutex, seedTrackState,
+        std::array{hits[bottomSL.index()], hits[sourceLinkOf(middleSp).index()], hits[sourceLinkOf(topSp).index()]});
 
     debug() << "Seed Parameters" << std::endl << *paramseed << endmsg;
   }
@@ -974,14 +970,9 @@ void CKFTrackingAlg::runTelescopeSeeding(const std::vector<SeedInput>&          
         paramseeds.push_back(*paramseed);
 
         auto seedTrackState = ACTSTracking::makeSeedTrackState(*this, *m_actsGeoSvc, geoCtx, *paramseed, magCache);
-        {
-          std::lock_guard<std::mutex> lock(m_seedMutex);
-          auto                        seedTrack = seedCollection.create();
-          seedTrack.addToTrackerHits(hits[bottomSL.index()]);
-          seedTrack.addToTrackerHits(hits[seedInputs[bestMid].sourceLink.index()]);
-          seedTrack.addToTrackerHits(hits[seedInputs[ti].sourceLink.index()]);
-          seedTrack.addToTrackStates(seedTrackState);
-        }
+        ACTSTracking::appendSeedTrack(seedCollection, m_seedMutex, seedTrackState,
+                                      std::array{hits[bottomSL.index()], hits[seedInputs[bestMid].sourceLink.index()],
+                                                 hits[seedInputs[ti].sourceLink.index()]});
       }
     }
   }

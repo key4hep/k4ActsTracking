@@ -268,6 +268,26 @@ namespace ACTSTracking {
   }
 
   /**
+   * @brief Append a seed track (its tracker hits + seed track state) to @p seedCollection.
+   *
+   * Centralises the locked create/add pattern shared by the seeding algorithms:
+   * the lock serialises the podio collection mutation, then a new track is created
+   * with the given hits and seed track state. @p trackerHits is any range of
+   * edm4hep::TrackerHit - e.g. a std::array for a fixed triplet seed, or a
+   * transformed view for a variable-size candidate.
+   */
+  template <class HitRange>
+  void appendSeedTrack(edm4hep::TrackCollection& seedCollection, std::mutex& seedMutex,
+                       const edm4hep::TrackState& seedTrackState, const HitRange& trackerHits) {
+    std::lock_guard<std::mutex> lock(seedMutex);
+    auto                        seedTrack = seedCollection.create();
+    for (const auto& hit : trackerHits) {
+      seedTrack.addToTrackerHits(hit);
+    }
+    seedTrack.addToTrackStates(seedTrackState);
+  }
+
+  /**
    * @brief Owns the ACTS Combinatorial Kalman Filter and runs it over seeds.
    *
    * Owns the event-independent propagators and CKF (built once) and runs the

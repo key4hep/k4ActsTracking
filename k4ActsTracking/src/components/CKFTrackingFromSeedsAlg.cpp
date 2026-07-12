@@ -62,6 +62,7 @@
 #include <cstdint>
 #include <mutex>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -274,14 +275,9 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingFromSe
 
       auto seedTrackState = ACTSTracking::makeSeedTrackState(*this, *m_actsGeoSvc, geoCtx, *paramseed, magCacheLocal);
 
-      {
-        std::lock_guard<std::mutex> lock(m_seedMutex);
-        auto                        outSeed = seedCollection.create();
-        for (const SeedHit& h : hits) {
-          outSeed.addToTrackerHits(hitContainer[h.sl.index()]);
-        }
-        outSeed.addToTrackStates(seedTrackState);
-      }
+      ACTSTracking::appendSeedTrack(
+          seedCollection, m_seedMutex, seedTrackState,
+          hits | std::views::transform([&](const SeedHit& h) { return hitContainer[h.sl.index()]; }));
     }
 
     // One CKF pass for the whole chunk.
