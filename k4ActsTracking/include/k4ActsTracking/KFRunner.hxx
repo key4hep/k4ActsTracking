@@ -81,7 +81,7 @@ namespace ACTSTracking {
   public:
     struct Config {
       bool        propagateBackward = false;
-      std::size_t maxSteps          = 10000;
+      std::size_t maxSteps          = kDefaultMaxPropagationSteps;
     };
 
     /// @param measurements Event-local measurement container; must outlive the runner.

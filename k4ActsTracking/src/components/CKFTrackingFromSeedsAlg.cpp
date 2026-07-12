@@ -118,6 +118,10 @@ private:
   Gaudi::Property<double>  m_CKF_chi2CutOff{this, "CKF_Chi2CutOff", 15, "Maximum local chi2 contribution."};
   Gaudi::Property<int32_t> m_CKF_numMeasurementsCutOff{this, "CKF_NumMeasurementsCutOff", 10,
                                                        "Maximum measurements on a single surface."};
+  Gaudi::Property<unsigned int> m_maxPropagationSteps{
+      this, "MaxPropagationSteps", ACTSTracking::kDefaultMaxPropagationSteps,
+      "Maximum number of propagation steps for CKF track finding, IP/reference-surface extrapolation and "
+      "calorimeter-face extrapolation."};
   ///@}
 
   /// @name Multi-threading
@@ -165,7 +169,8 @@ StatusCode CKFTrackingFromSeedsAlg::initialize() {
                       ACTSTracking::CKFRunner::Config{.chi2CutOff            = m_CKF_chi2CutOff,
                                                       .numMeasurementsCutOff = m_CKF_numMeasurementsCutOff,
                                                       .propagateBackward     = m_propagateBackward,
-                                                      .extrapolateToCalo     = m_extrapolateToCalo});
+                                                      .extrapolateToCalo     = m_extrapolateToCalo,
+                                                      .maxSteps              = m_maxPropagationSteps});
 
   return StatusCode::SUCCESS;
 }

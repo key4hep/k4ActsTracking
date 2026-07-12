@@ -312,7 +312,7 @@ namespace ACTSTracking {
       double       chi2CutOffOutlier     = std::numeric_limits<double>::max();
       bool         propagateBackward     = false;
       bool         extrapolateToCalo     = false;
-      std::size_t  maxSteps              = 10000;
+      std::size_t  maxSteps              = kDefaultMaxPropagationSteps;
 
       // Branch stopper: optionally terminate CKF branches early on too many
       // holes/outliers or low pT. Disabled by default (useBranchStopper = false).
@@ -543,8 +543,8 @@ namespace ACTSTracking {
         ++caloMonitor->attempts;
       }
       const ACTSTracking::CaloFacePropagator& caloPropagator = *m_caloPropagator;
-      const auto caloResult = ACTSTracking::extrapolateToCaloFace(caloPropagator, *startParams,
-                                                                  m_geo.caloSurfaceGeoIds(), m_geoCtx, m_magCtx);
+      const auto caloResult = ACTSTracking::extrapolateToCaloFace(
+          caloPropagator, *startParams, m_geo.caloSurfaceGeoIds(), m_geoCtx, m_magCtx, m_maxSteps);
 
       using ACTSTracking::CaloExtrapolationStatus;
       switch (caloResult.status) {
@@ -587,7 +587,7 @@ namespace ACTSTracking {
     Acts::GeometryContext             m_geoCtx;
     Acts::MagneticFieldContext        m_magCtx{};
     Acts::CalibrationContext          m_calCtx{};
-    std::size_t                       m_maxSteps            = 10000;
+    std::size_t                       m_maxSteps            = kDefaultMaxPropagationSteps;
     bool                              m_propagateBackward   = false;
     bool                              m_useBranchStopper    = false;
     int                               m_bsMaxHoles          = 2;

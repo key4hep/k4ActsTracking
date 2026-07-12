@@ -318,8 +318,8 @@ namespace ACTSTracking {
   CaloExtrapolationResult extrapolateToCaloFace(const CaloFacePropagator&                    propagator,
                                                 const Acts::BoundTrackParameters&            start,
                                                 const std::vector<Acts::GeometryIdentifier>& caloSurfaceGeoIds,
-                                                const Acts::GeometryContext&                 gctx,
-                                                const Acts::MagneticFieldContext&            mctx) {
+                                                const Acts::GeometryContext& gctx, const Acts::MagneticFieldContext& mctx,
+                                                std::size_t maxSteps) {
     if (caloSurfaceGeoIds.empty()) {
       return {std::nullopt, CaloExtrapolationStatus::NoSurfaces};
     }
@@ -328,7 +328,7 @@ namespace ACTSTracking {
     using Options   = CaloFacePropagator::Options<ActorList>;
 
     Options options{gctx, mctx};
-    options.maxSteps                                    = 10000;
+    options.maxSteps                                    = maxSteps;
     options.actorList.get<CaloSurfaceReached>().caloIds = &caloSurfaceGeoIds;
 
     auto result = propagator.propagate(start, options);

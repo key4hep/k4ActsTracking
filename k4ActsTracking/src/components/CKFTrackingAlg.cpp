@@ -392,6 +392,10 @@ private:
   Gaudi::Property<double>  m_CKF_chi2CutOffOutlier{
       this, "CKF_Chi2CutOffOutlier", std::numeric_limits<double>::max(),
       "Maximum local chi2 for a failing hit to be kept as an outlier; above this it becomes a hole."};
+  Gaudi::Property<unsigned int> m_maxPropagationSteps{
+      this, "MaxPropagationSteps", ACTSTracking::kDefaultMaxPropagationSteps,
+      "Maximum number of propagation steps for CKF track finding, IP/reference-surface extrapolation and "
+      "calorimeter-face extrapolation."};
 
   /// @name CKF branch stopper (early termination of candidate branches)
   ///@{
@@ -501,6 +505,7 @@ StatusCode CKFTrackingAlg::initialize() {
                                                       .chi2CutOffOutlier     = m_CKF_chi2CutOffOutlier,
                                                       .propagateBackward     = m_propagateBackward,
                                                       .extrapolateToCalo     = m_extrapolateToCalo,
+                                                      .maxSteps              = m_maxPropagationSteps,
                                                       .useBranchStopper      = m_useBranchStopper,
                                                       .bsMaxHoles            = m_bsMaxHoles,
                                                       .bsMaxOutliers         = m_bsMaxOutliers,
