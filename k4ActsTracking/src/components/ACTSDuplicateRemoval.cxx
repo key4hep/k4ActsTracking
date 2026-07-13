@@ -79,8 +79,8 @@ namespace ACTSTracking {
     // positional, so getTrackStates(AtIP) would return the wrong state (edm4hep
     // AtIP == 1, i.e. the first-hit state). Tracks without an AtIP state sort as
     // tanLambda 0, keeping a valid strict-weak ordering for the stable_sort.
-    const auto  ts1 = ACTSTracking::trackStateAt(trk1, edm4hep::TrackState::AtIP);
-    const auto  ts2 = ACTSTracking::trackStateAt(trk2, edm4hep::TrackState::AtIP);
+    const auto  ts1        = ACTSTracking::trackStateAt(trk1, edm4hep::TrackState::AtIP);
+    const auto  ts2        = ACTSTracking::trackStateAt(trk2, edm4hep::TrackState::AtIP);
     const float tanLambda1 = ts1 ? ts1->tanLambda : 0.f;
     const float tanLambda2 = ts2 ? ts2->tanLambda : 0.f;
     return tanLambda1 < tanLambda2;

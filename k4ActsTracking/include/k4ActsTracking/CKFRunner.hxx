@@ -543,7 +543,7 @@ namespace ACTSTracking {
         ++caloMonitor->attempts;
       }
       const ACTSTracking::CaloFacePropagator& caloPropagator = *m_caloPropagator;
-      const auto caloResult = ACTSTracking::extrapolateToCaloFace(
+      const auto                              caloResult     = ACTSTracking::extrapolateToCaloFace(
           caloPropagator, *startParams, m_geo.caloSurfaceGeoIds(), m_geoCtx, m_magCtx, m_maxSteps);
 
       using ACTSTracking::CaloExtrapolationStatus;

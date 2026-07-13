@@ -193,7 +193,7 @@ namespace ACTSTracking {
   CaloExtrapolationResult extrapolateToCaloFace(const CaloFacePropagator&                    propagator,
                                                 const Acts::BoundTrackParameters&            start,
                                                 const std::vector<Acts::GeometryIdentifier>& caloSurfaceGeoIds,
-                                                const Acts::GeometryContext& gctx, const Acts::MagneticFieldContext& mctx,
-                                                std::size_t maxSteps);
+                                                const Acts::GeometryContext&                 gctx,
+                                                const Acts::MagneticFieldContext& mctx, std::size_t maxSteps);
 
 }  // namespace ACTSTracking
