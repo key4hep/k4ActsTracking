@@ -97,7 +97,7 @@ namespace {
           } else if (key == "z") {
             hitInfo.push_back(position.z());
           } else if (key == "r") {
-            hitInfo.push_back(position.r());
+            hitInfo.push_back(position.rho());
           } else if (key == "phi") {
             hitInfo.push_back(position.phi());
           } else if (key == "t" || key == "time") {
