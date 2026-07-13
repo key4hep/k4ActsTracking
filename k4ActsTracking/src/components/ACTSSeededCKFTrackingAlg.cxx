@@ -63,6 +63,10 @@ ACTSSeededCKFTrackingAlg::ACTSSeededCKFTrackingAlg(const std::string& name, ISvc
     : ACTSAlgBase(name, svcLoc) {}
 
 StatusCode ACTSSeededCKFTrackingAlg::initialize() {
+  warning() << "ACTSSeededCKFTrackingAlg is a deprecated legacy algorithm and will be removed as soon as material "
+               "effects are included in the new CKFTrackingAlg. Please migrate to CKFTrackingAlg."
+            << endmsg;
+
   // Initialize the base
   StatusCode init = ACTSAlgBase::initialize();
 
