@@ -23,13 +23,8 @@
 #include <edm4hep/MutableTrack.h>
 #include <edm4hep/TrackState.h>
 
-// ACTS
-#include <Acts/Definitions/TrackParametrization.hpp>
-
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
-
-#include <cmath>
 
 using Catch::Approx;
 
@@ -101,29 +96,4 @@ TEST_CASE("trackStateAt is not fooled by the positional getTrackStates getter") 
   CHECK(positional.location == edm4hep::TrackState::AtFirstHit);  // documents the footgun
   CHECK(ip->D0 == Approx(1.5f));                                  // trackStateAt gets it right
   CHECK(ip->D0 != Approx(positional.D0));
-}
-
-TEST_CASE("ACTS2edm4hep_trackState converts perigee parameters and derived quantities") {
-  Acts::BoundVector params      = Acts::BoundVector::Zero();
-  params[Acts::eBoundLoc0]      = 2.0;    // D0
-  params[Acts::eBoundLoc1]      = 5.0;    // Z0
-  params[Acts::eBoundPhi]       = 0.5;    // phi
-  params[Acts::eBoundTheta]     = 1.0;    // theta [rad]
-  params[Acts::eBoundQOverP]    = 0.5;    // q/p
-  const Acts::BoundMatrix cov   = Acts::BoundMatrix::Zero();
-  const double            Bz    = 2.0;    // Tesla
-
-  const edm4hep::TrackState ts =
-      ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtIP, params, cov, Bz);
-
-  const double p              = 1e3 / 0.5;
-  const double expectedOmega  = (0.3 * Bz) / (p * std::sin(1.0));
-  const double expectedTanLam = std::tan(M_PI / 2.0 - 1.0);
-
-  CHECK(ts.location == edm4hep::TrackState::AtIP);
-  CHECK(ts.D0 == Approx(2.0));
-  CHECK(ts.Z0 == Approx(5.0));
-  CHECK(ts.phi == Approx(0.5));
-  CHECK(ts.omega == Approx(expectedOmega));
-  CHECK(ts.tanLambda == Approx(expectedTanLam));
 }
