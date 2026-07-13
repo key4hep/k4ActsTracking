@@ -64,6 +64,7 @@ namespace ActsPlugins {
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace {
@@ -165,9 +166,24 @@ StatusCode GNNTrackFinder::initialize() {
   for (const auto& edgeClassifierFeatures : edgeClassifierFeaturesList) {
     m_allHitFeatures.insert(m_allHitFeatures.end(), edgeClassifierFeatures.begin(), edgeClassifierFeatures.end());
   }
-  m_allHitFeatures.erase(std::unique(m_allHitFeatures.begin(), m_allHitFeatures.end()), m_allHitFeatures.end());
+  // Remove duplicates from m_allHitFeatures preserving initial order
+  std::unordered_set<std::string> seenFeatures;
+  std::vector<std::string>         uniqueHitFeatures;
+  uniqueHitFeatures.reserve(m_allHitFeatures.size());
+  for (const auto& feature : m_allHitFeatures) {
+    if (seenFeatures.insert(feature).second) {
+      uniqueHitFeatures.push_back(feature);
+    }
+  }
+  m_allHitFeatures = std::move(uniqueHitFeatures);
+  
+  debug() << fmt::format("All hit features: ");
+  for (const auto& f : m_allHitFeatures) {
+    debug() << fmt::format(" {},", f);
+  }
+  debug() << endmsg;
 
-  // Translate the lists of input features into lists of indices into the full
+  // Translate the lists of input features into lists of indices in the full
   // per-hit feature vector for each model.
   const auto& allFeatures = m_allHitFeatures;
   m_embeddingFeatureIndices.clear();
