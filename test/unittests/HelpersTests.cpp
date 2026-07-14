@@ -17,8 +17,6 @@
  * limitations under the License.
  */
 
-#include "k4ActsTracking/Helpers.hxx"
-
 // edm4hep
 #include <edm4hep/MutableTrack.h>
 #include <edm4hep/TrackState.h>
@@ -59,41 +57,43 @@ namespace {
   }
 }  // namespace
 
-TEST_CASE("trackStateAt returns the state matching the requested location") {
+TEST_CASE("getTrackState returns the state matching the requested location") {
   const edm4hep::MutableTrack track = makeTrackWithStates();
 
-  const auto ip = ACTSTracking::trackStateAt(track, edm4hep::TrackState::AtIP);
+  const auto ip = track.getTrackState(edm4hep::TrackState::AtIP);
   REQUIRE(ip.has_value());
   CHECK(ip->location == edm4hep::TrackState::AtIP);
   CHECK(ip->D0 == Approx(1.5f));
   CHECK(ip->Z0 == Approx(2.5f));
 
-  const auto firstHit = ACTSTracking::trackStateAt(track, edm4hep::TrackState::AtFirstHit);
+  const auto firstHit = track.getTrackState(edm4hep::TrackState::AtFirstHit);
   REQUIRE(firstHit.has_value());
   CHECK(firstHit->location == edm4hep::TrackState::AtFirstHit);
   CHECK(firstHit->D0 == Approx(10.0f));
 }
 
-TEST_CASE("trackStateAt returns nullopt when no state has the location") {
+TEST_CASE("getTrackState returns nullopt when no state has the location") {
   const edm4hep::MutableTrack track = makeTrackWithStates();
-  CHECK_FALSE(ACTSTracking::trackStateAt(track, edm4hep::TrackState::AtCalorimeter).has_value());
+  CHECK_FALSE(track.getTrackState(edm4hep::TrackState::AtCalorimeter).has_value());
 
   const edm4hep::MutableTrack empty;
-  CHECK_FALSE(ACTSTracking::trackStateAt(empty, edm4hep::TrackState::AtIP).has_value());
+  CHECK_FALSE(empty.getTrackState(edm4hep::TrackState::AtIP).has_value());
 }
 
-// Regression guard for the positional-vs-location getter bug: edm4hep's
+// Regression guard for the positional-vs-location getter footgun: edm4hep's
 // Track::getTrackStates(i) is indexed by position, and AtIP == 1, so
 // getTrackStates(AtIP) returns the index-1 (first-hit) state, NOT the AtIP one.
-// trackStateAt must resolve the *real* AtIP state regardless of its index.
-TEST_CASE("trackStateAt is not fooled by the positional getTrackStates getter") {
+// getTrackState(location) resolves the *real* AtIP state regardless of its
+// index; this test guards against anyone "simplifying" callers back to the
+// positional getter.
+TEST_CASE("getTrackState is not fooled by the positional getTrackStates getter") {
   const edm4hep::MutableTrack track = makeTrackWithStates();
 
-  const auto ip = ACTSTracking::trackStateAt(track, edm4hep::TrackState::AtIP);
+  const auto ip = track.getTrackState(edm4hep::TrackState::AtIP);
   REQUIRE(ip.has_value());
 
   const edm4hep::TrackState positional = track.getTrackStates(edm4hep::TrackState::AtIP);
   CHECK(positional.location == edm4hep::TrackState::AtFirstHit);  // documents the footgun
-  CHECK(ip->D0 == Approx(1.5f));                                  // trackStateAt gets it right
+  CHECK(ip->D0 == Approx(1.5f));                                  // getTrackState gets it right
   CHECK(ip->D0 != Approx(positional.D0));
 }

@@ -245,15 +245,6 @@ namespace ACTSTracking {
     return trackState;
   }
 
-  std::optional<edm4hep::TrackState> trackStateAt(const edm4hep::Track& track, int location) {
-    for (const auto& state : track.getTrackStates()) {
-      if (state.location == location) {
-        return state;
-      }
-    }
-    return std::nullopt;
-  }
-
   Acts::ParticleHypothesis convertParticle(const edm4hep::MCParticle mcParticle) {
     switch (mcParticle.getPDG()) {
       case 11:

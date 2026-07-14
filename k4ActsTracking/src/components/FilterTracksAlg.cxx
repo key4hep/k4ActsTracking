@@ -87,8 +87,9 @@ edm4hep::TrackCollection FilterTracksAlg::operator()(const edm4hep::TrackCollect
     }
     // Fetch the IP parameters by location. NB: Track::getTrackStates(i) is
     // positional, not by-location, so getTrackStates(AtIP) would return the
-    // wrong state (edm4hep AtIP == 1, i.e. the first-hit state).
-    const std::optional<edm4hep::TrackState> ipState = ACTSTracking::trackStateAt(trk, edm4hep::TrackState::AtIP);
+    // wrong state (edm4hep AtIP == 1, i.e. the first-hit state); getTrackState
+    // resolves the state by its `location` field instead.
+    const std::optional<edm4hep::TrackState> ipState = trk.getTrackState(edm4hep::TrackState::AtIP);
     if (!ipState) {
       warning() << "Track has no AtIP track state; skipping it in the filter." << endmsg;
       continue;
