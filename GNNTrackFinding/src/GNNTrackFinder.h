@@ -86,6 +86,8 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
       "Must be same size as InputFeaturesEdgeClassifier."};
   Gaudi::Property<std::vector<float>> m_edgeClassifierCut{
       this, "EdgeClassifierCut", {0.5f}, "List of cut values to use for the edge classifiers"};
+  Gaudi::Property<bool> m_detailedDebugOut{this, "DetailedDebugOut", false,
+                                           "If true, this will print all pipeline inputs and outputs in full detail!"};
 
   Gaudi::Property<uint32_t> m_minHitsPerTrk{this, "MinHitsPerTrack", 3,
                                             "Minimum number of hits per track for it to be considered for the output"};

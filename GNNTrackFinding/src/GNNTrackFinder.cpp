@@ -168,7 +168,7 @@ StatusCode GNNTrackFinder::initialize() {
   }
   // Remove duplicates from m_allHitFeatures preserving initial order
   std::unordered_set<std::string> seenFeatures;
-  std::vector<std::string>         uniqueHitFeatures;
+  std::vector<std::string>        uniqueHitFeatures;
   uniqueHitFeatures.reserve(m_allHitFeatures.size());
   for (const auto& feature : m_allHitFeatures) {
     if (seenFeatures.insert(feature).second) {
@@ -176,7 +176,7 @@ StatusCode GNNTrackFinder::initialize() {
     }
   }
   m_allHitFeatures = std::move(uniqueHitFeatures);
-  
+
   debug() << fmt::format("All hit features: ");
   for (const auto& f : m_allHitFeatures) {
     debug() << fmt::format(" {},", f);
@@ -270,14 +270,39 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
     return hits;
   }();
   debug() << fmt::format("Collected {} hits from {} collections", allHits.size(), inputTrackerHits.size()) << endmsg;
+  
   auto embeddingInputs = extractHitInformation(allHits, m_allHitFeatures, m_actsGeoSvc->cellIDEncodingString());
   assert(embeddingInputs.size() == allHits.size() * m_allHitFeatures.size());
+  
   // Give hits their position in the global hits collection as index
   std::vector<int> hitIdcs(allHits.size());
   std::iota(hitIdcs.begin(), hitIdcs.end(), 0);
 
+  // Full detailed output of inputs
+  if (m_detailedDebugOut.value()) {
+    debug() << "Embedding input tensor shape: (" << allHits.size() << ", " << m_allHitFeatures.size() << ")" << endmsg;
+    for (std::size_t i = 0; i < allHits.size(); ++i) {
+      debug() << fmt::format("Input space point {}: ", i);
+      for (std::size_t j = 0; j < m_allHitFeatures.size(); ++j) {
+        debug() << fmt::format("  {}: {}", m_allHitFeatures[j], embeddingInputs[i * m_allHitFeatures.size() + j]);
+      }
+      debug() << endmsg;
+    }
+  }
+
   const auto trackCandIdcs = m_pipeline->run(embeddingInputs, {}, hitIdcs, m_runDevice);
   debug() << fmt::format("Received {} track candidates", trackCandIdcs.size()) << endmsg;
+
+  // Full detailed output of track candidates
+  if (m_detailedDebugOut.value()) {
+    for (std::size_t i = 0; i < trackCandIdcs.size(); ++i) {
+      debug() << fmt::format("Track candidate {}: ", i);
+      for (const auto idx : trackCandIdcs[i]) {
+        debug() << fmt::format("  Hit index: {}", idx);
+      }
+      debug() << endmsg;
+    }
+  }
 
   // Default-construct ACTS contexts
   const Acts::GeometryContext      geoCtx = Acts::GeometryContext::dangerouslyDefaultConstruct();
