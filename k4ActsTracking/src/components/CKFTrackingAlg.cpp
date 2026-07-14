@@ -48,8 +48,8 @@
 #include <Acts/EventData/BoundTrackParameters.hpp>
 #include <Acts/EventData/FreeTrackParameters.hpp>
 #include <Acts/EventData/ParticleHypothesis.hpp>
-#include <Acts/EventData/SeedContainer2.hpp>
-#include <Acts/EventData/SpacePointContainer2.hpp>
+#include <Acts/EventData/SeedContainer.hpp>
+#include <Acts/EventData/SpacePointContainer.hpp>
 #include <Acts/EventData/TrackContainer.hpp>
 #include <Acts/EventData/TrackStateType.hpp>
 #include <Acts/EventData/VectorMultiTrajectory.hpp>
@@ -60,12 +60,12 @@
 #include <Acts/Propagator/EigenStepper.hpp>
 #include <Acts/Propagator/Navigator.hpp>
 #include <Acts/Propagator/Propagator.hpp>
+#include <Acts/Seeding/BroadTripletSeedFilter.hpp>
+#include <Acts/Seeding/CylindricalSpacePointGrid.hpp>
+#include <Acts/Seeding/DoubletSeedFinder.hpp>
 #include <Acts/Seeding/EstimateTrackParamsFromSeed.hpp>
-#include <Acts/Seeding2/BroadTripletSeedFilter.hpp>
-#include <Acts/Seeding2/CylindricalSpacePointGrid2.hpp>
-#include <Acts/Seeding2/DoubletSeedFinder.hpp>
-#include <Acts/Seeding2/TripletSeedFinder.hpp>
-#include <Acts/Seeding2/TripletSeeder.hpp>
+#include <Acts/Seeding/TripletSeedFinder.hpp>
+#include <Acts/Seeding/TripletSeeder.hpp>
 #include <Acts/Surfaces/PerigeeSurface.hpp>
 #include <Acts/Surfaces/PlaneSurface.hpp>
 #include <Acts/TrackFinding/CombinatorialKalmanFilter.hpp>
@@ -177,8 +177,8 @@ private:
   /// Convert the seeds found by the triplet seeder into ACTS bound track
   /// parameters and create the corresponding edm4hep seed tracks. The space
   /// point indices stored in @p seeds reference @p spacePoints.
-  std::vector<Acts::BoundTrackParameters> seedsToParameters(const Acts::SeedContainer2&         seeds,
-                                                            const Acts::SpacePointContainer2&   spacePoints,
+  std::vector<Acts::BoundTrackParameters> seedsToParameters(const Acts::SeedContainer&          seeds,
+                                                            const Acts::SpacePointContainer&    spacePoints,
                                                             const ACTSTracking::HitContainer&   hits,
                                                             edm4hep::TrackCollection&           seedCollection,
                                                             Acts::MagneticFieldProvider::Cache& magCache) const;
@@ -593,7 +593,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
   // -------------------------------------------------------------------------
   // Seeding grid (SoA): bin the seed space points in (phi, z, r).
   // -------------------------------------------------------------------------
-  Acts::CylindricalSpacePointGrid2::Config gridCfg;
+  Acts::CylindricalSpacePointGrid::Config gridCfg;
   gridCfg.minPt       = minPt;
   gridCfg.rMin        = 0.f;
   gridCfg.rMax        = m_seedFinding_rMax;
@@ -619,16 +619,16 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
   gridCfg.bottomBinFinder.emplace(m_phiBottomBinLen.value(), m_zBottomBinLen.value(), 0);
   gridCfg.topBinFinder.emplace(m_phiTopBinLen.value(), m_zTopBinLen.value(), 0);
 
-  Acts::CylindricalSpacePointGrid2 grid(gridCfg, Acts::getDefaultLogger("CKFSeedingGrid", Acts::Logging::WARNING));
+  Acts::CylindricalSpacePointGrid grid(gridCfg, Acts::getDefaultLogger("CKFSeedingGrid", Acts::Logging::WARNING));
 
   for (std::size_t i = 0; i < seedInputs.size(); ++i) {
     const SeedInput& sp = seedInputs[i];
-    grid.insert(static_cast<Acts::SpacePointIndex2>(i), sp.phi, sp.z, sp.r);
+    grid.insert(static_cast<Acts::SpacePointIndex>(i), sp.phi, sp.z, sp.r);
   }
 
   // Sort each bin by radius, as required by the radius-sorted doublet finders.
   for (std::size_t i = 0; i < grid.numberOfBins(); ++i) {
-    std::ranges::sort(grid.at(i), [&](const Acts::SpacePointIndex2& a, const Acts::SpacePointIndex2& b) {
+    std::ranges::sort(grid.at(i), [&](const Acts::SpacePointIndex& a, const Acts::SpacePointIndex& b) {
       return seedInputs[a].r < seedInputs[b].r;
     });
   }
@@ -637,15 +637,15 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
   // Build the SoA space point container in grid-bin order so that every bin
   // maps to a contiguous index range, as expected by the triplet seeder.
   // -------------------------------------------------------------------------
-  Acts::SpacePointContainer2 spacePoints(Acts::SpacePointColumns::SourceLinks | Acts::SpacePointColumns::PackedXY |
-                                         Acts::SpacePointColumns::PackedZR | Acts::SpacePointColumns::VarianceZ |
-                                         Acts::SpacePointColumns::VarianceR);
+  Acts::SpacePointContainer spacePoints(Acts::SpacePointColumns::SourceLinks | Acts::SpacePointColumns::PackedXY |
+                                        Acts::SpacePointColumns::PackedZR | Acts::SpacePointColumns::VarianceZ |
+                                        Acts::SpacePointColumns::VarianceR);
   spacePoints.reserve(grid.numberOfSpacePoints());
-  std::vector<Acts::SpacePointIndexRange2> gridSpacePointRanges;
+  std::vector<Acts::SpacePointIndexRange> gridSpacePointRanges;
   gridSpacePointRanges.reserve(grid.numberOfBins());
   for (std::size_t i = 0; i < grid.numberOfBins(); ++i) {
     std::uint32_t begin = spacePoints.size();
-    for (Acts::SpacePointIndex2 spIndex : grid.at(i)) {
+    for (Acts::SpacePointIndex spIndex : grid.at(i)) {
       const SeedInput& in    = seedInputs[spIndex];
       auto             newSp = spacePoints.createSpacePoint();
       newSp.xy()             = {in.x, in.y};
@@ -662,7 +662,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
   // Radius range, exploiting the per-bin radius sorting performed above.
   float minRange = std::numeric_limits<float>::max();
   float maxRange = std::numeric_limits<float>::lowest();
-  for (const Acts::SpacePointIndexRange2& range : gridSpacePointRanges) {
+  for (const Acts::SpacePointIndexRange& range : gridSpacePointRanges) {
     if (range.first == range.second)
       continue;
     minRange = std::min(spacePoints[range.first].zr()[1], minRange);
@@ -772,16 +772,16 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
     Acts::BroadTripletSeedFilter::Cache filterCache;
     Acts::BroadTripletSeedFilter        seedFilter(filterCfg, filterState, filterCache, *seedingLogger);
 
-    Acts::SeedContainer2 seeds;
+    Acts::SeedContainer seeds;
     seeds.assignSpacePointContainer(spacePoints);
 
-    std::vector<Acts::SpacePointContainer2::ConstRange> bottomSpRanges;
-    std::vector<Acts::SpacePointContainer2::ConstRange> topSpRanges;
+    std::vector<Acts::SpacePointContainer::ConstRange> bottomSpRanges;
+    std::vector<Acts::SpacePointContainer::ConstRange> topSpRanges;
 
     for (size_t i = r.begin(); i != r.end(); ++i) {
       const auto& [bottom, middle, top] = groups[i];
 
-      Acts::SpacePointContainer2::ConstRange middleSpRange =
+      Acts::SpacePointContainer::ConstRange middleSpRange =
           spacePoints.range(gridSpacePointRanges.at(middle)).asConst();
       if (middleSpRange.empty())
         continue;
@@ -822,7 +822,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
 }
 
 std::vector<Acts::BoundTrackParameters> CKFTrackingAlg::seedsToParameters(
-    const Acts::SeedContainer2& seeds, const Acts::SpacePointContainer2& spacePoints,
+    const Acts::SeedContainer& seeds, const Acts::SpacePointContainer& spacePoints,
     const ACTSTracking::HitContainer& hits, edm4hep::TrackCollection& seedCollection,
     Acts::MagneticFieldProvider::Cache& magCache) const {
   const Acts::GeometryContext geoCtx = Acts::GeometryContext::dangerouslyDefaultConstruct();
@@ -830,22 +830,22 @@ std::vector<Acts::BoundTrackParameters> CKFTrackingAlg::seedsToParameters(
   std::vector<Acts::BoundTrackParameters> paramseeds;
   paramseeds.reserve(seeds.size());
 
-  auto position = [](const Acts::ConstSpacePointProxy2& sp) {
+  auto position = [](const Acts::ConstSpacePointProxy& sp) {
     return Acts::Vector3(sp.xy()[0], sp.xy()[1], sp.zr()[0]);
   };
-  auto sourceLinkOf = [](const Acts::ConstSpacePointProxy2& sp) -> const ACTSTracking::SourceLink& {
+  auto sourceLinkOf = [](const Acts::ConstSpacePointProxy& sp) -> const ACTSTracking::SourceLink& {
     return sp.sourceLinks()[0].get<ACTSTracking::SourceLink>();
   };
 
-  for (const Acts::ConstSeedProxy2& seed : seeds) {
-    const std::span<const Acts::SpacePointIndex2> spIndices = seed.spacePointIndices();
+  for (const Acts::ConstSeedProxy& seed : seeds) {
+    const std::span<const Acts::SpacePointIndex> spIndices = seed.spacePointIndices();
     if (spIndices.size() != 3) {
       continue;
     }
 
-    const Acts::ConstSpacePointProxy2 bottomSp = spacePoints[spIndices[0]];
-    const Acts::ConstSpacePointProxy2 middleSp = spacePoints[spIndices[1]];
-    const Acts::ConstSpacePointProxy2 topSp    = spacePoints[spIndices[2]];
+    const Acts::ConstSpacePointProxy bottomSp = spacePoints[spIndices[0]];
+    const Acts::ConstSpacePointProxy middleSp = spacePoints[spIndices[1]];
+    const Acts::ConstSpacePointProxy topSp    = spacePoints[spIndices[2]];
 
     const ACTSTracking::SourceLink& bottomSL = sourceLinkOf(bottomSp);
     const Acts::Surface*            surface  = m_actsGeoSvc->trackingGeometry()->findSurface(bottomSL.geometryId());

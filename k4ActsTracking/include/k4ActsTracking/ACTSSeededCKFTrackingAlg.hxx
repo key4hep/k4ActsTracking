@@ -32,8 +32,8 @@
 #include <Acts/EventData/BoundTrackParameters.hpp>
 #include <Acts/EventData/FreeTrackParameters.hpp>
 #include <Acts/EventData/ParticleHypothesis.hpp>
-#include <Acts/EventData/SeedContainer2.hpp>
-#include <Acts/EventData/SpacePointContainer2.hpp>
+#include <Acts/EventData/SeedContainer.hpp>
+#include <Acts/EventData/SpacePointContainer.hpp>
 #include <Acts/EventData/TrackContainer.hpp>
 #include <Acts/EventData/VectorMultiTrajectory.hpp>
 #include <Acts/EventData/VectorTrackContainer.hpp>
@@ -100,8 +100,8 @@ public:
   /// Convert the seeds found by the triplet seeder into ACTS bound track
   /// parameters and create the corresponding edm4hep seed tracks. The space
   /// point indices stored in @p seeds reference @p spacePoints.
-  std::vector<Acts::BoundTrackParameters> seedsToParameters(const Acts::SeedContainer2&         seeds,
-                                                            const Acts::SpacePointContainer2&   spacePoints,
+  std::vector<Acts::BoundTrackParameters> seedsToParameters(const Acts::SeedContainer&          seeds,
+                                                            const Acts::SpacePointContainer&    spacePoints,
                                                             const ACTSTracking::HitContainer&   hits,
                                                             edm4hep::TrackCollection&           seedCollection,
                                                             Acts::MagneticFieldProvider::Cache& magCache) const;
