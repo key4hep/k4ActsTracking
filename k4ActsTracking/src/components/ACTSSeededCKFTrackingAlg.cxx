@@ -30,10 +30,10 @@
 
 // ACTS
 #include <Acts/Definitions/Units.hpp>
-#include <Acts/Seeding/EstimateTrackParamsFromSeed.hpp>
 #include <Acts/Seeding/BroadTripletSeedFilter.hpp>
 #include <Acts/Seeding/CylindricalSpacePointGrid.hpp>
 #include <Acts/Seeding/DoubletSeedFinder.hpp>
+#include <Acts/Seeding/EstimateTrackParamsFromSeed.hpp>
 #include <Acts/Seeding/TripletSeedFinder.hpp>
 #include <Acts/Seeding/TripletSeeder.hpp>
 #include <Acts/Surfaces/PerigeeSurface.hpp>
@@ -269,8 +269,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
   gridCfg.bottomBinFinder.emplace(m_phiBottomBinLen.value(), m_zBottomBinLen.value(), 0);
   gridCfg.topBinFinder.emplace(m_phiTopBinLen.value(), m_zTopBinLen.value(), 0);
 
-  Acts::CylindricalSpacePointGrid grid(gridCfg,
-                                        Acts::getDefaultLogger("SeededCKFSeedingGrid", Acts::Logging::WARNING));
+  Acts::CylindricalSpacePointGrid grid(gridCfg, Acts::getDefaultLogger("SeededCKFSeedingGrid", Acts::Logging::WARNING));
 
   for (std::size_t i = 0; i < seedInputs.size(); ++i) {
     const SeedInput& sp = seedInputs[i];
@@ -289,8 +288,8 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
   // maps to a contiguous index range, as expected by the triplet seeder.
   // -------------------------------------------------------------------------
   Acts::SpacePointContainer spacePoints(Acts::SpacePointColumns::SourceLinks | Acts::SpacePointColumns::PackedXY |
-                                         Acts::SpacePointColumns::PackedZR | Acts::SpacePointColumns::VarianceZ |
-                                         Acts::SpacePointColumns::VarianceR);
+                                        Acts::SpacePointColumns::PackedZR | Acts::SpacePointColumns::VarianceZ |
+                                        Acts::SpacePointColumns::VarianceR);
   spacePoints.reserve(grid.numberOfSpacePoints());
   std::vector<Acts::SpacePointIndexRange> gridSpacePointRanges;
   gridSpacePointRanges.reserve(grid.numberOfBins());

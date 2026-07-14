@@ -100,8 +100,8 @@ public:
   /// Convert the seeds found by the triplet seeder into ACTS bound track
   /// parameters and create the corresponding edm4hep seed tracks. The space
   /// point indices stored in @p seeds reference @p spacePoints.
-  std::vector<Acts::BoundTrackParameters> seedsToParameters(const Acts::SeedContainer&         seeds,
-                                                            const Acts::SpacePointContainer&   spacePoints,
+  std::vector<Acts::BoundTrackParameters> seedsToParameters(const Acts::SeedContainer&          seeds,
+                                                            const Acts::SpacePointContainer&    spacePoints,
                                                             const ACTSTracking::HitContainer&   hits,
                                                             edm4hep::TrackCollection&           seedCollection,
                                                             Acts::MagneticFieldProvider::Cache& magCache) const;
