@@ -208,15 +208,6 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingFromSe
   debug() << fmt::format("Created {} sourceLinks from {} hits", sourceLinks.size(), trackerHitCollection.size())
           << endmsg;
 
-  // Per-hit seed info: global position + transverse radius, resolved once per
-  // usable hit so the seed triplet can be ordered by radius without recomputing
-  // positions inside the sort comparator.
-  struct SeedHit {
-    Acts::Vector3            pos;
-    double                   r;
-    ACTSTracking::SourceLink sl;
-  };
-
   // Parallelise over the input seed tracks: each task turns a contiguous chunk
   // of candidates into three-point seeds + initial parameters, then runs the CKF
   // once over that chunk (so the ACTS track containers are reused across the
@@ -233,16 +224,10 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingFromSe
     for (std::size_t i = range.begin(); i != range.end(); ++i) {
       const auto seedTrack = seedTrackCollection[i];
 
-      std::vector<SeedHit> hits;
-      hits.reserve(seedTrack.trackerHits_size());
-      for (const auto& hit : seedTrack.getTrackerHits()) {
-        auto it = slByHit.find(ACTSTracking::trackerHitKey(hit));
-        if (it == slByHit.end()) {
-          continue;
-        }
-        const edm4hep::Vector3d p = hitContainer[it->second.index()].getPosition();
-        hits.push_back({Acts::Vector3(p.x, p.y, p.z), std::hypot(p.x, p.y), it->second});
-      }
+      // Build the radius-ordered seed hits; the triplet is innermost / middle /
+      // outermost.
+      const std::vector<ACTSTracking::SeedHit> hits =
+          ACTSTracking::collectSeedHits(seedTrack.getTrackerHits(), slByHit, hitContainer);
 
       if (hits.size() < m_minSeedHits) {
         debug() << "Skipping input track with " << hits.size() << " usable hits (< " << m_minSeedHits.value() << ")."
@@ -250,12 +235,9 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingFromSe
         continue;
       }
 
-      // Order by radius and pick innermost / middle / outermost as the seed triplet.
-      std::sort(hits.begin(), hits.end(), [](const SeedHit& a, const SeedHit& b) { return a.r < b.r; });
-
-      const SeedHit& bottom = hits.front();
-      const SeedHit& middle = hits[hits.size() / 2];
-      const SeedHit& top    = hits.back();
+      const ACTSTracking::SeedHit& bottom = hits.front();
+      const ACTSTracking::SeedHit& middle = hits[hits.size() / 2];
+      const ACTSTracking::SeedHit& top    = hits.back();
 
       const Acts::Surface* bottomSurface = m_actsGeoSvc->trackingGeometry()->findSurface(bottom.sl.geometryId());
       if (bottomSurface == nullptr) {
@@ -277,7 +259,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingFromSe
       {
         std::lock_guard<std::mutex> lock(m_seedMutex);
         auto                        outSeed = seedCollection.create();
-        for (const SeedHit& h : hits) {
+        for (const ACTSTracking::SeedHit& h : hits) {
           outSeed.addToTrackerHits(hitContainer[h.sl.index()]);
         }
         outSeed.addToTrackStates(seedTrackState);
