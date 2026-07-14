@@ -140,7 +140,7 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
     }
     for (std::size_t n = 0; n < numNodes; ++n) {
       for (std::size_t f = 0; f < static_cast<std::size_t>(inputShape[1]); ++f) {
-        (*inferenceValues)[n * static_cast<std::size_t>(inputShape[1]) + f] *= config().featureScales[f];
+        (*inferenceValues)[n * static_cast<std::size_t>(inputShape[1]) + f] /= config().featureScales[f];
       }
     }
   }
