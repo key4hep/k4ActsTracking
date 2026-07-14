@@ -81,12 +81,12 @@ namespace ACTSTracking {
     // `location` field. Tracks without an AtIP state sort as tanLambda 0,
     // keeping a valid strict-weak ordering for the stable_sort.
     // Copy to mutable handles: edm4hep's Track::getTrackState is not (yet) const.
-    edm4hep::Track t1 = trk1;
-    edm4hep::Track t2 = trk2;
+    edm4hep::Track t1         = trk1;
+    edm4hep::Track t2         = trk2;
     const auto     ts1        = t1.getTrackState(edm4hep::TrackState::AtIP);
     const auto     ts2        = t2.getTrackState(edm4hep::TrackState::AtIP);
-    const float tanLambda1 = ts1 ? ts1->tanLambda : 0.f;
-    const float tanLambda2 = ts2 ? ts2->tanLambda : 0.f;
+    const float    tanLambda1 = ts1 ? ts1->tanLambda : 0.f;
+    const float    tanLambda2 = ts2 ? ts2->tanLambda : 0.f;
     return tanLambda1 < tanLambda2;
   }
 }  // namespace ACTSTracking
