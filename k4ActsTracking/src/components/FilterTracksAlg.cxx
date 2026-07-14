@@ -63,8 +63,9 @@ edm4hep::TrackCollection FilterTracksAlg::operator()(const edm4hep::TrackCollect
   edm4hep::TrackCollection outputTracks;
   outputTracks.setSubsetCollection();
 
-  // Filter tracks
-  for (const auto& trk : tracks) {
+  // Filter tracks. NB: iterate by (mutable) handle rather than const ref because
+  // edm4hep's Track::getTrackState is not (yet) a const member function.
+  for (auto trk : tracks) {
     int nhittotal = trk.trackerHits_size();
     if (m_NHitsTotal > 0 && nhittotal <= m_NHitsTotal)
       continue;  // Hit count check

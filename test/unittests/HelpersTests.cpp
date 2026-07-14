@@ -58,7 +58,7 @@ namespace {
 }  // namespace
 
 TEST_CASE("getTrackState returns the state matching the requested location") {
-  const edm4hep::MutableTrack track = makeTrackWithStates();
+  edm4hep::MutableTrack track = makeTrackWithStates();
 
   const auto ip = track.getTrackState(edm4hep::TrackState::AtIP);
   REQUIRE(ip.has_value());
@@ -73,10 +73,10 @@ TEST_CASE("getTrackState returns the state matching the requested location") {
 }
 
 TEST_CASE("getTrackState returns nullopt when no state has the location") {
-  const edm4hep::MutableTrack track = makeTrackWithStates();
+  edm4hep::MutableTrack track = makeTrackWithStates();
   CHECK_FALSE(track.getTrackState(edm4hep::TrackState::AtCalorimeter).has_value());
 
-  const edm4hep::MutableTrack empty;
+  edm4hep::MutableTrack empty;
   CHECK_FALSE(empty.getTrackState(edm4hep::TrackState::AtIP).has_value());
 }
 
@@ -87,7 +87,7 @@ TEST_CASE("getTrackState returns nullopt when no state has the location") {
 // index; this test guards against anyone "simplifying" callers back to the
 // positional getter.
 TEST_CASE("getTrackState is not fooled by the positional getTrackStates getter") {
-  const edm4hep::MutableTrack track = makeTrackWithStates();
+  edm4hep::MutableTrack track = makeTrackWithStates();
 
   const auto ip = track.getTrackState(edm4hep::TrackState::AtIP);
   REQUIRE(ip.has_value());
