@@ -270,10 +270,10 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
     return hits;
   }();
   debug() << fmt::format("Collected {} hits from {} collections", allHits.size(), inputTrackerHits.size()) << endmsg;
-  
+
   auto embeddingInputs = extractHitInformation(allHits, m_allHitFeatures, m_actsGeoSvc->cellIDEncodingString());
   assert(embeddingInputs.size() == allHits.size() * m_allHitFeatures.size());
-  
+
   // Give hits their position in the global hits collection as index
   std::vector<int> hitIdcs(allHits.size());
   std::iota(hitIdcs.begin(), hitIdcs.end(), 0);
