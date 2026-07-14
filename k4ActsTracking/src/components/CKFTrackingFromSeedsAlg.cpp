@@ -105,15 +105,15 @@ private:
   /// @name Track-fit initial error estimates
   ///@{
   Gaudi::Property<double>  m_initialTrackError_pos{this, "InitialTrackError_Pos", 10 * Acts::UnitConstants::um,
-                                                  "Initial track error for local position."};
+                                                   "Initial track error for local position."};
   Gaudi::Property<double>  m_initialTrackError_phi{this, "InitialTrackError_Phi", 1 * Acts::UnitConstants::degree,
-                                                  "Initial track error for phi."};
+                                                   "Initial track error for phi."};
   Gaudi::Property<double>  m_initialTrackError_relP{this, "InitialTrackError_RelP", 0.25,
-                                                   "Initial track error for momentum (relative)."};
+                                                    "Initial track error for momentum (relative)."};
   Gaudi::Property<double>  m_initialTrackError_lambda{this, "InitialTrackError_Lambda", 1 * Acts::UnitConstants::degree,
-                                                     "Initial track error for lambda."};
+                                                      "Initial track error for lambda."};
   Gaudi::Property<double>  m_initialTrackError_time{this, "InitialTrackError_Time", 100 * Acts::UnitConstants::ns,
-                                                   "Initial track error for time."};
+                                                    "Initial track error for time."};
   Gaudi::Property<double>  m_CKF_chi2CutOff{this, "CKF_Chi2CutOff", 15, "Maximum local chi2 contribution."};
   Gaudi::Property<int32_t> m_CKF_numMeasurementsCutOff{this, "CKF_NumMeasurementsCutOff", 10,
                                                        "Maximum measurements on a single surface."};

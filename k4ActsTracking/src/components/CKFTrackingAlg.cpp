@@ -60,10 +60,10 @@
 #include <Acts/Propagator/EigenStepper.hpp>
 #include <Acts/Propagator/Navigator.hpp>
 #include <Acts/Propagator/Propagator.hpp>
-#include <Acts/Seeding/EstimateTrackParamsFromSeed.hpp>
 #include <Acts/Seeding/BroadTripletSeedFilter.hpp>
 #include <Acts/Seeding/CylindricalSpacePointGrid.hpp>
 #include <Acts/Seeding/DoubletSeedFinder.hpp>
+#include <Acts/Seeding/EstimateTrackParamsFromSeed.hpp>
 #include <Acts/Seeding/TripletSeedFinder.hpp>
 #include <Acts/Seeding/TripletSeeder.hpp>
 #include <Acts/Surfaces/PerigeeSurface.hpp>
@@ -177,8 +177,8 @@ private:
   /// Convert the seeds found by the triplet seeder into ACTS bound track
   /// parameters and create the corresponding edm4hep seed tracks. The space
   /// point indices stored in @p seeds reference @p spacePoints.
-  std::vector<Acts::BoundTrackParameters> seedsToParameters(const Acts::SeedContainer&         seeds,
-                                                            const Acts::SpacePointContainer&   spacePoints,
+  std::vector<Acts::BoundTrackParameters> seedsToParameters(const Acts::SeedContainer&          seeds,
+                                                            const Acts::SpacePointContainer&    spacePoints,
                                                             const ACTSTracking::HitContainer&   hits,
                                                             edm4hep::TrackCollection&           seedCollection,
                                                             Acts::MagneticFieldProvider::Cache& magCache) const;
@@ -376,15 +376,15 @@ private:
   /// @name Track-fit initial error estimates
   ///@{
   Gaudi::Property<double>  m_initialTrackError_pos{this, "InitialTrackError_Pos", 10 * Acts::UnitConstants::um,
-                                                  "Initial track error for local position."};
+                                                   "Initial track error for local position."};
   Gaudi::Property<double>  m_initialTrackError_phi{this, "InitialTrackError_Phi", 1 * Acts::UnitConstants::degree,
-                                                  "Initial track error for phi."};
+                                                   "Initial track error for phi."};
   Gaudi::Property<double>  m_initialTrackError_relP{this, "InitialTrackError_RelP", 0.25,
-                                                   "Initial track error for momentum (relative)."};
+                                                    "Initial track error for momentum (relative)."};
   Gaudi::Property<double>  m_initialTrackError_lambda{this, "InitialTrackError_Lambda", 1 * Acts::UnitConstants::degree,
-                                                     "Initial track error for lambda."};
+                                                      "Initial track error for lambda."};
   Gaudi::Property<double>  m_initialTrackError_time{this, "InitialTrackError_Time", 100 * Acts::UnitConstants::ns,
-                                                   "Initial track error for time."};
+                                                    "Initial track error for time."};
   Gaudi::Property<double>  m_CKF_chi2CutOff{this, "CKF_Chi2CutOff", 15, "Maximum local chi2 contribution."};
   Gaudi::Property<int32_t> m_CKF_numMeasurementsCutOff{this, "CKF_NumMeasurementsCutOff", 10,
                                                        "Maximum measurements on a single surface."};
@@ -403,7 +403,7 @@ private:
   Gaudi::Property<double> m_bsPtMin{this, "BranchStopper_PtMin", 0.0,
                                     "Drop a branch with |pT| (GeV) below this; <=0 disables."};
   Gaudi::Property<int>    m_bsPtMinMeasurements{this, "BranchStopper_PtMinMeasurements", 3,
-                                             "Minimum measurements before the pT branch stop is applied."};
+                                                "Minimum measurements before the pT branch stop is applied."};
   ///@}
   ///@}
 
@@ -638,8 +638,8 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingAlg::o
   // maps to a contiguous index range, as expected by the triplet seeder.
   // -------------------------------------------------------------------------
   Acts::SpacePointContainer spacePoints(Acts::SpacePointColumns::SourceLinks | Acts::SpacePointColumns::PackedXY |
-                                         Acts::SpacePointColumns::PackedZR | Acts::SpacePointColumns::VarianceZ |
-                                         Acts::SpacePointColumns::VarianceR);
+                                        Acts::SpacePointColumns::PackedZR | Acts::SpacePointColumns::VarianceZ |
+                                        Acts::SpacePointColumns::VarianceR);
   spacePoints.reserve(grid.numberOfSpacePoints());
   std::vector<Acts::SpacePointIndexRange> gridSpacePointRanges;
   gridSpacePointRanges.reserve(grid.numberOfBins());
