@@ -62,6 +62,7 @@
 #include <cstdint>
 #include <mutex>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -117,6 +118,10 @@ private:
   Gaudi::Property<double>  m_CKF_chi2CutOff{this, "CKF_Chi2CutOff", 15, "Maximum local chi2 contribution."};
   Gaudi::Property<int32_t> m_CKF_numMeasurementsCutOff{this, "CKF_NumMeasurementsCutOff", 10,
                                                        "Maximum measurements on a single surface."};
+  Gaudi::Property<unsigned int> m_maxPropagationSteps{
+      this, "MaxPropagationSteps", ACTSTracking::kDefaultMaxPropagationSteps,
+      "Maximum number of propagation steps for CKF track finding, IP/reference-surface extrapolation and "
+      "calorimeter-face extrapolation."};
   ///@}
 
   /// @name Multi-threading
@@ -164,7 +169,8 @@ StatusCode CKFTrackingFromSeedsAlg::initialize() {
                       ACTSTracking::CKFRunner::Config{.chi2CutOff            = m_CKF_chi2CutOff,
                                                       .numMeasurementsCutOff = m_CKF_numMeasurementsCutOff,
                                                       .propagateBackward     = m_propagateBackward,
-                                                      .extrapolateToCalo     = m_extrapolateToCalo});
+                                                      .extrapolateToCalo     = m_extrapolateToCalo,
+                                                      .maxSteps              = m_maxPropagationSteps});
 
   return StatusCode::SUCCESS;
 }
@@ -274,14 +280,9 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingFromSe
 
       auto seedTrackState = ACTSTracking::makeSeedTrackState(*this, *m_actsGeoSvc, geoCtx, *paramseed, magCacheLocal);
 
-      {
-        std::lock_guard<std::mutex> lock(m_seedMutex);
-        auto                        outSeed = seedCollection.create();
-        for (const SeedHit& h : hits) {
-          outSeed.addToTrackerHits(hitContainer[h.sl.index()]);
-        }
-        outSeed.addToTrackStates(seedTrackState);
-      }
+      ACTSTracking::appendSeedTrack(
+          seedCollection, m_seedMutex, seedTrackState,
+          hits | std::views::transform([&](const SeedHit& h) { return hitContainer[h.sl.index()]; }));
     }
 
     // One CKF pass for the whole chunk.

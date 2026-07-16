@@ -55,6 +55,7 @@
 #include "k4ActsTracking/SourceLink.hxx"
 
 // Standard
+#include <cstddef>
 #include <optional>
 #include <vector>
 
@@ -168,6 +169,7 @@ namespace ACTSTracking {
  * \param caloSurfaceGeoIds Geometry ids of the calo-face surfaces (from IActsGeoSvc)
  * \param gctx              Geometry context
  * \param mctx              Magnetic-field context
+ * \param maxSteps          Maximum number of propagation steps
  *
  * \return Bound track parameters at the calorimeter face together with a status
  *         describing why the extrapolation succeeded or failed.
@@ -176,6 +178,6 @@ namespace ACTSTracking {
                                                 const Acts::BoundTrackParameters&            start,
                                                 const std::vector<Acts::GeometryIdentifier>& caloSurfaceGeoIds,
                                                 const Acts::GeometryContext&                 gctx,
-                                                const Acts::MagneticFieldContext&            mctx);
+                                                const Acts::MagneticFieldContext& mctx, std::size_t maxSteps);
 
 }  // namespace ACTSTracking

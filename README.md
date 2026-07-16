@@ -58,8 +58,16 @@ The Gaudi plugin module `k4ActsTrackingPlugins` provides, among others:
   file (consumed via `GeoSvc`). Can optionally dump the converted geometry to an
   `.obj` file for visualization.
 * **`CKFTrackingAlg`** — seeding plus combinatorial Kalman filter (CKF) track
-  finding on EDM4hep tracker hits.
-* **`ACTSSeededCKFTrackingAlg`** — alternative seeded CKF tracking algorithm.
+  finding on EDM4hep tracker hits. Seeds are built either with the cylindrical
+  helix seeder (default, for collider/barrel geometries) or a straight-line
+  telescope seeder for field-free planar detectors (`SeedingMode`). Fitted tracks
+  can optionally be extrapolated to the calorimeter face to add an
+  `AtCalorimeter` track state (`ExtrapolateToCalo`).
+* **`CKFTrackingFromSeedsAlg`** — runs the same CKF, but seeded from an existing
+  input track collection (e.g. candidates from an upstream pattern-recognition
+  stage) instead of the internal seed finder.
+* **`ACTSSeededCKFTrackingAlg`** — legacy seeded CKF tracking algorithm,
+  superseded by `CKFTrackingAlg` and slated for removal.
 * **`ACTSDuplicateRemoval`** — removes duplicate tracks produced by the CKF.
 * **`FilterTracksAlg`** — applies quality cuts to a track collection.
 * **`TrackTruthAlg`** — associates reconstructed tracks with truth particles.
@@ -83,9 +91,13 @@ examples and the test option files for working configurations:
 * [`test/options/MAIA_CKFTrackingAlg.py`](test/options/MAIA_CKFTrackingAlg.py),
   [`test/options/CLD_CKFTracking.py`](test/options/CLD_CKFTracking.py),
   [`test/options/ILD_CKFTracking.py`](test/options/ILD_CKFTracking.py) — full
-  digitization + CKF tracking chains for the MAIA, CLD and ILD detectors. The
-  shared helpers live in
+  digitization + CKF tracking chains for the MAIA, CLD and ILD detectors (all
+  using the default cylindrical seeding). The shared helpers live in
   [`test/options/_ckf_helpers.py`](test/options/_ckf_helpers.py).
+
+* [`test/options/LUXE_CKFTracking.py`](test/options/LUXE_CKFTracking.py) — CKF
+  tracking for the field-free LUXE telescope geometry, exercising the
+  straight-line telescope seeding mode (`SeedingMode="Telescope"`).
 
   > **Note:** the parameters in these option files are tuned only for technical
   > tests and are *not* a meaningful physics tracking configuration.

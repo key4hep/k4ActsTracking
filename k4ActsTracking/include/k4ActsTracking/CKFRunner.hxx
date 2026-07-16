@@ -268,6 +268,26 @@ namespace ACTSTracking {
   }
 
   /**
+   * @brief Append a seed track (its tracker hits + seed track state) to @p seedCollection.
+   *
+   * Centralises the locked create/add pattern shared by the seeding algorithms:
+   * the lock serialises the podio collection mutation, then a new track is created
+   * with the given hits and seed track state. @p trackerHits is any range of
+   * edm4hep::TrackerHit - e.g. a std::array for a fixed triplet seed, or a
+   * transformed view for a variable-size candidate.
+   */
+  template <class HitRange>
+  void appendSeedTrack(edm4hep::TrackCollection& seedCollection, std::mutex& seedMutex,
+                       const edm4hep::TrackState& seedTrackState, const HitRange& trackerHits) {
+    std::lock_guard<std::mutex> lock(seedMutex);
+    auto                        seedTrack = seedCollection.create();
+    for (const auto& hit : trackerHits) {
+      seedTrack.addToTrackerHits(hit);
+    }
+    seedTrack.addToTrackStates(seedTrackState);
+  }
+
+  /**
    * @brief Owns the ACTS Combinatorial Kalman Filter and runs it over seeds.
    *
    * Owns the event-independent propagators and CKF (built once) and runs the
@@ -292,7 +312,7 @@ namespace ACTSTracking {
       double       chi2CutOffOutlier     = std::numeric_limits<double>::max();
       bool         propagateBackward     = false;
       bool         extrapolateToCalo     = false;
-      std::size_t  maxSteps              = 10000;
+      std::size_t  maxSteps              = kDefaultMaxPropagationSteps;
 
       // Branch stopper: optionally terminate CKF branches early on too many
       // holes/outliers or low pT. Disabled by default (useBranchStopper = false).
@@ -523,8 +543,8 @@ namespace ACTSTracking {
         ++caloMonitor->attempts;
       }
       const ACTSTracking::CaloFacePropagator& caloPropagator = *m_caloPropagator;
-      const auto caloResult = ACTSTracking::extrapolateToCaloFace(caloPropagator, *startParams,
-                                                                  m_geo.caloSurfaceGeoIds(), m_geoCtx, m_magCtx);
+      const auto                              caloResult     = ACTSTracking::extrapolateToCaloFace(
+          caloPropagator, *startParams, m_geo.caloSurfaceGeoIds(), m_geoCtx, m_magCtx, m_maxSteps);
 
       using ACTSTracking::CaloExtrapolationStatus;
       switch (caloResult.status) {
@@ -567,7 +587,7 @@ namespace ACTSTracking {
     Acts::GeometryContext             m_geoCtx;
     Acts::MagneticFieldContext        m_magCtx{};
     Acts::CalibrationContext          m_calCtx{};
-    std::size_t                       m_maxSteps            = 10000;
+    std::size_t                       m_maxSteps            = kDefaultMaxPropagationSteps;
     bool                              m_propagateBackward   = false;
     bool                              m_useBranchStopper    = false;
     int                               m_bsMaxHoles          = 2;
