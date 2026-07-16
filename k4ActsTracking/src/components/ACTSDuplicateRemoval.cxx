@@ -80,8 +80,8 @@ namespace ACTSTracking {
     // AtIP == 1, i.e. the first-hit state); getTrackState resolves it by the
     // `location` field. Tracks without an AtIP state sort as tanLambda 0,
     // keeping a valid strict-weak ordering for the stable_sort.
-    const auto ts1        = trk1.getTrackState(edm4hep::TrackState::AtIP);
-    const auto ts2        = trk2.getTrackState(edm4hep::TrackState::AtIP);
+    const auto  ts1        = trk1.getTrackState(edm4hep::TrackState::AtIP);
+    const auto  ts2        = trk2.getTrackState(edm4hep::TrackState::AtIP);
     const float tanLambda1 = ts1 ? ts1->tanLambda : 0.f;
     const float tanLambda2 = ts2 ? ts2->tanLambda : 0.f;
     return tanLambda1 < tanLambda2;
