@@ -60,6 +60,7 @@ namespace ActsPlugins {
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <map>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -68,6 +69,7 @@ namespace ActsPlugins {
 #include <vector>
 
 namespace {
+  // Extract requested hit information
   std::vector<float> extractHitInformation(const edm4hep::TrackerHitPlaneCollection& hits,
                                            const std::vector<std::string>&           features,
                                            const std::string&                        cellIDEncoding) {
@@ -121,6 +123,112 @@ namespace {
     return mlutils::flatten(embeddingInputs);
   }
 
+  // Build bin edges for segmentation
+  std::vector<std::pair<double, double>> buildBinEdges(double min, double max, std::size_t numBins,
+                                                       double overlapFraction) {
+    if (numBins == 0) {
+      throw std::invalid_argument("Number of bins must be greater than zero");
+    }
+    if (min >= max) {
+      throw std::invalid_argument("Minimum value must be less than maximum value");
+    }
+    if (overlapFraction < 0.0 || overlapFraction >= 1.0) {
+      throw std::invalid_argument("Overlap fraction must be in the range [0, 1)");
+    }
+
+    std::vector<std::pair<double, double>> edges(numBins);
+    const double                           binWidth     = (max - min) / static_cast<double>(numBins);
+    const double                           overlapWidth = binWidth * overlapFraction;
+
+    for (std::size_t i = 0; i < numBins; ++i) {
+      const double left  = min + i * binWidth;
+      const double right = left + binWidth;
+      edges[i]           = {left, right};
+      if (i < numBins - 1)
+        edges[i].second += overlapWidth;
+    }
+    return edges;
+  }
+
+  // Deduplicate track candidates across segments, handling overlap.
+  // Simple overlap handling: Only remove containment tracks, strong duplicates
+  std::vector<std::vector<int>> dedupTrackCandidates(
+      const std::vector<std::vector<std::vector<int>>>& trackCandIdcs_allSegments, double sharedFractionCut) {
+    // Flatten candidates into single list
+    std::vector<std::vector<int>> allCands;
+    allCands.reserve(1024);
+    for (const auto& seg : trackCandIdcs_allSegments) {
+      for (const auto& c : seg)
+        allCands.push_back(c);
+    }
+
+    const int n_cands = static_cast<int>(allCands.size());
+    if (n_cands == 0)
+      return {};
+
+    // Inverse map hit -> track candidates containing hit
+    std::unordered_map<int, std::vector<int>> hit2cands;
+    hit2cands.reserve(1024);
+    for (int cand = 0; cand < n_cands; ++cand) {
+      for (int hit : allCands[cand])
+        hit2cands[hit].push_back(cand);
+    }
+
+    // Count shared hits of candidate pairs
+    std::map<std::pair<int, int>, int> sharedCount;
+    for (auto& [hit, cands] : hit2cands) {
+      const int n_cands_hit = static_cast<int>(cands.size());
+      if (n_cands_hit <= 1)
+        continue;
+      for (int i = 0; i < n_cands_hit; ++i) {
+        for (int j = i + 1; j < n_cands_hit; ++j) {
+          int a = cands[i], b = cands[j];
+          if (a > b)
+            std::swap(a, b);
+          sharedCount[{a, b}]++;
+        }
+      }
+    }
+
+    // Remove containment candidates and strong duplicates
+    std::vector<bool> removed(n_cands, false);
+    for (const auto& [pair, cnt] : sharedCount) {
+      const int    a     = pair.first;
+      const int    b     = pair.second;
+      const int    na    = static_cast<int>(allCands[a].size());
+      const int    nb    = static_cast<int>(allCands[b].size());
+      const double fracA = static_cast<double>(cnt) / static_cast<double>(na);
+      const double fracB = static_cast<double>(cnt) / static_cast<double>(nb);
+
+      // Containment: one candidate is mostly contained in other candidate
+      if (fracA >= sharedFractionCut && fracB < sharedFractionCut) {
+        removed[a] = true;
+      } else if (fracB >= sharedFractionCut && fracA < sharedFractionCut) {
+        removed[b] = true;
+        // Almost identical candidates, drop one of them (shorter candidate)
+      } else if (fracA >= sharedFractionCut && fracB >= sharedFractionCut) {
+        if (na < nb)
+          removed[a] = true;
+        else if (nb < na)
+          removed[b] = true;
+        else if (a < b)
+          removed[b] = true;
+        else
+          removed[a] = true;
+      }
+    }
+
+    // Keep all candidates not marked for removal
+    std::vector<std::vector<int>> survivors;
+    survivors.reserve(allCands.size());
+    for (int i = 0; i < n_cands; ++i) {
+      if (!removed[i]) {
+        survivors.push_back(allCands[i]);
+      }
+    }
+    return survivors;
+  }
+
   /// Parse a device string ("cpu", "cuda", "cuda:<index>") into an Acts Device.
   /// Throws std::invalid_argument on an unrecognised value.
   ActsPlugins::Device parseDevice(std::string spec) {
@@ -157,6 +265,20 @@ StatusCode GNNTrackFinder::initialize() {
     return StatusCode::FAILURE;
   }
   info() << fmt::format("Running GNN pipeline on device '{}'", m_device.value()) << endmsg;
+
+  // Build bin edges for theta/phi segmentation
+  m_thetaBinEdges = buildBinEdges(0.0, M_PI, m_thetaBins.value(), m_thetaOverlap.value());
+  m_phiBinEdges   = buildBinEdges(-M_PI, M_PI, m_phiBins.value(), m_phiOverlap.value());
+  debug() << fmt::format("Theta bin edges: ");
+  for (const auto& e : m_thetaBinEdges) {
+    debug() << fmt::format(" [{}, {}],", e.first, e.second);
+  }
+  debug() << endmsg;
+  debug() << fmt::format("Phi bin edges: ");
+  for (const auto& e : m_phiBinEdges) {
+    debug() << fmt::format(" [{}, {}],", e.first, e.second);
+  }
+  debug() << endmsg;
 
   // Build the list of all hit features, and separately for the embedding model
   // and the edge classifiers.
@@ -271,38 +393,141 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
   }();
   debug() << fmt::format("Collected {} hits from {} collections", allHits.size(), inputTrackerHits.size()) << endmsg;
 
-  auto embeddingInputs = extractHitInformation(allHits, m_allHitFeatures, m_actsGeoSvc->cellIDEncodingString());
-  assert(embeddingInputs.size() == allHits.size() * m_allHitFeatures.size());
+  // Split all hits into theta/phi segments
+  const std::size_t                               nThetaBins = m_thetaBins.value();
+  const std::size_t                               nPhiBins   = m_phiBins.value();
+  const std::size_t                               nSegments  = nThetaBins * nPhiBins;
+  std::vector<edm4hep::TrackerHitPlaneCollection> thetaPhiHits(nSegments);
+  for (auto& segHits : thetaPhiHits) {
+    segHits.setSubsetCollection(true);
+  }
+  std::vector<std::vector<int>> hitIdcs(nSegments);
 
-  // Give hits their position in the global hits collection as index
-  std::vector<int> hitIdcs(allHits.size());
-  std::iota(hitIdcs.begin(), hitIdcs.end(), 0);
+  // Make this configurable properties?
+  const double thetaMin = 0.0;
+  const double thetaMax = M_PI;
+  const double phiMin   = -M_PI;
 
-  // Full detailed output of inputs
-  if (m_detailedDebugOut.value()) {
-    debug() << "Embedding input tensor shape: (" << allHits.size() << ", " << m_allHitFeatures.size() << ")" << endmsg;
-    for (std::size_t i = 0; i < allHits.size(); ++i) {
-      debug() << fmt::format("Input space point {}: ", i);
-      for (std::size_t j = 0; j < m_allHitFeatures.size(); ++j) {
-        debug() << fmt::format("  {}: {}", m_allHitFeatures[j], embeddingInputs[i * m_allHitFeatures.size() + j]);
+  const double invThetaBinWidth = static_cast<double>(nThetaBins) / (thetaMax - thetaMin);
+  const double invPhiBinWidth   = static_cast<double>(nPhiBins) / (2.0 * M_PI);
+
+  int hitIndex = 0;
+  for (const auto& hit : allHits) {
+    const auto   position = ROOT::Math::XYZPointF(hit.getPosition().x, hit.getPosition().y, hit.getPosition().z);
+    const double theta    = position.theta();
+    const double phi      = position.phi();
+
+    // indices of theta bins containing hit (at most 2 bins with overlap)
+    std::vector<std::size_t> thetaBinsToAdd;
+    std::vector<std::size_t> phiBinsToAdd;
+
+    // Clamp theta to [thetaMin, thetaMax]
+    const double thetaClamped = std::clamp(theta, thetaMin, std::nextafter(thetaMax, thetaMin));
+
+    // find bins theta belongs into (using m_thetaBinEdges)
+    for (std::size_t i = 0; i < nThetaBins; ++i) {
+      if (thetaClamped >= m_thetaBinEdges[i].first && thetaClamped < m_thetaBinEdges[i].second) {
+        thetaBinsToAdd.push_back(i);
       }
-      debug() << endmsg;
+      if (thetaBinsToAdd.size() > 1)
+        break;  // found both bins
     }
+
+    // faster? alternative calculating bin index directly
+    /*const std::size_t thetaBin =
+        std::min(static_cast<std::size_t>((thetaClamped - thetaMin) * invThetaBinWidth), nThetaBins - 1);
+    thetaBinsToAdd.push_back(thetaBin);
+    // check if theta also in next bin (overlap)
+    if (thetaBin < nThetaBins - 1 &&
+        (thetaClamped - thetaMin) * invThetaBinWidth > static_cast<double>(thetaBin + 1) - m_thetaOverlap.value()) {
+      thetaBinsToAdd.push_back(thetaBin + 1);
+    }
+    */
+
+    // Normalize phi to [0, 2pi) then map directly to [0, nPhiBins).
+    double phiNorm = std::fmod(phi - phiMin, 2.0 * M_PI);
+    if (phiNorm < 0.0) {
+      phiNorm += 2.0 * M_PI;
+    }
+
+    // find bins phi belongs into (using m_phiBinEdges)
+    for (std::size_t i = 0; i < nPhiBins; ++i) {
+      if (phiNorm >= m_phiBinEdges[i].first && phiNorm < m_phiBinEdges[i].second) {
+        phiBinsToAdd.push_back(i);
+      }
+      if (phiBinsToAdd.size() > 1)
+        break;  // found both bins
+    }
+
+    // faster? alternative calculating bin index directly
+    /*const std::size_t phiBin = std::min(static_cast<std::size_t>(phiNorm * invPhiBinWidth), nPhiBins - 1);
+    phiBinsToAdd.push_back(phiBin);
+    // check if phi in also in next bin (overlap)
+    if (phiBin < nPhiBins - 1 && (phiNorm * invPhiBinWidth) > static_cast<double>(phiBin + 1) - m_phiOverlap.value()) {
+      phiBinsToAdd.push_back(phiBin + 1);
+    }
+    */
+
+    for (const auto thetaBin : thetaBinsToAdd) {
+      for (const auto phiBin : phiBinsToAdd) {
+        const std::size_t segmentIdx = thetaBin * nPhiBins + phiBin;
+        thetaPhiHits[segmentIdx].push_back(hit);
+        hitIdcs[segmentIdx].push_back(hitIndex);
+      }
+    }
+    ++hitIndex;
   }
 
-  const auto trackCandIdcs = m_pipeline->run(embeddingInputs, {}, hitIdcs, m_runDevice);
-  debug() << fmt::format("Received {} track candidates", trackCandIdcs.size()) << endmsg;
+  debug() << fmt::format("Segmented hits into {} segments ({} theta bins x {} phi bins)", nSegments, nThetaBins,
+                         nPhiBins)
+          << endmsg;
 
-  // Full detailed output of track candidates
-  if (m_detailedDebugOut.value()) {
-    for (std::size_t i = 0; i < trackCandIdcs.size(); ++i) {
-      debug() << fmt::format("Track candidate {}: ", i);
-      for (const auto idx : trackCandIdcs[i]) {
-        debug() << fmt::format("  Hit index: {}", idx);
-      }
-      debug() << endmsg;
+  // Run GNN pipeline on all segments and collect track candidates
+  std::vector<std::vector<std::vector<int>>> trackCandIdcs_allSegments;
+  for (std::size_t segmentIdx = 0; segmentIdx < nSegments; ++segmentIdx) {
+    const auto& segmentHits = thetaPhiHits[segmentIdx];
+    if (segmentHits.empty()) {
+      const std::size_t thetaBin = segmentIdx / nPhiBins;
+      const std::size_t phiBin   = segmentIdx % nPhiBins;
+      debug() << fmt::format("Segment (thetaBin={}, phiBin={}) has no hits, skipping", thetaBin, phiBin) << endmsg;
+      continue;
     }
+    auto& segmentHitIdcs  = hitIdcs[segmentIdx];
+    auto  embeddingInputs = extractHitInformation(segmentHits, m_allHitFeatures, m_actsGeoSvc->cellIDEncodingString());
+    assert(embeddingInputs.size() == segmentHits.size() * m_allHitFeatures.size());
+
+    // Full detailed output of inputs
+    if (m_detailedDebugOut.value()) {
+      debug() << "Embedding input tensor shape: (" << segmentHits.size() << ", " << m_allHitFeatures.size() << ")"
+              << endmsg;
+      for (std::size_t i = 0; i < segmentHits.size(); ++i) {
+        debug() << fmt::format("Input space point {}: ", i);
+        for (std::size_t j = 0; j < m_allHitFeatures.size(); ++j) {
+          debug() << fmt::format("  {}: {}", m_allHitFeatures[j], embeddingInputs[i * m_allHitFeatures.size() + j]);
+        }
+        debug() << endmsg;
+      }
+    }
+
+    const auto trackCandIdcs = m_pipeline->run(embeddingInputs, {}, segmentHitIdcs, m_runDevice);
+    debug() << fmt::format("Received {} track candidates", trackCandIdcs.size()) << endmsg;
+
+    // Full detailed output of track candidates
+    if (m_detailedDebugOut.value()) {
+      for (std::size_t i = 0; i < trackCandIdcs.size(); ++i) {
+        debug() << fmt::format("Track candidate {}: ", i);
+        for (const auto idx : trackCandIdcs[i]) {
+          debug() << fmt::format(" {}", idx);
+        }
+        debug() << endmsg;
+      }
+    }
+    trackCandIdcs_allSegments.push_back(trackCandIdcs);
   }
+
+  // Deduplicate track candidates across segments, handling overlap
+  const std::vector<std::vector<int>> trackCandIdcs =
+      dedupTrackCandidates(trackCandIdcs_allSegments, m_sharedFractionCut.value());
 
   // Default-construct ACTS contexts
   const Acts::GeometryContext      geoCtx = Acts::GeometryContext::dangerouslyDefaultConstruct();

@@ -53,7 +53,16 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
 
   StatusCode initialize() override;
 
-  edm4hep::TrackCollection operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*> const&) const override;
+  edm4hep::TrackCollection     operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*> const&) const override;
+  Gaudi::Property<std::size_t> m_thetaBins{this, "ThetaBins", 1, "Number of theta bins for segmentation."};
+  Gaudi::Property<std::size_t> m_phiBins{this, "PhiBins", 1, "Number of phi bins for segmentation."};
+  Gaudi::Property<double>      m_thetaOverlap{this, "ThetaOverlap", 0.0,
+                                         "Fractional theta overlap for segmentation (fraction of bin width)."};
+  Gaudi::Property<double>      m_phiOverlap{this, "PhiOverlap", 0.0,
+                                       "Fractional phi overlap for segmentation (fraction of bin width)."};
+  Gaudi::Property<double> m_sharedFractionCut{
+      this, "SharedFractionCut", 0.5,
+      "Minimum fraction of shared hits (w.r.t. smaller candidate) to consider two candidates overlapping"};
 
   Gaudi::Property<std::string> m_nodeEmbeddingModelPath{
       this, "NodeEmbeddingModelPath",
@@ -114,6 +123,8 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
 
 private:
   std::vector<std::string>                  m_allHitFeatures{};
+  std::vector<std::pair<double, double>>    m_thetaBinEdges{};
+  std::vector<std::pair<double, double>>    m_phiBinEdges{};
   std::vector<int>                          m_embeddingFeatureIndices{};
   std::vector<std::vector<int>>             m_edgeClassifierFeatureIndices{};
   std::unique_ptr<ActsPlugins::GnnPipeline> m_pipeline{nullptr};
