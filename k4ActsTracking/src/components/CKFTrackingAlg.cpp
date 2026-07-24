@@ -87,6 +87,7 @@
 
 // Standard
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <limits>
@@ -391,6 +392,10 @@ private:
   Gaudi::Property<double>  m_CKF_chi2CutOffOutlier{
       this, "CKF_Chi2CutOffOutlier", std::numeric_limits<double>::max(),
       "Maximum local chi2 for a failing hit to be kept as an outlier; above this it becomes a hole."};
+  Gaudi::Property<unsigned int> m_maxPropagationSteps{
+      this, "MaxPropagationSteps", ACTSTracking::kDefaultMaxPropagationSteps,
+      "Maximum number of propagation steps for CKF track finding, IP/reference-surface extrapolation and "
+      "calorimeter-face extrapolation."};
 
   /// @name CKF branch stopper (early termination of candidate branches)
   ///@{
@@ -500,6 +505,7 @@ StatusCode CKFTrackingAlg::initialize() {
                                                       .chi2CutOffOutlier     = m_CKF_chi2CutOffOutlier,
                                                       .propagateBackward     = m_propagateBackward,
                                                       .extrapolateToCalo     = m_extrapolateToCalo,
+                                                      .maxSteps              = m_maxPropagationSteps,
                                                       .useBranchStopper      = m_useBranchStopper,
                                                       .bsMaxHoles            = m_bsMaxHoles,
                                                       .bsMaxOutliers         = m_bsMaxOutliers,
@@ -865,14 +871,9 @@ std::vector<Acts::BoundTrackParameters> CKFTrackingAlg::seedsToParameters(
 
     auto seedTrackState = ACTSTracking::makeSeedTrackState(*this, *m_actsGeoSvc, geoCtx, *paramseed, magCache);
 
-    {
-      std::lock_guard<std::mutex> lock(m_seedMutex);
-      auto                        seedTrack = seedCollection.create();
-      seedTrack.addToTrackerHits(hits[bottomSL.index()]);
-      seedTrack.addToTrackerHits(hits[sourceLinkOf(middleSp).index()]);
-      seedTrack.addToTrackerHits(hits[sourceLinkOf(topSp).index()]);
-      seedTrack.addToTrackStates(seedTrackState);
-    }
+    ACTSTracking::appendSeedTrack(
+        seedCollection, m_seedMutex, seedTrackState,
+        std::array{hits[bottomSL.index()], hits[sourceLinkOf(middleSp).index()], hits[sourceLinkOf(topSp).index()]});
 
     debug() << "Seed Parameters" << std::endl << *paramseed << endmsg;
   }
@@ -974,14 +975,9 @@ void CKFTrackingAlg::runTelescopeSeeding(const std::vector<SeedInput>&          
         paramseeds.push_back(*paramseed);
 
         auto seedTrackState = ACTSTracking::makeSeedTrackState(*this, *m_actsGeoSvc, geoCtx, *paramseed, magCache);
-        {
-          std::lock_guard<std::mutex> lock(m_seedMutex);
-          auto                        seedTrack = seedCollection.create();
-          seedTrack.addToTrackerHits(hits[bottomSL.index()]);
-          seedTrack.addToTrackerHits(hits[seedInputs[bestMid].sourceLink.index()]);
-          seedTrack.addToTrackerHits(hits[seedInputs[ti].sourceLink.index()]);
-          seedTrack.addToTrackStates(seedTrackState);
-        }
+        ACTSTracking::appendSeedTrack(seedCollection, m_seedMutex, seedTrackState,
+                                      std::array{hits[bottomSL.index()], hits[seedInputs[bestMid].sourceLink.index()],
+                                                 hits[seedInputs[ti].sourceLink.index()]});
       }
     }
   }

@@ -72,6 +72,11 @@
 
 namespace ACTSTracking {
 
+  /// Default maximum number of propagation steps shared by the track runners
+  /// (CKFRunner, KFRunner). Single source of truth for the runners' Config
+  /// defaults and the algorithms' MaxPropagationSteps property default.
+  inline constexpr std::size_t kDefaultMaxPropagationSteps = 10000;
+
   /// Track container shared by the CKF and Kalman-fit runners.
   using CKFTrackContainer =
       Acts::TrackContainer<Acts::VectorTrackContainer, Acts::VectorMultiTrajectory, std::shared_ptr>;
