@@ -149,94 +149,6 @@ namespace {
     }
     return edges;
   }
-
-  // Deduplicate track candidates across segments, handling overlap.
-  // Simple overlap handling: Only remove containment tracks, strong duplicates
-  std::vector<std::vector<int>> dedupTrackCandidates(const std::vector<std::vector<int>>& allCands,
-                                                     double                               sharedFractionCut) {
-    const int n_cands = static_cast<int>(allCands.size());
-    if (n_cands == 0)
-      return {};
-
-    // Inverse map hit -> track candidates containing hit
-    std::unordered_map<int, std::vector<int>> hit2cands;
-    hit2cands.reserve(1024);
-    for (int cand = 0; cand < n_cands; ++cand) {
-      for (int hit : allCands[cand])
-        hit2cands[hit].push_back(cand);
-    }
-
-    // Count shared hits of candidate pairs
-    std::map<std::pair<int, int>, int> sharedCount;
-    for (auto& [hit, cands] : hit2cands) {
-      const int n_cands_hit = static_cast<int>(cands.size());
-      if (n_cands_hit <= 1)
-        continue;
-      for (int i = 0; i < n_cands_hit; ++i) {
-        for (int j = i + 1; j < n_cands_hit; ++j) {
-          int a = cands[i], b = cands[j];
-          if (a > b)
-            std::swap(a, b);
-          sharedCount[{a, b}]++;
-        }
-      }
-    }
-
-    // Remove containment candidates and strong duplicates
-    std::vector<bool> removed(n_cands, false);
-    for (const auto& [pair, cnt] : sharedCount) {
-      const int    a     = pair.first;
-      const int    b     = pair.second;
-      const int    na    = static_cast<int>(allCands[a].size());
-      const int    nb    = static_cast<int>(allCands[b].size());
-      const double fracA = static_cast<double>(cnt) / static_cast<double>(na);
-      const double fracB = static_cast<double>(cnt) / static_cast<double>(nb);
-
-      // Containment: one candidate is mostly contained in other candidate
-      if (fracA >= sharedFractionCut && fracB < sharedFractionCut) {
-        removed[a] = true;
-      } else if (fracB >= sharedFractionCut && fracA < sharedFractionCut) {
-        removed[b] = true;
-        // Almost identical candidates, drop one of them (shorter candidate)
-      } else if (fracA >= sharedFractionCut && fracB >= sharedFractionCut) {
-        if (na < nb)
-          removed[a] = true;
-        else if (nb < na)
-          removed[b] = true;
-        else if (a < b)
-          removed[b] = true;
-        else
-          removed[a] = true;
-      }
-    }
-
-    // Keep all candidates not marked for removal
-    std::vector<std::vector<int>> survivors;
-    survivors.reserve(allCands.size());
-    for (int i = 0; i < n_cands; ++i) {
-      if (!removed[i]) {
-        survivors.push_back(allCands[i]);
-      }
-    }
-    return survivors;
-  }
-
-  /// Parse a device string ("cpu", "cuda", "cuda:<index>") into an Acts Device.
-  /// Throws std::invalid_argument on an unrecognised value.
-  ActsPlugins::Device parseDevice(std::string spec) {
-    std::transform(spec.begin(), spec.end(), spec.begin(), [](unsigned char c) { return std::tolower(c); });
-
-    if (spec == "cpu") {
-      return ActsPlugins::Device::Cpu();
-    }
-    if (spec == "cuda") {
-      return ActsPlugins::Device::Cuda();
-    }
-    if (spec.rfind("cuda:", 0) == 0) {
-      return ActsPlugins::Device::Cuda(static_cast<std::size_t>(std::stoul(spec.substr(5))));
-    }
-    throw std::invalid_argument(fmt::format("Unknown device '{}', expected 'cpu', 'cuda' or 'cuda:<index>'", spec));
-  }
 }  // namespace
 
 GNNTrackFinder::GNNTrackFinder(const std::string& name, ISvcLocator* svcLoc)
@@ -523,13 +435,6 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
   for (const auto& seg : trackCandIdcs_allSegments) {
     for (const auto& c : seg)
       trackCandIdcs.push_back(c);
-  }
-
-  // Deduplicate track candidates across segments, handling overlap
-  // if cut is set and there are overlapping segments
-  if (m_sharedFractionCut.value() > 0.0 && m_thetaBins.value() * m_phiBins.value() > 1 &&
-      m_thetaOverlap.value() + m_phiOverlap.value() > 0.0) {
-    trackCandIdcs = dedupTrackCandidates(trackCandIdcs, m_sharedFractionCut.value());
   }
 
   // Default-construct ACTS contexts

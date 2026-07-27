@@ -60,9 +60,6 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
                                          "Fractional theta overlap for segmentation (fraction of bin width)."};
   Gaudi::Property<double>      m_phiOverlap{this, "PhiOverlap", 0.0,
                                        "Fractional phi overlap for segmentation (fraction of bin width)."};
-  Gaudi::Property<double>      m_sharedFractionCut{
-      this, "SharedFractionCut", 0.5,
-      "Minimum fraction of shared hits (w.r.t. smaller candidate) to consider two candidates overlapping"};
 
   Gaudi::Property<std::string> m_nodeEmbeddingModelPath{
       this, "NodeEmbeddingModelPath",
