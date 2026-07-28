@@ -641,7 +641,7 @@ namespace Blueprints {
     Acts::Transform3 transform = Acts::Transform3::Identity();
     transform.translation()    = Acts::Vector3{0, 0, positive ? zc : -zc};
     auto vol                   = std::make_unique<Acts::TrackingVolume>(transform, std::move(bounds),
-                                                                        positive ? "CaloEndcapPos" : "CaloEndcapNeg");
+                                                      positive ? "CaloEndcapPos" : "CaloEndcapNeg");
     vol->addSurface(disc);
     parent.addStaticVolume(std::move(vol)).setNavigationPolicyFactory(makeCaloNavigationPolicyFactory());
   }
