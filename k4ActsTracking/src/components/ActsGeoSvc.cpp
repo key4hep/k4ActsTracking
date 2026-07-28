@@ -125,7 +125,7 @@ StatusCode ActsGeoSvc::initialize() {
   }
 
   using Acts::Blueprint;
-  using Acts::Experimental::BlueprintOptions;
+  using Acts::BlueprintOptions;
   using namespace Acts::UnitLiterals;
   using enum Acts::AxisDirection;
 
