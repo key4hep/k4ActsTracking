@@ -296,7 +296,7 @@ namespace Blueprints {
   /// @param filter    Regex selecting the relevant layer DetElements
   /// @param axes      Sensor coordinate axes for this endcap side
   /// @param envelope  Extent envelope applied to the resulting volume
-void addGroupedEndcapSide(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::BlueprintNode& parent,
+  void addGroupedEndcapSide(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::BlueprintNode& parent,
                             const std::string& container, const std::regex& filter, AxisDefinition axes,
                             const Acts::ExtentEnvelope& envelope) {
     builder.layers()
@@ -327,8 +327,8 @@ void addGroupedEndcapSide(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::
   /// @param keyXform    Transform applied to capture group 1 to derive the
   ///                    group key (default: identity)
   void addUngroupedEndcapSide(
-    ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::BlueprintNode& parent,
-      const std::string& container, const std::regex& filter, AxisDefinition axes, const std::string& labelPrefix,
+      ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::BlueprintNode& parent, const std::string& container,
+      const std::regex& filter, AxisDefinition axes, const std::string& labelPrefix,
       const Acts::ExtentEnvelope&                    envelope,
       std::function<std::string(const std::string&)> keyXform = [](const std::string& m) { return m; }) {
     const auto detElem = builder.findDetElementByName(container);
@@ -359,7 +359,7 @@ void addGroupedEndcapSide(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::
   /// @param negLabel  Label prefix for the negative side (Ungrouped path only)
   /// @param keyXform  Transform applied to capture group 1 (Ungrouped path only)
   template <typename MatchTransformF = decltype(identityKey)>
-void addBothEndcapSides(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::BlueprintNode& parent,
+  void addBothEndcapSides(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::BlueprintNode& parent,
                           const std::string& container, const std::regex& posFilter, const std::regex& negFilter,
                           AxisDefinition axes, Layout layout, const Acts::ExtentEnvelope& envelope,
                           const std::string& posLabel = "", const std::string& negLabel = "",
@@ -604,9 +604,9 @@ void addBothEndcapSides(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::Bl
   /// avoids picking a SurfaceArray binning for a non-cylindrical polygon; it is
   /// not a workaround for any missing layer type.
   void addCaloBarrel(BlueprintNode& parent, const IActsGeoSvc::CaloFaceSurfaces& calo) {
-    constexpr double pad    = 1_mm;
-    auto             bounds = std::make_shared<Acts::CylinderVolumeBounds>(std::max(0.0, calo.barrelRMin - pad),
-                                                                           calo.barrelRMax + pad, calo.barrelHalfZ + pad);
+    constexpr double pad = 1_mm;
+    auto bounds          = std::make_shared<Acts::CylinderVolumeBounds>(std::max(0.0, calo.barrelRMin - pad),
+                                                                        calo.barrelRMax + pad, calo.barrelHalfZ + pad);
     auto vol = std::make_unique<Acts::TrackingVolume>(Acts::Transform3::Identity(), std::move(bounds), "CaloBarrel");
     for (const auto& face : calo.barrelFaces) {
       vol->addSurface(face);
@@ -641,7 +641,7 @@ void addBothEndcapSides(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::Bl
     Acts::Transform3 transform = Acts::Transform3::Identity();
     transform.translation()    = Acts::Vector3{0, 0, positive ? zc : -zc};
     auto vol                   = std::make_unique<Acts::TrackingVolume>(transform, std::move(bounds),
-                                                      positive ? "CaloEndcapPos" : "CaloEndcapNeg");
+                                                                        positive ? "CaloEndcapPos" : "CaloEndcapNeg");
     vol->addSurface(disc);
     parent.addStaticVolume(std::move(vol)).setNavigationPolicyFactory(makeCaloNavigationPolicyFactory());
   }
@@ -685,7 +685,7 @@ void addBothEndcapSides(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::Bl
 
 namespace MuColl {
   namespace MAIA_v0 {
-void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
+    void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
                            ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo) {
       // Build the tracker detectors as radial children of the supplied
       // container.
@@ -733,7 +733,7 @@ void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
 
 namespace FCCee {
   namespace ILD_FCCee_v01 {
-void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
+    void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
                            ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo) {
       // Build the tracker detectors as radial children of the supplied
       // container.
@@ -783,7 +783,7 @@ void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
   }  // namespace ILD_FCCee_v01
 
   namespace ILD_FCCee_v02 {
-void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
+    void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
                            ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo) {
       // Build the tracker detectors as radial children of the supplied
       // container.
@@ -823,7 +823,7 @@ void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
   }  // namespace ILD_FCCee_v02
 
   namespace CLD_o2_v07 {
-void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
+    void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
                            ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo) {
       // Build the tracker detectors as radial children of the supplied
       // container.
@@ -867,7 +867,7 @@ void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
 
 namespace LUXE {
   namespace LUXE_v0 {
-void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
+    void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
                            ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo) {
       // LUXE has a telescope-like geometry: the tracker planar layers are
       // stacked along the beam (z) axis, and the electromagnetic calorimeter is
