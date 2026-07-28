@@ -26,31 +26,30 @@
 
 #include <string>
 
-namespace Acts::Experimental {
-  class ContainerBlueprintNode;
+namespace Acts {
   class Blueprint;
-}  // namespace Acts::Experimental
+}
 
 namespace MuColl {
   namespace MAIA_v0 {
-    void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
+    void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
                            ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo);
   }
 }  // namespace MuColl
 
 namespace FCCee {
   namespace ILD_FCCee_v01 {
-    void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
+    void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
                            ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo);
   }
 
   namespace ILD_FCCee_v02 {
-    void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
+    void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
                            ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo);
   }
 
   namespace CLD_o2_v07 {
-    void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
+    void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
                            ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo);
   }
 
@@ -58,7 +57,7 @@ namespace FCCee {
 
 namespace LUXE {
   namespace LUXE_v0 {
-    void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
+    void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
                            ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo);
   }
 }  // namespace LUXE
