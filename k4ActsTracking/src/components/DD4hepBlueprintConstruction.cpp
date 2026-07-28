@@ -604,9 +604,9 @@ namespace Blueprints {
   /// avoids picking a SurfaceArray binning for a non-cylindrical polygon; it is
   /// not a workaround for any missing layer type.
   void addCaloBarrel(BlueprintNode& parent, const IActsGeoSvc::CaloFaceSurfaces& calo) {
-    constexpr double pad = 1_mm;
-    auto bounds          = std::make_shared<Acts::CylinderVolumeBounds>(std::max(0.0, calo.barrelRMin - pad),
-                                                                        calo.barrelRMax + pad, calo.barrelHalfZ + pad);
+    constexpr double pad    = 1_mm;
+    auto             bounds = std::make_shared<Acts::CylinderVolumeBounds>(std::max(0.0, calo.barrelRMin - pad),
+                                                                           calo.barrelRMax + pad, calo.barrelHalfZ + pad);
     auto vol = std::make_unique<Acts::TrackingVolume>(Acts::Transform3::Identity(), std::move(bounds), "CaloBarrel");
     for (const auto& face : calo.barrelFaces) {
       vol->addSurface(face);
