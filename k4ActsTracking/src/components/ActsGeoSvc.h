@@ -38,9 +38,7 @@ namespace Acts {
   class TrackingGeometry;
   class MagneticFieldProvider;
   class Surface;
-  namespace Experimental {
-    class Blueprint;
-  }
+  class Blueprint;
 }  // namespace Acts
 
 namespace dd4hep {
@@ -86,7 +84,7 @@ public:
 private:
   using BlueprintBuilder = ActsPlugins::DD4hep::BlueprintBuilder;
 
-  using BlueprintPopulationFunc = void(const std::string&, Acts::Experimental::Blueprint&, BlueprintBuilder&,
+  using BlueprintPopulationFunc = void(const std::string&, Acts::Blueprint&, BlueprintBuilder&,
                                        const CaloFaceSurfaces&);
 
   /// Build the ECAL inner-face surfaces (m_caloFaceSurfaces) from the DD4hep

@@ -124,7 +124,7 @@ StatusCode ActsGeoSvc::initialize() {
     buildCaloFaceSurfaces();
   }
 
-  using Acts::Experimental::Blueprint;
+  using Acts::Blueprint;
   using Acts::Experimental::BlueprintOptions;
   using namespace Acts::UnitLiterals;
   using enum Acts::AxisDirection;
