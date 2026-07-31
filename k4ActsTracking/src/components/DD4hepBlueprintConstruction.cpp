@@ -45,13 +45,13 @@
 #include <regex>
 #include <stdexcept>
 
-using Acts::Experimental::BlueprintNode;
-using Acts::Experimental::ContainerBlueprintNode;
-using Acts::Experimental::CylinderContainerBlueprintNode;
-using Acts::Experimental::LayerBlueprintNode;
+using Acts::BlueprintNode;
+using Acts::ContainerBlueprintNode;
+using Acts::CylinderContainerBlueprintNode;
+using Acts::LayerBlueprintNode;
 
 using AxisDefinition = ActsPlugins::DD4hep::BlueprintBuilder::AxisDefinition;
-using LayerGrouper   = Acts::Experimental::SensorLayerAssembler<ActsPlugins::DD4hep::DD4hepBackend>::LayerGrouper;
+using LayerGrouper   = Acts::SensorLayerAssembler<ActsPlugins::DD4hep::DD4hepBackend>::LayerGrouper;
 
 using namespace Acts::UnitLiterals;
 using enum Acts::AxisDirection;
@@ -296,7 +296,7 @@ namespace Blueprints {
   /// @param filter    Regex selecting the relevant layer DetElements
   /// @param axes      Sensor coordinate axes for this endcap side
   /// @param envelope  Extent envelope applied to the resulting volume
-  void addGroupedEndcapSide(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::Experimental::BlueprintNode& parent,
+  void addGroupedEndcapSide(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::BlueprintNode& parent,
                             const std::string& container, const std::regex& filter, AxisDefinition axes,
                             const Acts::ExtentEnvelope& envelope) {
     builder.layers()
@@ -327,8 +327,8 @@ namespace Blueprints {
   /// @param keyXform    Transform applied to capture group 1 to derive the
   ///                    group key (default: identity)
   void addUngroupedEndcapSide(
-      ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::Experimental::BlueprintNode& parent,
-      const std::string& container, const std::regex& filter, AxisDefinition axes, const std::string& labelPrefix,
+      ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::BlueprintNode& parent, const std::string& container,
+      const std::regex& filter, AxisDefinition axes, const std::string& labelPrefix,
       const Acts::ExtentEnvelope&                    envelope,
       std::function<std::string(const std::string&)> keyXform = [](const std::string& m) { return m; }) {
     const auto detElem = builder.findDetElementByName(container);
@@ -359,7 +359,7 @@ namespace Blueprints {
   /// @param negLabel  Label prefix for the negative side (Ungrouped path only)
   /// @param keyXform  Transform applied to capture group 1 (Ungrouped path only)
   template <typename MatchTransformF = decltype(identityKey)>
-  void addBothEndcapSides(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::Experimental::BlueprintNode& parent,
+  void addBothEndcapSides(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::BlueprintNode& parent,
                           const std::string& container, const std::regex& posFilter, const std::regex& negFilter,
                           AxisDefinition axes, Layout layout, const Acts::ExtentEnvelope& envelope,
                           const std::string& posLabel = "", const std::string& negLabel = "",
@@ -685,7 +685,7 @@ namespace Blueprints {
 
 namespace MuColl {
   namespace MAIA_v0 {
-    void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
+    void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
                            ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo) {
       // Build the tracker detectors as radial children of the supplied
       // container.
@@ -733,7 +733,7 @@ namespace MuColl {
 
 namespace FCCee {
   namespace ILD_FCCee_v01 {
-    void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
+    void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
                            ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo) {
       // Build the tracker detectors as radial children of the supplied
       // container.
@@ -783,7 +783,7 @@ namespace FCCee {
   }  // namespace ILD_FCCee_v01
 
   namespace ILD_FCCee_v02 {
-    void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
+    void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
                            ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo) {
       // Build the tracker detectors as radial children of the supplied
       // container.
@@ -823,7 +823,7 @@ namespace FCCee {
   }  // namespace ILD_FCCee_v02
 
   namespace CLD_o2_v07 {
-    void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
+    void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
                            ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo) {
       // Build the tracker detectors as radial children of the supplied
       // container.
@@ -867,7 +867,7 @@ namespace FCCee {
 
 namespace LUXE {
   namespace LUXE_v0 {
-    void populateBlueprint(const std::string& detName, Acts::Experimental::Blueprint& root,
+    void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
                            ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo) {
       // LUXE has a telescope-like geometry: the tracker planar layers are
       // stacked along the beam (z) axis, and the electromagnetic calorimeter is
