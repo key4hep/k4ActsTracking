@@ -56,7 +56,8 @@ The Gaudi plugin module `k4ActsTrackingPlugins` provides, among others:
 
 * **`ActsGeoSvc`** — builds an ACTS tracking geometry from a DD4hep compact
   file (consumed via `GeoSvc`). Can optionally dump the converted geometry to an
-  `.obj` file for visualization.
+  `.obj` file for visualization, and load a material map (`MaterialMapFile`, see
+  [doc/material_mapping.md](doc/material_mapping.md)).
 * **`CKFTrackingAlg`** — seeding plus combinatorial Kalman filter (CKF) track
   finding on EDM4hep tracker hits. Seeds are built either with the cylindrical
   helix seeder (default, for collider/barrel geometries) or a straight-line

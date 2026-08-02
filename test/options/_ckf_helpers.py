@@ -42,6 +42,20 @@ def _get_compact_file():
     return args.compactFile
 
 
+def _get_material_map_file():
+    parser.add_argument(
+        "--materialMapFile",
+        help="ACTS material map (.json/.cbor/.root) to decorate the tracking "
+        "geometry with. Without it the geometry carries only the proto-material "
+        "placeholders that the material mapping projects onto, i.e. tracking "
+        "sees no passive material.",
+        type=str,
+        default="",
+    )
+    args = parser.parse_known_args()[0]
+    return args.materialMapFile
+
+
 def make_services(use_dd4hep_field=False):
     """Configure all the necessary services (including getting the geometry from
     the command line geometry).
@@ -53,7 +67,11 @@ def make_services(use_dd4hep_field=False):
     compact_file = _get_compact_file()
     return [
         GeoSvc("GeoSvc", detectors=[compact_file], EnableGeant4Geo=False),
-        ActsGeoSvc("ActsGeoSvc", UseDD4hepBField=use_dd4hep_field),
+        ActsGeoSvc(
+            "ActsGeoSvc",
+            UseDD4hepBField=use_dd4hep_field,
+            MaterialMapFile=_get_material_map_file(),
+        ),
         EventDataSvc("EventDataSvc"),
     ]
 

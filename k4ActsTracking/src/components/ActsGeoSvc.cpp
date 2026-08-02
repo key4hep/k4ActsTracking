@@ -34,9 +34,14 @@
 #include <Acts/Geometry/Extent.hpp>
 #include <Acts/Geometry/GeometryContext.hpp>
 #include <Acts/Geometry/GeometryIdentifier.hpp>
+#include <Acts/Geometry/Portal.hpp>
 #include <Acts/Geometry/TrackingGeometry.hpp>
+#include <Acts/Geometry/TrackingGeometryVisitor.hpp>
+#include <Acts/Geometry/TrackingVolume.hpp>
 #include <Acts/Geometry/VolumeAttachmentStrategy.hpp>
 #include <Acts/MagneticField/ConstantBField.hpp>
+#include <Acts/Material/IMaterialDecorator.hpp>
+#include <Acts/Material/ProtoSurfaceMaterial.hpp>
 #include <Acts/Surfaces/DiscSurface.hpp>
 #include <Acts/Surfaces/PlaneSurface.hpp>
 #include <Acts/Surfaces/RectangleBounds.hpp>
@@ -46,6 +51,8 @@
 #include <ActsPlugins/DD4hep/BlueprintBuilder.hpp>
 #include <ActsPlugins/DD4hep/DD4hepDetectorElement.hpp>
 #include <ActsPlugins/DD4hep/DD4hepFieldAdapter.hpp>
+#include <ActsPlugins/Json/JsonMaterialDecorator.hpp>
+#include <ActsPlugins/Root/RootMaterialDecorator.hpp>
 
 #include <DD4hep/DD4hepUnits.h>
 #include <DD4hep/DetElement.h>
@@ -62,11 +69,81 @@
 
 #include <array>
 #include <cmath>
+#include <filesystem>
 #include <numbers>
+#include <unordered_set>
 
 template <> struct fmt::formatter<Acts::GeometryIdentifier> : fmt::ostream_formatter {};
 
 DECLARE_COMPONENT(ActsGeoSvc)
+
+namespace {
+  /// Applies a material decorator to a blueprint-constructed (Gen3) tracking
+  /// geometry, and counts the surfaces that end up carrying material.
+  ///
+  /// @c Acts::Blueprint::construct hands a null decorator to the
+  /// @c Acts::TrackingGeometry constructor and closes the geometry itself, so
+  /// the Gen1 closure path that would normally apply a decorator
+  /// (@c Gen1GeometryClosureVisitor) never runs for a blueprint geometry. This
+  /// visitor is the Gen3 stand-in: it walks the finished geometry and decorates
+  /// volumes, portal surfaces and sensitive surfaces by geometry identifier,
+  /// the same key the map was written with.
+  ///
+  /// Constructed without a decorator it only counts, which reports how many
+  /// material receivers the blueprint designated, i.e. the surfaces the mapping
+  /// step will project material onto.
+  class MaterialDecorationVisitor : public Acts::TrackingGeometryMutableVisitor {
+  public:
+    explicit MaterialDecorationVisitor(const Acts::IMaterialDecorator* decorator) : m_decorator(decorator) {}
+
+    void visitVolume(Acts::TrackingVolume& volume) override {
+      if (m_decorator != nullptr) {
+        m_decorator->decorate(volume);
+      }
+    }
+
+    void visitPortal(Acts::Portal& portal) override { visit(portal.surface()); }
+
+    void visitSurface(Acts::Surface& surface) override { visit(surface); }
+
+    /// Number of distinct surfaces seen. Portals fused between two volumes are
+    /// visited once per volume, so they are de-duplicated by address.
+    std::size_t nSurfaces() const { return m_seen.size(); }
+
+    /// Number of distinct surfaces carrying material, mapped or proto
+    std::size_t nWithMaterial() const { return m_nWithMaterial; }
+
+    /// Of those, the ones still carrying a proto-material placeholder, i.e. the
+    /// receivers designated by the blueprint that the loaded map did not fill
+    /// in. Everything is proto when no map is loaded.
+    std::size_t nProto() const { return m_nProto; }
+
+  private:
+    void visit(Acts::Surface& surface) {
+      if (!m_seen.insert(&surface).second) {
+        return;
+      }
+      if (m_decorator != nullptr) {
+        m_decorator->decorate(surface);
+      }
+
+      const auto* material = surface.surfaceMaterial();
+      if (material == nullptr) {
+        return;
+      }
+      m_nWithMaterial++;
+      if (dynamic_cast<const Acts::ProtoGridSurfaceMaterial*>(material) != nullptr ||
+          dynamic_cast<const Acts::ProtoSurfaceMaterial*>(material) != nullptr) {
+        m_nProto++;
+      }
+    }
+
+    const Acts::IMaterialDecorator*          m_decorator{nullptr};
+    std::unordered_set<const Acts::Surface*> m_seen{};
+    std::size_t                              m_nWithMaterial{0};
+    std::size_t                              m_nProto{0};
+  };
+}  // namespace
 
 ActsGeoSvc::ActsGeoSvc(const std::string& name, ISvcLocator* svcLoc) : base_class(name, svcLoc) {
   m_bluePrintPopulationFuncs = {{"MAIA_v0", MuColl::MAIA_v0::populateBlueprint},
@@ -147,7 +224,34 @@ StatusCode ActsGeoSvc::initialize() {
   BlueprintOptions options;
 
   debug() << "Constructing tracking geometry" << endmsg;
-  m_trackingGeo = root.construct(options, gctxt, *gaudiLogger->cloneWithSuffix("|Construct"));
+  auto trackingGeo = root.construct(options, gctxt, *gaudiLogger->cloneWithSuffix("|Construct"));
+
+  // Blueprint::construct always passes a null material decorator, so the map
+  // has to be applied here, after the fact. Run the visitor unconditionally: it
+  // also reports how many surfaces the blueprint designated as material
+  // receivers, which is the cheapest check that the designation took effect.
+  std::shared_ptr<const Acts::IMaterialDecorator> materialDecorator;
+  if (auto sc = makeMaterialDecorator(materialDecorator); sc.isFailure()) {
+    return sc;
+  }
+
+  MaterialDecorationVisitor materialVisitor{materialDecorator.get()};
+  trackingGeo->apply(materialVisitor);
+  info() << fmt::format(
+                "{} of {} surfaces in the tracking geometry carry material, {} of them a proto-material placeholder.",
+                materialVisitor.nWithMaterial(), materialVisitor.nSurfaces(), materialVisitor.nProto())
+         << endmsg;
+  if (materialVisitor.nWithMaterial() == 0) {
+    warning() << "No surface in the tracking geometry carries material: the blueprint for this detector designates no "
+                 "material receivers. Tracking will not account for scattering or energy loss in passive material."
+              << endmsg;
+  } else if (materialVisitor.nProto() == materialVisitor.nWithMaterial()) {
+    warning() << "Every material surface still carries a proto-material placeholder, which contributes no actual "
+                 "material. Run the material mapping and point the MaterialMapFile property at the resulting map."
+              << endmsg;
+  }
+
+  m_trackingGeo = std::move(trackingGeo);
 
   std::size_t nSurfaces = 0;
   m_trackingGeo->visitSurfaces([&](const Acts::Surface* surface) {
@@ -208,6 +312,40 @@ StatusCode ActsGeoSvc::initialize() {
     info() << fmt::format("Collected {} calorimeter-face surface geometry ids.", m_caloSurfaceGeoIds.size()) << endmsg;
   }
 
+  return StatusCode::SUCCESS;
+}
+
+StatusCode ActsGeoSvc::makeMaterialDecorator(std::shared_ptr<const Acts::IMaterialDecorator>& decorator) const {
+  decorator.reset();
+  if (m_materialMapFile.value().empty()) {
+    return StatusCode::SUCCESS;
+  }
+
+  const std::filesystem::path mapFile{m_materialMapFile.value()};
+  if (!std::filesystem::exists(mapFile)) {
+    error() << fmt::format("The material map file '{}' does not exist.", mapFile.string()) << endmsg;
+    return StatusCode::FAILURE;
+  }
+
+  // Both readers parse the whole map in their constructor and throw on anything
+  // they do not recognise. Translate that into a message that names the file,
+  // since "wrong file passed to MaterialMapFile" is the likely cause.
+  try {
+    if (mapFile.extension() == ".root") {
+      ActsPlugins::RootMaterialDecorator::Config cfg;
+      cfg.fileName = mapFile.string();
+      decorator    = std::make_shared<const ActsPlugins::RootMaterialDecorator>(cfg, Acts::Logging::INFO);
+    } else {
+      decorator = std::make_shared<const Acts::JsonMaterialDecorator>(Acts::MaterialMapJsonConverter::Config{},
+                                                                      mapFile.string(), Acts::Logging::INFO);
+    }
+  } catch (const std::exception& e) {
+    error() << fmt::format("Failed to read the material map '{}': {}", mapFile.string(), e.what()) << endmsg;
+    return StatusCode::FAILURE;
+  }
+
+  info() << fmt::format("Decorating the tracking geometry with the material map from '{}'.", mapFile.string())
+         << endmsg;
   return StatusCode::SUCCESS;
 }
 
