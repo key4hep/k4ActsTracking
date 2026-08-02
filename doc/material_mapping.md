@@ -197,35 +197,149 @@ with no surface nearby to project onto. `addCylindricalSolenoid` is the pattern:
 give the structure a volume of its own so its boundaries become designatable
 surfaces.
 
-## 2. Recording (external)
+## 2. Recording the geantino scan
 
-Unchanged from the wiki procedure, and the only step that still needs tooling
-outside this repository: the key4hep/MuColl stacks build ACTS without
-`ActsExamples` and without the `acts` Python bindings. Use a separate ACTS build
-(as the ACTSMCC workspace did) to produce `geant4_material_tracks.root` from the
-MAIA DD4hep geometry:
+This is the one step that needs tooling outside this repository: the key4hep and
+MuColl stacks build ACTS with `Core`, `PluginDD4hep`, `PluginJson` and
+`PluginRoot` only — no `ActsExamples`, no `acts` Python bindings. So the scan runs
+in a separate ACTS build.
+
+The recording only samples the **Geant4** geometry. It knows nothing about the
+blueprint or the designated surfaces, so it depends solely on the DD4hep compact
+file being the same one reconstruction uses.
+
+### 2a. Export the detector to GDML
+
+Do not hand MAIA's compact file to ACTS' `DD4hepDetector`: that class eagerly
+builds a *Gen1* ACTS tracking geometry, which is exactly the conversion that does
+not work for these detectors and is the reason this repository has its own
+blueprint code. Export the geometry to GDML instead and use ACTS'
+`GdmlDetector`, which goes straight to Geant4 and skips the ACTS conversion
+entirely. It also means the ACTS container needs no k4geo installation.
+
+Run this in the MuColl/key4hep stack:
 
 ```bash
-ActsExampleMaterialRecordingDD4hep --response-file <your-geantinoscan.response>
+ddsim --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml --outputFile /tmp/gdmldump.root --numberOfEvents 1 --enableGun --geometry.dumpGDML MAIA_v0.gdml
 ```
 
-The output format is what `ActsPlugins::RootMaterialTrackIo` reads, so it feeds
-straight into step 3.
+This produces a ~44 MB `MAIA_v0.gdml`. Check the log is free of shape conversion
+errors — anything DD4hep cannot express in GDML silently drops out of the scan
+and its material will be missing from the map.
+
+### 2b. Get an ACTS build with Examples, Geant4 and Python
+
+Pin it to the **same commit the stack was built from**, otherwise the recorded
+ROOT tree layout may not match what `ActsPlugins::RootMaterialTrackIo` expects
+when reading it back in step 3. The stack reports version `999.999.999` (an
+untagged `main` build); the commit is in the spack metadata:
+
+```bash
+grep -o '"commit":"[a-f0-9]*"' $(dirname $(dirname $(find /opt/spack -name libActsCore.so | head -1)))/.spack/spec.json | head -1
+```
+
+At the time of writing that is `f6eb3bf2d76b25a3c683cc7020dc799fc5cdb769`. Build
+that commit with `-DACTS_BUILD_EXAMPLES=ON -DACTS_BUILD_EXAMPLES_GEANT4=ON
+-DACTS_BUILD_EXAMPLES_PYTHON_BINDINGS=ON`, or use the official ACTS container at
+the matching tag.
+
+### 2c. Run the scan
+
+`Examples/Scripts/Python/material_recording.py` in the ACTS source tree already
+takes a GDML file:
+
+```bash
+python material_recording.py --input MAIA_v0.gdml -n 1000 -t 1000 --eta-range -4 4 -o geant4_material_tracks
+```
+
+That writes `geant4_material_tracks.root`.
+
+**Statistics.** The 51 receivers carry roughly 15 000 bins in total (cylinder
+faces 20 × 20, disc faces 10 × 20). At ~100 entries per bin you need of order
+1.5 M surface crossings; a geantino crossing the full barrel hits on the order of
+10 receivers, so ~10⁶ geantinos is a sensible starting point. Check the
+occupancy in the resulting map and scale up if bins are empty — the accumulator
+corrects for empty bins, but a map built from too few tracks is noisy rather than
+obviously wrong.
+
+**Compatibility checklist.** `material_recording.py` already configures the
+writer correctly, but if you write your own driver these must hold, because they
+are what the step 3 reader is configured against:
+
+| `RootMaterialTrackWriter` | value | why |
+| ------------------------- | ----- | --- |
+| `treeName`                | `material_tracks` | what the reader opens |
+| `prePostStep`             | `True`  | Geant4 steps need pre/post positions |
+| `recalculateTotals`       | `True`  | cross-check of the per-step sums |
+| `storeSurface`            | `False` | the scan knows nothing of our surfaces |
+| `storeVolume`             | `False` | likewise |
 
 ## 3. Mapping
 
-**Not yet implemented in this repository.** Everything needed is present in the
-stack, so this is intended to become a Gaudi algorithm here rather than an
-external script:
+> **The mapping must run against *our* geometry.** This is the one thing that
+> cannot be delegated to an external ACTS job. The map is keyed by
+> `Acts::GeometryIdentifier`, and a stock ACTS DD4hep conversion produces
+> completely different volume numbering from our blueprint. A map produced
+> outside this repository will load without complaint and decorate nothing (or,
+> worse, the wrong surfaces).
 
-- `Acts::MaterialMapper`, `Acts::IntersectionMaterialAssigner`,
-  `Acts::BinnedSurfaceMaterialAccumulator` — all in ACTS **Core**;
-- `ActsPlugins::RootMaterialTrackIo` — reads `geant4_material_tracks.root`;
-- `Acts::MaterialMapJsonConverter` / `ActsPlugins::RootMaterialMapIo` — writes
-  the map.
+**This algorithm does not exist yet** — it is the remaining piece of work. All
+the machinery is already in the stack and already linked by
+`k4ActsTrackingPlugins`, so it needs no new dependencies. What it has to do:
 
-The surfaces to hand the mapper are those designated in step 1, collected from
-the constructed `Acts::TrackingGeometry`.
+1. **Get the geometry and the receivers.** Take `trackingGeometry()` from
+   `IActsGeoSvc`, then collect the surfaces whose `surfaceMaterial()` is an
+   `Acts::ProtoGridSurfaceMaterial` or `Acts::ProtoSurfaceMaterial`. That is
+   exactly the test `MaterialDecorationVisitor` in
+   [`ActsGeoSvc.cpp`](../k4ActsTracking/src/components/ActsGeoSvc.cpp) already
+   does for its proto count — reuse it rather than reimplementing. Expect 51 for
+   MAIA.
+
+2. **Build the mapper** (all `Acts::`, from Core):
+
+   ```cpp
+   IntersectionMaterialAssigner::Config assignerCfg;
+   assignerCfg.surfaces = materialSurfaces;
+
+   BinnedSurfaceMaterialAccumulator::Config accCfg;
+   accCfg.materialSurfaces   = materialSurfaces;
+   accCfg.emptyBinCorrection = true;
+
+   MaterialMapper::Config mapperCfg;
+   mapperCfg.assignmentFinder = std::make_shared<IntersectionMaterialAssigner>(assignerCfg, ...);
+   mapperCfg.surfaceMaterialAccumulator =
+       std::make_shared<BinnedSurfaceMaterialAccumulator>(accCfg, ...);
+   ```
+
+3. **Read the tracks** with `ActsPlugins::RootMaterialTrackIo`, configured to
+   match the writer settings from step 2c:
+
+   ```cpp
+   RootMaterialTrackIo::Config ioCfg;
+   ioCfg.prePostStepInfo   = true;   // writer had prePostStep = True
+   ioCfg.surfaceInfo       = false;  // writer had storeSurface = False
+   ioCfg.volumeInfo        = false;  // writer had storeVolume = False
+   ioCfg.recalculateTotals = false;
+   ```
+
+   `connectForRead(chain)` on a `TChain` of the `material_tracks` tree, then
+   `GetEntry(i)` followed by `read()` per track.
+
+4. **Map and finalize.** `createState(gctx)`, then `mapMaterial(state, gctx,
+   mctx, track)` for every recorded track — it returns the mapped and unmapped
+   halves, and the unmapped one is the diagnostic worth writing out — then
+   `finalizeMaps(state, gctx)`, which returns an
+   `Acts::TrackingGeometryMaterial`.
+
+5. **Write the map** with `Acts::MaterialMapJsonConverter::materialMapsToJson`.
+   Use `processSensitives = false`, `processBoundaries = true`,
+   `processVolumes = false`: in a Gen3 geometry the receivers are portals
+   (`boundary`), the sensors carry no material, and there is no volume material.
+   `ActsPlugins::RootMaterialMapIo` writes the same content as ROOT if you prefer
+   that format.
+
+Run it in the same job as `ActsGeoSvc` so the geometry it maps onto is bit-for-bit
+the one reconstruction will use.
 
 ## 4. Reading the map back
 
@@ -251,13 +365,71 @@ file fails service initialisation with a message naming the file.
 
 Check the summary line afterwards. The proto count is the diagnostic:
 
-- `50 ... 50 of them a proto-material placeholder` — no map applied, or none of
+- `51 ... 51 of them a proto-material placeholder` — no map applied, or none of
   its entries matched. A proto placeholder contributes no actual material, so
   tracking still sees none; the service warns about this.
-- `54 ... 41 of them a proto-material placeholder` — the map was applied to the
-  surfaces it had entries for.
+- `51 ... 0 of them a proto-material placeholder` — the map filled in every
+  designated receiver. This is what a correct map looks like.
 
-### Caveat: maps are tied to the blueprint that produced them
+## 5. Testing the result
+
+Work up this ladder; each rung isolates a different failure.
+
+**5a. The designation is intact (no map needed).**
+
+```bash
+ctest -R load_geo --output-on-failure
+```
+
+Every detector must construct. A designation on a merged portal aborts here with
+the offending portal named. Then confirm the receiver count:
+
+```bash
+k4run k4ActsTracking/examples/test_visualize_acts_geo.py --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml
+```
+
+Expect `51 ... 51 of them a proto-material placeholder`. A different total means
+the blueprint changed and **any existing map is now invalid** — regenerate it.
+
+**5b. The map keys line up.** The cheapest real check, and the one that catches a
+map produced against the wrong geometry:
+
+```bash
+k4run k4ActsTracking/examples/test_visualize_acts_geo.py --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml --materialMapFile MAIA_v0_gen3_material_map.json
+```
+
+- proto count drops `51 → 0`: correct.
+- proto count unchanged at 51: none of the map's identifiers matched. The map was
+  built against a different geometry — almost always an external ACTS job, or a
+  map predating a blueprint change.
+- proto count drops only partly: some receivers got no material. Usually too few
+  geantinos, or a receiver the scan never crosses.
+- **total** rises above 51: the map carries entries for surfaces we never
+  designated. Harmless but a sign the map writer config in step 3 was too
+  permissive (`processSensitives` left on).
+
+**5c. Physics validation.** `Acts::MaterialValidator` and
+`Acts::PropagatorMaterialAssigner` are in the stack: propagate geantinos through
+the *mapped* geometry and compare the accumulated X₀/L₀ against the original
+scan, binned in η and φ. Agreement to a few percent is the target; a systematic
+deficit means material that fell outside every receiver, which for MAIA most
+likely means the region between the outer tracker and the solenoid, or the
+nozzles.
+
+**5d. No tracking regression.**
+
+```bash
+ctest -R reco_MAIA_Gen3 --output-on-failure
+```
+
+Note that adding real material *should* change the fit results — this test checks
+the chain still runs, not that the numbers are unchanged.
+
+**5e. Add the map to the repository.** Once validated, add the file to
+`data/file_list.txt` with its md5 and upload it alongside the other data files;
+`data/CMakeLists.txt` downloads and installs it at configure time.
+
+## Caveat: maps are tied to the blueprint that produced them
 
 Maps are keyed by `Acts::GeometryIdentifier`. For a Gen3 geometry those are
 assigned by traversal order in `Blueprint::construct` (volume / boundary /
