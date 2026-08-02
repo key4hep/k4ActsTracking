@@ -69,6 +69,10 @@ The Gaudi plugin module `k4ActsTrackingPlugins` provides, among others:
   stage) instead of the internal seed finder.
 * **`ACTSSeededCKFTrackingAlg`** — legacy seeded CKF tracking algorithm,
   superseded by `CKFTrackingAlg` and slated for removal.
+* **`MaterialMappingAlg`** — projects a recorded Geant4 geantino scan onto the
+  material surfaces designated by the blueprint and writes the resulting
+  material map. Runs alongside `ActsGeoSvc` so the map matches the geometry it
+  was built from; see [doc/material_mapping.md](doc/material_mapping.md).
 * **`ACTSDuplicateRemoval`** — removes duplicate tracks produced by the CKF.
 * **`FilterTracksAlg`** — applies quality cuts to a track collection.
 * **`TrackTruthAlg`** — associates reconstructed tracks with truth particles.

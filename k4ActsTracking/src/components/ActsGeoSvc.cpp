@@ -19,6 +19,7 @@
 
 #include "ActsGeoSvc.h"
 #include "DD4hepBlueprintConstruction.h"
+#include "MaterialSurfaces.h"
 
 #include "k4ActsTracking/ActsGaudiLogger.h"
 
@@ -132,8 +133,7 @@ namespace {
         return;
       }
       m_nWithMaterial++;
-      if (dynamic_cast<const Acts::ProtoGridSurfaceMaterial*>(material) != nullptr ||
-          dynamic_cast<const Acts::ProtoSurfaceMaterial*>(material) != nullptr) {
+      if (MaterialSurfaces::isProtoMaterial(material)) {
         m_nProto++;
       }
     }

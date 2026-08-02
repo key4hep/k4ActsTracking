@@ -283,63 +283,71 @@ are what the step 3 reader is configured against:
 > outside this repository will load without complaint and decorate nothing (or,
 > worse, the wrong surfaces).
 
-**This algorithm does not exist yet** — it is the remaining piece of work. All
-the machinery is already in the stack and already linked by
-`k4ActsTrackingPlugins`, so it needs no new dependencies. What it has to do:
+That is why the mapping is a Gaudi algorithm here rather than an external
+script: `MaterialMappingAlg` runs in the same job as `ActsGeoSvc`, so it projects
+onto the very geometry reconstruction will use. It needs no dependencies beyond
+what `k4ActsTrackingPlugins` already links (`Acts::Core` for the mapper,
+`Acts::PluginRoot` to read the scan, `Acts::PluginJson` to write the map).
 
-1. **Get the geometry and the receivers.** Take `trackingGeometry()` from
-   `IActsGeoSvc`, then collect the surfaces whose `surfaceMaterial()` is an
-   `Acts::ProtoGridSurfaceMaterial` or `Acts::ProtoSurfaceMaterial`. That is
-   exactly the test `MaterialDecorationVisitor` in
-   [`ActsGeoSvc.cpp`](../k4ActsTracking/src/components/ActsGeoSvc.cpp) already
-   does for its proto count — reuse it rather than reimplementing. Expect 51 for
-   MAIA.
+```bash
+k4run test/options/material_mapping.py \
+  --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \
+  --inputFiles geant4_material_tracks.root \
+  --outputFile MAIA_v0_gen3_material_map.json
+```
 
-2. **Build the mapper** (all `Acts::`, from Core):
+Expected output:
 
-   ```cpp
-   IntersectionMaterialAssigner::Config assignerCfg;
-   assignerCfg.surfaces = materialSurfaces;
+```
+MaterialMappingAlg INFO Mapping material onto 51 designated surfaces.
+MaterialMappingAlg INFO Reading 20000 recorded material tracks from tree 'material_tracks'.
+MaterialMappingAlg INFO Mapped 20000 recorded material tracks.
+MaterialMappingAlg INFO Wrote material for 51 surfaces to 'MAIA_v0_gen3_material_map.json'.
+```
 
-   BinnedSurfaceMaterialAccumulator::Config accCfg;
-   accCfg.materialSurfaces   = materialSurfaces;
-   accCfg.emptyBinCorrection = true;
+The surface count on the first and last lines must agree, and must match what
+`ActsGeoSvc` reports for the geometry. If the last number is smaller, some
+receivers were never crossed by a geantino.
 
-   MaterialMapper::Config mapperCfg;
-   mapperCfg.assignmentFinder = std::make_shared<IntersectionMaterialAssigner>(assignerCfg, ...);
-   mapperCfg.surfaceMaterialAccumulator =
-       std::make_shared<BinnedSurfaceMaterialAccumulator>(accCfg, ...);
-   ```
+**Do not pass `--materialMapFile` to the mapping job.** The mapper identifies its
+targets by their proto-material placeholders, and loading a map replaces exactly
+those. The algorithm refuses to run if it finds no receivers, which is what that
+mistake looks like.
 
-3. **Read the tracks** with `ActsPlugins::RootMaterialTrackIo`, configured to
-   match the writer settings from step 2c:
+### Properties
 
-   ```cpp
-   RootMaterialTrackIo::Config ioCfg;
-   ioCfg.prePostStepInfo   = true;   // writer had prePostStep = True
-   ioCfg.surfaceInfo       = false;  // writer had storeSurface = False
-   ioCfg.volumeInfo        = false;  // writer had storeVolume = False
-   ioCfg.recalculateTotals = false;
-   ```
+| property | default | note |
+| -------- | ------- | ---- |
+| `InputFiles` | *(required)* | scan ROOT files; several may be chained |
+| `TreeName` | `material_tracks` | must match the recording job's `treeName` |
+| `OutputFile` | `material-map.json` | `.json` via `MaterialMapJsonConverter` |
+| `MaxTracks` | `-1` | cap for quick smoke tests; negative reads everything |
+| `EmptyBinCorrection` | `true` | correct bins no geantino crossed |
+| `PrePostStepInfo` | `true` | must match the writer's `prePostStep` |
+| `SurfaceInfo` | `false` | must match the writer's `storeSurface` |
+| `VolumeInfo` | `false` | must match the writer's `storeVolume` |
 
-   `connectForRead(chain)` on a `TChain` of the `material_tracks` tree, then
-   `GetEntry(i)` followed by `read()` per track.
+The last three are the ones to check first if the input will not read: they
+select which branches the reader binds, so a mismatch with step 2's writer
+settings shows up as ROOT branch errors rather than as wrong numbers.
 
-4. **Map and finalize.** `createState(gctx)`, then `mapMaterial(state, gctx,
-   mctx, track)` for every recorded track — it returns the mapped and unmapped
-   halves, and the unmapped one is the diagnostic worth writing out — then
-   `finalizeMaps(state, gctx)`, which returns an
-   `Acts::TrackingGeometryMaterial`.
+### Two things about the job structure
 
-5. **Write the map** with `Acts::MaterialMapJsonConverter::materialMapsToJson`.
-   Use `processSensitives = false`, `processBoundaries = true`,
-   `processVolumes = false`: in a Gen3 geometry the receivers are portals
-   (`boundary`), the sensors carry no material, and there is no volume material.
-   `ActsPlugins::RootMaterialMapIo` writes the same content as ROOT if you prefer
-   that format.
+It is a **one-shot job, not an event loop**: the algorithm reads the whole scan
+on its first `execute()`. The options file therefore sets `EvtMax=1` *and*
+`EvtSel="NONE"`. The second one matters — without an event selector there is no
+event source, the loop runs zero events, and the algorithm initializes and
+finalizes without ever executing. That failure is silent apart from the
+algorithm refusing to write an empty map.
 
-Run it in the same job as `ActsGeoSvc` so the geometry it maps onto is bit-for-bit
-the one reconstruction will use.
+The receivers are found with `MaterialSurfaces::collectProtoMaterialSurfaces`
+([`MaterialSurfaces.h`](../k4ActsTracking/src/components/MaterialSurfaces.h)),
+which `ActsGeoSvc` also uses for its proto count, so the two cannot disagree
+about what counts as a designated surface.
+
+The writer is configured for a Gen3 geometry: `processBoundaries = true`,
+everything else off. The receivers are volume portals, the sensors carry no
+material, and there is no volume material.
 
 ## 4. Reading the map back
 
@@ -408,7 +416,17 @@ k4run k4ActsTracking/examples/test_visualize_acts_geo.py --compactFile $k4geo_DI
   designated. Harmless but a sign the map writer config in step 3 was too
   permissive (`processSensitives` left on).
 
-**5c. Physics validation.** `Acts::MaterialValidator` and
+**5c. Round-trip check with a synthetic scan.** You do not need a real Geant4
+scan to exercise steps 3 and 4. Any file in the recording format works, so a
+throwaway generator that writes straight rays with material steps along them
+(using `ActsPlugins::RootMaterialTrackIo` in write mode, so the format is
+guaranteed to match) is enough to confirm the plumbing before committing to a
+long scan. Running that through `material_mapping.py` and back through
+`MaterialMapFile` should give `51 -> 0` proto, a map with 51 `(volume,
+boundary)` entries of type `binned`. It will not give physically meaningful
+material, only a correct pipeline.
+
+**5d. Physics validation.** `Acts::MaterialValidator` and
 `Acts::PropagatorMaterialAssigner` are in the stack: propagate geantinos through
 the *mapped* geometry and compare the accumulated X₀/L₀ against the original
 scan, binned in η and φ. Agreement to a few percent is the target; a systematic
@@ -416,7 +434,7 @@ deficit means material that fell outside every receiver, which for MAIA most
 likely means the region between the outer tracker and the solenoid, or the
 nozzles.
 
-**5d. No tracking regression.**
+**5e. No tracking regression.**
 
 ```bash
 ctest -R reco_MAIA_Gen3 --output-on-failure
@@ -425,7 +443,7 @@ ctest -R reco_MAIA_Gen3 --output-on-failure
 Note that adding real material *should* change the fit results — this test checks
 the chain still runs, not that the numbers are unchanged.
 
-**5e. Add the map to the repository.** Once validated, add the file to
+**5f. Add the map to the repository.** Once validated, add the file to
 `data/file_list.txt` with its md5 and upload it alongside the other data files;
 `data/CMakeLists.txt` downloads and installs it at configure time.
 
