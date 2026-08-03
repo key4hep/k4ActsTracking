@@ -237,28 +237,7 @@ This produces a ~44 MB `MAIA_v0.gdml`. Check the log is free of shape conversion
 errors — anything DD4hep cannot express in GDML silently drops out of the scan
 and its material will be missing from the map.
 
-### 2b. A note on ACTS versions
-
-Running the scan in the same stack that runs the mapping is the safe default: the
-ROOT tree written by `RootMaterialTrackWriter` is read back by
-`ActsPlugins::RootMaterialTrackIo`, and both come from the same ACTS build, so
-the branch layout cannot drift.
-
-If you do record in a *different* ACTS build, pin it to the stack's commit. The
-stack reports version `999.999.999` (an untagged `main` build); the commit is in
-the spack metadata of the ACTS that is actually on the environment path:
-
-```bash
-ACTS_PREFIX=$(python3 -c "import acts, pathlib; print(pathlib.Path(acts.__file__).parents[2])")
-grep -o '"commit":"[a-f0-9]*"' $ACTS_PREFIX/.spack/spec.json | head -1
-```
-
-Resolve the prefix through the `acts` Python module as above rather than by
-searching the filesystem for `libActsCore.so` — an image may contain more than
-one ACTS install, and only the one on `PYTHONPATH`/`CMAKE_PREFIX_PATH` is the one
-in use.
-
-### 2c. Run the scan
+### 2b. Run the scan
 
 `Examples/Scripts/Python/material_recording.py` in the ACTS source tree already
 takes a GDML file:
