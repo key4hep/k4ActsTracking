@@ -1,5 +1,5 @@
 <!--
-Copyright (c) 2014-2026 Key4hep-Project.
+Copyright (c) 2014-2024 Key4hep-Project.
 
 This file is part of Key4hep.
 See https://key4hep.github.io/key4hep-doc/ for further info.
@@ -122,10 +122,10 @@ between the tracker and the calorimeter, as MAIA_v0's does: the coil spans
 extrapolation to the calorimeter face crosses several hundred mm of vacuum tank
 and conductor.
 
-The radial stack closes gaps by expanding the inner volume, so the outer tracker 
-— whose sensors end at 1498.5 mm — was stretched all the way out to 1856 mm, 
-leaving the coil straddling a single volume with no boundary anywhere inside it. 
-Its material could only be projected onto the outermost tracker layer (well inside 
+The radial stack closes gaps by expanding the inner volume, so the outer tracker
+— whose sensors end at 1498.5 mm — was stretched all the way out to 1856 mm,
+leaving the coil straddling a single volume with no boundary anywhere inside it.
+Its material could only be projected onto the outermost tracker layer (well inside
 the coil) or onto that stretched boundary (hard against the calorimeter face).
 
 `addCylindricalSolenoid` inserts a `Solenoid` volume covering the coil, which
@@ -219,21 +219,41 @@ file directly:
 python3 $ACTS_SCRIPTS/material_recording.py --input MAIA_v0.gdml -n 1000 -t 1000 --eta-range -4 4 -o geant4_material_tracks
 ```
 
+For a real scan, split it across batch jobs with
+[`material_recording_chunk.py`](../k4ActsTracking/examples/material_recording_chunk.py).
+Job `i` of `N`, each recording `E` events:
+
+```bash
+python3 k4ActsTracking/examples/material_recording_chunk.py --input MAIA_v0.gdml \
+    --events E --skip $((i * E)) --tracks 1000 --output-dir scan/
+```
+
+Each job writes `scan/geant4_material_tracks_<skip>.root`. Pass them all to the
+mapping step at once — `MaterialMappingAlg` chains its `InputFiles`, so there is
+no `hadd` step.
+
+> **Why the wrapper is needed.** ACTS' script exposes neither `--skip` nor
+> `--seed`, and hardcodes `RandomNumbers(seed=228)`. Submitting N batch jobs with
+> it as-is records the *same* geantinos N times: N times the files and the wall
+> time, one scan's worth of statistics, and nothing in the output looks wrong.
+> The wrapper adds only the missing knob — it calls ACTS' `runMaterialRecording`
+> unchanged, so the generator and `RootMaterialTrackWriter` settings stay exactly
+> what step 3 expects.
+
 **The scan is single-threaded, and cannot be otherwise.**
 `material_recording.py` hardcodes `numThreads=1`, and that is not an oversight:
 ACTS creates its Geant4 run manager as
 `G4RunManagerFactory::CreateRunManager(G4RunManagerType::SerialOnly)`
 (`Examples/Algorithms/Geant4/src/Geant4Manager.cpp`), i.e. never Geant4's MT or
 Tasking run manager, and `Geant4Manager` is a process-wide singleton whose
-`createHandle` throws *"creating a second handle is prohibited"*. 
+`createHandle` throws *"creating a second handle is prohibited"*.
 
-> The wrapper passes `skip=begin` per chunk. The Sequencer derives its per-event
-> random seeds from the event number, so `skip` is what makes chunks differ.
-> Launching N identical jobs without it produces N copies of the same geantinos —
-> a map that looks perfectly healthy while carrying 1/N of the statistics you
-> think it has.
+> `--skip` is what makes chunks differ: the Sequencer derives its per-event
+> random seeds from the event number. Verified — two runs differing only in
+> `--skip` produce entirely different geantino directions, so the seed does not
+> also need to vary.
 
-**Statistics.** In the MAIA_v0 case, the 51 receivers carry roughly 15 000 bins 
+**Statistics.** In the MAIA_v0 case, the 51 receivers carry roughly 15 000 bins
 in total (cylinder
 faces 20 × 20, disc faces 10 × 20). At ~100 entries per bin you need of order
 1.5 M surface crossings; a geantino crossing the full barrel hits on the order of
