@@ -254,6 +254,29 @@ python material_recording.py --input MAIA_v0.gdml -n 1000 -t 1000 --eta-range -4
 
 That writes `geant4_material_tracks.root`.
 
+**The scan is single-threaded, and cannot be otherwise.**
+`material_recording.py` hardcodes `numThreads=1`, and that is not an oversight:
+ACTS creates its Geant4 run manager as
+`G4RunManagerFactory::CreateRunManager(G4RunManagerType::SerialOnly)`
+(`Examples/Algorithms/Geant4/src/Geant4Manager.cpp`), i.e. never Geant4's MT or
+Tasking run manager, and `Geant4Manager` is a process-wide singleton whose
+`createHandle` throws *"creating a second handle is prohibited"*. Raising
+`numThreads` on the Sequencer therefore cannot parallelise the Geant4 stage.
+
+Scale out with **processes** instead. `Examples/Scripts/Python/geant4_parallel.py`
+is the reference pattern: a `multiprocessing.Pool` where each worker runs its own
+Sequencer with `events=chunk, skip=begin, numThreads=1`, writing to its own
+output directory.
+
+> Set `skip` per chunk. The Sequencer derives its per-event random seeds from the
+> event number, so `skip` is what makes chunks differ. Launching N identical jobs
+> without it produces N copies of the same geantinos — a map that looks perfectly
+> healthy while carrying 1/N of the statistics you think it has.
+
+You do **not** need to `hadd` the chunks afterwards: `MaterialMappingAlg` takes a
+list of `InputFiles` and chains them, so pass all the chunk files to the mapping
+job directly.
+
 **Statistics.** The 51 receivers carry roughly 15 000 bins in total (cylinder
 faces 20 × 20, disc faces 10 × 20). At ~100 entries per bin you need of order
 1.5 M surface crossings; a geantino crossing the full barrel hits on the order of
