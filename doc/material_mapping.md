@@ -239,14 +239,32 @@ and its material will be missing from the map.
 
 ### 2b. Run the scan
 
-`Examples/Scripts/Python/material_recording.py` in the ACTS source tree already
-takes a GDML file:
+For a quick scan, ACTS' own script is installed with the stack and takes a GDML
+file directly:
 
 ```bash
-python material_recording.py --input MAIA_v0.gdml -n 1000 -t 1000 --eta-range -4 4 -o geant4_material_tracks
+ACTS_SCRIPTS=$(python3 -c "import acts, pathlib; print(pathlib.Path(acts.__file__).parents[2] / 'share/acts/Examples/Scripts/Python')")
+python3 $ACTS_SCRIPTS/material_recording.py --input MAIA_v0.gdml -n 1000 -t 1000 --eta-range -4 4 -o geant4_material_tracks
 ```
 
-That writes `geant4_material_tracks.root`.
+That is single-threaded and cannot be otherwise (see below), so for a real scan
+use the parallel wrapper in this repository:
+
+```bash
+python3 k4ActsTracking/examples/material_recording_parallel.py \
+  --gdml MAIA_v0.gdml --events 1000 --tracks 1000 --jobs 8 --output-dir scan/
+```
+
+It writes one ROOT file per chunk and prints the `--inputFiles` line to paste
+into the mapping job. No `hadd` is needed: `MaterialMappingAlg` chains them.
+
+**Why a wrapper.** ACTS ships `Examples/Scripts/Python/geant4_parallel.py`, but it
+is a template for *full simulation* (`addParticleGun` + `addGeant4`, CSV output,
+hard-coded ODD), not for material recording, and its `__main__` does not run as
+shipped — `starmap` supplies two arguments to a worker that needs four, because
+`detector` and `trackingGeometry` were added to the signature without updating
+the call. The wrapper here follows the same chunking idea but calls
+`Geant4MaterialRecording` and writes the ROOT format step 3 expects.
 
 **The scan is single-threaded, and cannot be otherwise.**
 `material_recording.py` hardcodes `numThreads=1`, and that is not an oversight:
@@ -255,33 +273,27 @@ ACTS creates its Geant4 run manager as
 (`Examples/Algorithms/Geant4/src/Geant4Manager.cpp`), i.e. never Geant4's MT or
 Tasking run manager, and `Geant4Manager` is a process-wide singleton whose
 `createHandle` throws *"creating a second handle is prohibited"*. Raising
-`numThreads` on the Sequencer therefore cannot parallelise the Geant4 stage.
+`numThreads` on the Sequencer therefore cannot parallelise the Geant4 stage, and
+each worker process must build its own detector and run manager.
 
-Scale out with **processes** instead. `Examples/Scripts/Python/geant4_parallel.py`
-is the reference pattern: a `multiprocessing.Pool` where each worker runs its own
-Sequencer with `events=chunk, skip=begin, numThreads=1`, writing to its own
-output directory.
-
-> Set `skip` per chunk. The Sequencer derives its per-event random seeds from the
-> event number, so `skip` is what makes chunks differ. Launching N identical jobs
-> without it produces N copies of the same geantinos — a map that looks perfectly
-> healthy while carrying 1/N of the statistics you think it has.
-
-You do **not** need to `hadd` the chunks afterwards: `MaterialMappingAlg` takes a
-list of `InputFiles` and chains them, so pass all the chunk files to the mapping
-job directly.
+> The wrapper passes `skip=begin` per chunk. The Sequencer derives its per-event
+> random seeds from the event number, so `skip` is what makes chunks differ.
+> Launching N identical jobs without it produces N copies of the same geantinos —
+> a map that looks perfectly healthy while carrying 1/N of the statistics you
+> think it has.
 
 **Statistics.** The 51 receivers carry roughly 15 000 bins in total (cylinder
 faces 20 × 20, disc faces 10 × 20). At ~100 entries per bin you need of order
 1.5 M surface crossings; a geantino crossing the full barrel hits on the order of
-10 receivers, so ~10⁶ geantinos is a sensible starting point. Check the
-occupancy in the resulting map and scale up if bins are empty — the accumulator
-corrects for empty bins, but a map built from too few tracks is noisy rather than
-obviously wrong.
+10 receivers, so ~10⁶ geantinos is a sensible starting point. Measured on MAIA,
+that costs about **1.8 ms per geantino** plus ~4 s of one-off Geant4 setup per
+process — so ~30 CPU-minutes, or a few minutes spread over 8 cores. The scan is
+cheap; do not skimp on it. Check the occupancy of the resulting map and scale up
+if bins are empty.
 
-**Compatibility checklist.** `material_recording.py` already configures the
-writer correctly, but if you write your own driver these must hold, because they
-are what the step 3 reader is configured against:
+**Compatibility checklist.** Both scripts above configure the writer correctly,
+but if you write your own driver these must hold, because they are what the step
+3 reader is configured against:
 
 | `RootMaterialTrackWriter` | value | why |
 | ------------------------- | ----- | --- |
