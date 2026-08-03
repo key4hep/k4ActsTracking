@@ -199,14 +199,26 @@ surfaces.
 
 ## 2. Recording the geantino scan
 
-This is the one step that needs tooling outside this repository: the key4hep and
-MuColl stacks build ACTS with `Core`, `PluginDD4hep`, `PluginJson` and
-`PluginRoot` only — no `ActsExamples`, no `acts` Python bindings. So the scan runs
-in a separate ACTS build.
-
-The recording only samples the **Geant4** geometry. It knows nothing about the
-blueprint or the designated surfaces, so it depends solely on the DD4hep compact
+The recording samples the **Geant4** geometry. It knows nothing about the
+blueprint or the designated surfaces, so all it depends on is the DD4hep compact
 file being the same one reconstruction uses.
+
+**No separate ACTS build is needed.** The MuColl stack's ACTS is built with
+`+examples +geant4 +python +hepmc3 +dd4hep +root`, so everything the scan needs
+is already importable after `source /opt/setup_mucoll.sh`:
+
+```bash
+python3 -c "import acts.examples.geant4 as g4; print(g4.Geant4MaterialRecording, g4.GdmlDetector)"
+```
+
+If that import fails you are on a stack whose ACTS lacks the examples. In spack
+terms you would need `acts +examples +geant4 +python`; note that `+geant4` alone
+is not a thing — the package declares it `when="+examples"`, and the CMake
+mapping (`ACTS_BUILD_EXAMPLES_GEANT4`) is gated on `+examples +geant4`. Without
+`+examples` you get only `ACTS_BUILD_PLUGIN_GEANT4`, the geometry-conversion
+plugin, which contains none of the recording machinery. Recent ACTS also pulls
+in `+hepmc3` automatically (`requires("+hepmc3", when="@41: +examples")`), which
+`material_recording.py` needs for its `HepMC3InputConverter`.
 
 ### 2a. Export the detector to GDML
 
@@ -215,9 +227,7 @@ builds a *Gen1* ACTS tracking geometry, which is exactly the conversion that doe
 not work for these detectors and is the reason this repository has its own
 blueprint code. Export the geometry to GDML instead and use ACTS'
 `GdmlDetector`, which goes straight to Geant4 and skips the ACTS conversion
-entirely. It also means the ACTS container needs no k4geo installation.
-
-Run this in the MuColl/key4hep stack:
+entirely.
 
 ```bash
 ddsim --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml --outputFile /tmp/gdmldump.root --numberOfEvents 1 --enableGun --geometry.dumpGDML MAIA_v0.gdml
@@ -227,21 +237,26 @@ This produces a ~44 MB `MAIA_v0.gdml`. Check the log is free of shape conversion
 errors — anything DD4hep cannot express in GDML silently drops out of the scan
 and its material will be missing from the map.
 
-### 2b. Get an ACTS build with Examples, Geant4 and Python
+### 2b. A note on ACTS versions
 
-Pin it to the **same commit the stack was built from**, otherwise the recorded
-ROOT tree layout may not match what `ActsPlugins::RootMaterialTrackIo` expects
-when reading it back in step 3. The stack reports version `999.999.999` (an
-untagged `main` build); the commit is in the spack metadata:
+Running the scan in the same stack that runs the mapping is the safe default: the
+ROOT tree written by `RootMaterialTrackWriter` is read back by
+`ActsPlugins::RootMaterialTrackIo`, and both come from the same ACTS build, so
+the branch layout cannot drift.
+
+If you do record in a *different* ACTS build, pin it to the stack's commit. The
+stack reports version `999.999.999` (an untagged `main` build); the commit is in
+the spack metadata of the ACTS that is actually on the environment path:
 
 ```bash
-grep -o '"commit":"[a-f0-9]*"' $(dirname $(dirname $(find /opt/spack -name libActsCore.so | head -1)))/.spack/spec.json | head -1
+ACTS_PREFIX=$(python3 -c "import acts, pathlib; print(pathlib.Path(acts.__file__).parents[2])")
+grep -o '"commit":"[a-f0-9]*"' $ACTS_PREFIX/.spack/spec.json | head -1
 ```
 
-At the time of writing that is `f6eb3bf2d76b25a3c683cc7020dc799fc5cdb769`. Build
-that commit with `-DACTS_BUILD_EXAMPLES=ON -DACTS_BUILD_EXAMPLES_GEANT4=ON
--DACTS_BUILD_EXAMPLES_PYTHON_BINDINGS=ON`, or use the official ACTS container at
-the matching tag.
+Resolve the prefix through the `acts` Python module as above rather than by
+searching the filesystem for `libActsCore.so` — an image may contain more than
+one ACTS install, and only the one on `PYTHONPATH`/`CMAKE_PREFIX_PATH` is the one
+in use.
 
 ### 2c. Run the scan
 
@@ -305,6 +320,11 @@ are what the step 3 reader is configured against:
 > completely different volume numbering from our blueprint. A map produced
 > outside this repository will load without complaint and decorate nothing (or,
 > worse, the wrong surfaces).
+>
+> This matters more now that `acts.examples` *is* importable in the stack: ACTS
+> ships its own `Examples/Scripts/Python/material_mapping.py`, and it will run
+> happily here. Do not use it. It maps onto whatever geometry it built itself,
+> not onto ours.
 
 That is why the mapping is a Gaudi algorithm here rather than an external
 script: `MaterialMappingAlg` runs in the same job as `ActsGeoSvc`, so it projects
