@@ -149,6 +149,23 @@ namespace {
     }
     return edges;
   }
+
+  /// Parse a device string ("cpu", "cuda", "cuda:<index>") into an Acts Device.
+  /// Throws std::invalid_argument on an unrecognised value.
+  ActsPlugins::Device parseDevice(std::string spec) {
+    std::transform(spec.begin(), spec.end(), spec.begin(), [](unsigned char c) { return std::tolower(c); });
+
+    if (spec == "cpu") {
+      return ActsPlugins::Device::Cpu();
+    }
+    if (spec == "cuda") {
+      return ActsPlugins::Device::Cuda();
+    }
+    if (spec.rfind("cuda:", 0) == 0) {
+      return ActsPlugins::Device::Cuda(static_cast<std::size_t>(std::stoul(spec.substr(5))));
+    }
+    throw std::invalid_argument(fmt::format("Unknown device '{}', expected 'cpu', 'cuda' or 'cuda:<index>'", spec));
+  }
 }  // namespace
 
 GNNTrackFinder::GNNTrackFinder(const std::string& name, ISvcLocator* svcLoc)
