@@ -1,5 +1,5 @@
 <!--
-Copyright (c) 2014-2024 Key4hep-Project.
+Copyright (c) 2014-2026 Key4hep-Project.
 
 This file is part of Key4hep.
 See https://key4hep.github.io/key4hep-doc/ for further info.
@@ -29,10 +29,7 @@ material back is a four step process:
 3. **Map** the recorded material onto the designated surfaces and write it out.
 4. **Read back** the resulting map when running reconstruction.
 
-This document covers the Gen3 (blueprint) geometry built by `ActsGeoSvc`. It
-supersedes the [MuColl wiki
-procedure](https://mcd-wiki.web.cern.ch/software/howto/acts_geo/), which applies
-only to the deprecated Gen1/TGeo path (`ACTSAlgBase`, `MatFile`).
+This document covers the Gen3 (blueprint) geometry built by `ActsGeoSvc`.
 
 > **The Gen1 files in `data/` are not usable here.** `MAIA_v0_material.json` is a
 > Gen1 *markup* file (every entry has null material), and `material-maps.json` is
@@ -46,9 +43,6 @@ surfaces should receive material, and serialising the mapped material. Step 1 no
 longer needs a file. The receivers are designated *in code*, while the blueprint
 tree is built, with `Acts::MaterialDesignatorBlueprintNode`. Only steps 3 and 4
 still exchange a file.
-
-This also means the wiki's TGeo detour (`dd2tgeo`, `ActsExampleGeometryTGeo`,
-`writeMapConfig.py` / `configureMap.py`) is gone entirely.
 
 ## 1. Designation
 
@@ -128,12 +122,11 @@ between the tracker and the calorimeter, as MAIA_v0's does: the coil spans
 extrapolation to the calorimeter face crosses several hundred mm of vacuum tank
 and conductor.
 
-The blueprint originally had no volume there. The radial stack closes gaps by
-expanding the inner volume, so the outer tracker — whose sensors end at
-1498.5 mm — was stretched all the way out to 1856 mm, leaving the coil straddling
-a single volume with no boundary anywhere inside it. Its material could only be
-projected onto the outermost tracker layer (well inside the coil) or onto that
-stretched boundary (hard against the calorimeter face).
+The radial stack closes gaps by expanding the inner volume, so the outer tracker 
+— whose sensors end at 1498.5 mm — was stretched all the way out to 1856 mm, 
+leaving the coil straddling a single volume with no boundary anywhere inside it. 
+Its material could only be projected onto the outermost tracker layer (well inside 
+the coil) or onto that stretched boundary (hard against the calorimeter face).
 
 `addCylindricalSolenoid` inserts a `Solenoid` volume covering the coil, which
 splits that region:
@@ -146,7 +139,7 @@ CaloBarrel    1856.00 → 1923.51       ECAL face at 1857
 
 The two designations now bracket the coil, so the mapping can spread its material
 across the thickness instead of lumping it at one edge. A surface *inside* the
-coil would be better still; that is the obvious next refinement.
+coil might be better still; that is the obvious next refinement.
 
 The inner radius is read from the `Solenoid` DetElement's envelope shape rather
 than hard-coded, and the insertion is **guarded** on the coil actually lying
@@ -203,29 +196,9 @@ The recording samples the **Geant4** geometry. It knows nothing about the
 blueprint or the designated surfaces, so all it depends on is the DD4hep compact
 file being the same one reconstruction uses.
 
-**No separate ACTS build is needed.** The MuColl stack's ACTS is built with
-`+examples +geant4 +python +hepmc3 +dd4hep +root`, so everything the scan needs
-is already importable after `source /opt/setup_mucoll.sh`:
-
-```bash
-python3 -c "import acts.examples.geant4 as g4; print(g4.Geant4MaterialRecording, g4.GdmlDetector)"
-```
-
-If that import fails you are on a stack whose ACTS lacks the examples. In spack
-terms you would need `acts +examples +geant4 +python`; note that `+geant4` alone
-is not a thing — the package declares it `when="+examples"`, and the CMake
-mapping (`ACTS_BUILD_EXAMPLES_GEANT4`) is gated on `+examples +geant4`. Without
-`+examples` you get only `ACTS_BUILD_PLUGIN_GEANT4`, the geometry-conversion
-plugin, which contains none of the recording machinery. Recent ACTS also pulls
-in `+hepmc3` automatically (`requires("+hepmc3", when="@41: +examples")`), which
-`material_recording.py` needs for its `HepMC3InputConverter`.
-
 ### 2a. Export the detector to GDML
 
-Do not hand MAIA's compact file to ACTS' `DD4hepDetector`: that class eagerly
-builds a *Gen1* ACTS tracking geometry, which is exactly the conversion that does
-not work for these detectors and is the reason this repository has its own
-blueprint code. Export the geometry to GDML instead and use ACTS'
+Export the geometry to GDML instead and use ACTS'
 `GdmlDetector`, which goes straight to Geant4 and skips the ACTS conversion
 entirely.
 
@@ -243,28 +216,8 @@ For a quick scan, ACTS' own script is installed with the stack and takes a GDML
 file directly:
 
 ```bash
-ACTS_SCRIPTS=$(python3 -c "import acts, pathlib; print(pathlib.Path(acts.__file__).parents[2] / 'share/acts/Examples/Scripts/Python')")
 python3 $ACTS_SCRIPTS/material_recording.py --input MAIA_v0.gdml -n 1000 -t 1000 --eta-range -4 4 -o geant4_material_tracks
 ```
-
-That is single-threaded and cannot be otherwise (see below), so for a real scan
-use the parallel wrapper in this repository:
-
-```bash
-python3 k4ActsTracking/examples/material_recording_parallel.py \
-  --gdml MAIA_v0.gdml --events 1000 --tracks 1000 --jobs 8 --output-dir scan/
-```
-
-It writes one ROOT file per chunk and prints the `--inputFiles` line to paste
-into the mapping job. No `hadd` is needed: `MaterialMappingAlg` chains them.
-
-**Why a wrapper.** ACTS ships `Examples/Scripts/Python/geant4_parallel.py`, but it
-is a template for *full simulation* (`addParticleGun` + `addGeant4`, CSV output,
-hard-coded ODD), not for material recording, and its `__main__` does not run as
-shipped — `starmap` supplies two arguments to a worker that needs four, because
-`detector` and `trackingGeometry` were added to the signature without updating
-the call. The wrapper here follows the same chunking idea but calls
-`Geant4MaterialRecording` and writes the ROOT format step 3 expects.
 
 **The scan is single-threaded, and cannot be otherwise.**
 `material_recording.py` hardcodes `numThreads=1`, and that is not an oversight:
@@ -272,9 +225,7 @@ ACTS creates its Geant4 run manager as
 `G4RunManagerFactory::CreateRunManager(G4RunManagerType::SerialOnly)`
 (`Examples/Algorithms/Geant4/src/Geant4Manager.cpp`), i.e. never Geant4's MT or
 Tasking run manager, and `Geant4Manager` is a process-wide singleton whose
-`createHandle` throws *"creating a second handle is prohibited"*. Raising
-`numThreads` on the Sequencer therefore cannot parallelise the Geant4 stage, and
-each worker process must build its own detector and run manager.
+`createHandle` throws *"creating a second handle is prohibited"*. 
 
 > The wrapper passes `skip=begin` per chunk. The Sequencer derives its per-event
 > random seeds from the event number, so `skip` is what makes chunks differ.
@@ -282,12 +233,11 @@ each worker process must build its own detector and run manager.
 > a map that looks perfectly healthy while carrying 1/N of the statistics you
 > think it has.
 
-**Statistics.** The 51 receivers carry roughly 15 000 bins in total (cylinder
+**Statistics.** In the MAIA_v0 case, the 51 receivers carry roughly 15 000 bins 
+in total (cylinder
 faces 20 × 20, disc faces 10 × 20). At ~100 entries per bin you need of order
 1.5 M surface crossings; a geantino crossing the full barrel hits on the order of
-10 receivers, so ~10⁶ geantinos is a sensible starting point. Measured on MAIA,
-that costs about **1.8 ms per geantino** plus ~4 s of one-off Geant4 setup per
-process — so ~30 CPU-minutes, or a few minutes spread over 8 cores. The scan is
+10 receivers, so O(10⁶) geantinos is a sensible starting point. The scan is
 cheap; do not skimp on it. Check the occupancy of the resulting map and scale up
 if bins are empty.
 
