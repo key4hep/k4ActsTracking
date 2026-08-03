@@ -87,6 +87,40 @@ namespace MaterialSurfaces {
     return surfaces;
   }
 
+  /// Collect the surfaces of @p trackingGeometry that carry any surface
+  /// material, mapped or proto.
+  ///
+  /// Unlike @c collectProtoMaterialSurfaces this stays useful after a material
+  /// map has been loaded, when the placeholders have been replaced by the real
+  /// thing.
+  ///
+  /// @param trackingGeometry The constructed tracking geometry
+  ///
+  /// @returns The material-carrying surfaces, in traversal order
+  inline std::vector<const Acts::Surface*> collectMaterialSurfaces(
+      const Acts::TrackingGeometry& trackingGeometry) {
+    std::vector<const Acts::Surface*>        surfaces{};
+    std::unordered_set<const Acts::Surface*> seen{};
+
+    struct Collector {
+      std::vector<const Acts::Surface*>&        surfaces;
+      std::unordered_set<const Acts::Surface*>& seen;
+
+      void add(const Acts::Surface& surface) const {
+        if (surface.surfaceMaterial() == nullptr || !seen.insert(&surface).second) {
+          return;
+        }
+        surfaces.push_back(&surface);
+      }
+
+      void operator()(const Acts::Portal& portal) const { add(portal.surface()); }
+      void operator()(const Acts::Surface& surface) const { add(surface); }
+    };
+    trackingGeometry.apply(Collector{surfaces, seen});
+
+    return surfaces;
+  }
+
 }  // namespace MaterialSurfaces
 
 #endif  // K4ACTSTRACKING_MATERIALSURFACES_H
