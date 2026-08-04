@@ -37,6 +37,7 @@
 #include <Acts/Propagator/EigenStepper.hpp>
 #include <Acts/Propagator/Navigator.hpp>
 #include <Acts/Propagator/Propagator.hpp>
+#include <Acts/Propagator/StraightLineStepper.hpp>
 
 // Standard
 #include <cstddef>
@@ -69,6 +70,30 @@ namespace ACTSTracking {
     navigatorCfg.resolveMaterial  = true;
     navigatorCfg.resolveSensitive = true;
     return CKFPropagator(CKFStepper(geo.magneticField()), CKFNavigator(navigatorCfg));
+  }
+
+  /// Field-free propagator used for geantino work (material validation).
+  using GeantinoPropagator = Acts::Propagator<Acts::StraightLineStepper, CKFNavigator>;
+
+  /// Build a straight-line propagator over the tracking geometry, for shooting
+  /// geantinos through it.
+  ///
+  /// This deliberately does *not* use @c makePropagator. A geantino is neutral,
+  /// and @c Acts::ChargeHypothesis::extractMomentum returns
+  /// `charge / qOverP`, i.e. exactly 0 for a neutral particle whatever q/p is.
+  /// @c Acts::detail::setupLoopProtection then computes a full helix path of
+  /// `2*pi*p/B == 0` and clamps the propagator's path limit to zero, so with any
+  /// non-zero field the propagation aborts before its first step and collects
+  /// nothing. A field-free stepper sidesteps that (it is also what ACTS' own
+  /// PropagatorMaterialAssigner unit test uses), and is the physically correct
+  /// choice anyway: the Geant4 geantino scan the validation compares against is
+  /// made of straight rays.
+  inline GeantinoPropagator makeGeantinoPropagator(const IActsGeoSvc& geo, bool resolvePassive) {
+    CKFNavigator::Config navigatorCfg{geo.trackingGeometry()};
+    navigatorCfg.resolvePassive   = resolvePassive;
+    navigatorCfg.resolveMaterial  = true;
+    navigatorCfg.resolveSensitive = true;
+    return GeantinoPropagator(Acts::StraightLineStepper(), CKFNavigator(navigatorCfg));
   }
 
   /// Stable key for matching an edm4hep tracker hit across collections.

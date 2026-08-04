@@ -67,6 +67,14 @@ parser.add_argument(
     default=-1,
     help="Stop after this many tracks; negative (default) processes everything",
 )
+parser.add_argument(
+    "--assigner",
+    choices=["intersection", "propagator"],
+    default="intersection",
+    help="How to find the material a geantino crosses: 'intersection' validates "
+    "the map's content, 'propagator' additionally validates that navigation "
+    "reaches it",
+)
 
 args = parser.parse_known_args()[0]
 
@@ -76,6 +84,7 @@ validation = MaterialValidationAlg(
     TreeName=args.treeName,
     OutputFile=args.outputFile,
     MaxTracks=args.maxTracks,
+    Assigner=args.assigner,
     OutputLevel=INFO,
 )
 

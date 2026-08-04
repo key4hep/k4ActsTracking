@@ -430,13 +430,40 @@ long scan. Running that through `material_mapping.py` and back through
 boundary)` entries of type `binned`. It will not give physically meaningful
 material, only a correct pipeline.
 
-**5d. Physics validation.** `Acts::MaterialValidator` and
-`Acts::PropagatorMaterialAssigner` are in the stack: propagate geantinos through
-the *mapped* geometry and compare the accumulated X₀/L₀ against the original
+**5d. Physics validation.** `MaterialValidationAlg` propagates geantinos through
+the *mapped* geometry and compares the accumulated X₀/L₀ against the original
 scan, binned in η and φ. Agreement to a few percent is the target; a systematic
 deficit means material that fell outside every receiver, which for MAIA most
 likely means the region between the outer tracker and the solenoid, or the
 nozzles.
+
+It has two assigners, selected with the `Assigner` property:
+
+- `intersection` (default) uses `Acts::IntersectionMaterialAssigner`, which
+  intersects the designated surfaces geometrically. This is what the mapping step
+  uses, so it validates the map's *content*.
+- `propagator` uses `Acts::PropagatorMaterialAssigner`, which walks the geometry
+  with the navigator. It additionally validates that *navigation* reaches the
+  material, i.e. that tracking will actually apply it.
+
+> **The geantino propagator must be field-free**, which is why
+> `ACTSTracking::makeGeantinoPropagator` uses a `StraightLineStepper` rather than
+> the CKF's `EigenStepper` over the detector field. A geantino is neutral, and
+> `Acts::ChargeHypothesis::extractMomentum` is `charge / qOverP`, which is exactly
+> `0` for a neutral particle whatever q/p it was given. With a non-zero field
+> `Acts::detail::setupLoopProtection` then computes a full helix path of
+> `2*pi*p/B == 0` and clamps the propagator's path limit to zero, so the
+> propagation aborts *before its first step* — silently, with no exception and no
+> error, just an empty collector and zero material on every track. This is not
+> Gen3-specific and has nothing to do with portals; it bites any geometry in any
+> real field. ACTS' own unit test for the class only ever uses a
+> `StraightLineStepper`, which is why it does not show up upstream. A straight
+> ray is also the physically correct choice here: the Geant4 scan being compared
+> against is made of straight geantinos.
+
+With that in place the two assigners agree exactly on which surfaces are crossed
+(for MAIA, 13/13 at η = 0, 16/16 at η = 1, 18/18 at η = 2, …), which is the
+positive statement that the Gen3 navigator does see material mounted on portals.
 
 **5e. No tracking regression.**
 

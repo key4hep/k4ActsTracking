@@ -80,8 +80,7 @@ struct MaterialValidationAlg final : public Gaudi::Algorithm {
 
   Gaudi::Property<std::vector<std::string>> m_inputFiles{
       this, "InputFiles", {}, "Geantino scan ROOT file(s). Only the track start positions and directions are used."};
-  Gaudi::Property<std::string> m_treeName{this, "TreeName", "material_tracks",
-                                          "Name of the TTree in the scan files."};
+  Gaudi::Property<std::string> m_treeName{this, "TreeName", "material_tracks", "Name of the TTree in the scan files."};
   Gaudi::Property<std::string> m_outputFile{
       this, "OutputFile", "propagated-material-tracks.root",
       "ROOT file to write the propagated material tracks to, in the same format as the scan."};
@@ -92,8 +91,7 @@ struct MaterialValidationAlg final : public Gaudi::Algorithm {
       "How to find the material a geantino crosses. 'intersection' intersects the designated surfaces "
       "geometrically, which is what the mapping step uses and therefore validates the map's content. "
       "'propagator' walks the geometry with the navigator, which additionally validates that tracking can "
-      "reach that material -- but see doc/material_mapping.md, it currently reports nothing for Gen3 portal "
-      "material."};
+      "reach that material."};
   Gaudi::Property<bool> m_resolvePassive{
       this, "ResolvePassive", true,
       "Let the navigator stop on passive surfaces. The material receivers are volume portals, so this must stay true "
@@ -106,15 +104,15 @@ private:
   std::unique_ptr<TChain>                           m_chain{nullptr};
   std::unique_ptr<ActsPlugins::RootMaterialTrackIo> m_reader{nullptr};
 
-  using Assigner = Acts::PropagatorMaterialAssigner<ACTSTracking::CKFPropagator>;
+  using Assigner = Acts::PropagatorMaterialAssigner<ACTSTracking::GeantinoPropagator>;
   std::unique_ptr<Acts::MaterialValidator> m_validator{nullptr};
 
   // Mutated from the const execute(); this is a one-shot job.
-  mutable std::unique_ptr<TFile>                    m_outFile{nullptr};
-  mutable TTree*                                    m_outTree{nullptr};
+  mutable std::unique_ptr<TFile>                            m_outFile{nullptr};
+  mutable TTree*                                            m_outTree{nullptr};
   mutable std::unique_ptr<ActsPlugins::RootMaterialTrackIo> m_writer{nullptr};
-  mutable std::size_t                               m_nProcessed{0};
-  mutable bool                                      m_done{false};
+  mutable std::size_t                                       m_nProcessed{0};
+  mutable bool                                              m_done{false};
 
   Acts::GeometryContext      m_gctx = Acts::GeometryContext::dangerouslyDefaultConstruct();
   Acts::MagneticFieldContext m_mctx{};
@@ -140,7 +138,7 @@ StatusCode MaterialValidationAlg::initialize() {
   Acts::MaterialValidator::Config cfg;
   if (m_assigner.value() == "propagator") {
     cfg.materialAssigner =
-        std::make_shared<const Assigner>(ACTSTracking::makePropagator(*m_actsGeoSvc, m_resolvePassive.value()));
+        std::make_shared<const Assigner>(ACTSTracking::makeGeantinoPropagator(*m_actsGeoSvc, m_resolvePassive.value()));
   } else if (m_assigner.value() == "intersection") {
     const auto surfaces = MaterialSurfaces::collectMaterialSurfaces(*m_actsGeoSvc->trackingGeometry());
     if (surfaces.empty()) {
@@ -155,8 +153,7 @@ StatusCode MaterialValidationAlg::initialize() {
     cfg.materialAssigner = std::make_shared<const Acts::IntersectionMaterialAssigner>(
         assignerCfg, m_actsLogger->cloneWithSuffix("|Assigner"));
   } else {
-    error() << fmt::format("Unknown Assigner '{}'; use 'intersection' or 'propagator'.", m_assigner.value())
-            << endmsg;
+    error() << fmt::format("Unknown Assigner '{}'; use 'intersection' or 'propagator'.", m_assigner.value()) << endmsg;
     return StatusCode::FAILURE;
   }
   m_validator = std::make_unique<Acts::MaterialValidator>(cfg, m_actsLogger->cloneWithSuffix("|Validator"));
