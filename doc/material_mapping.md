@@ -36,14 +36,6 @@ This document covers the Gen3 (blueprint) geometry built by `ActsGeoSvc`.
 > keyed on Gen1 TGeo volume/layer/approach identifiers, which a blueprint-built
 > geometry does not have. Do not pass either to `MaterialMapFile`.
 
-## What changed relative to the Gen1 workflow
-
-The Gen1 workflow used a JSON file for two jobs at once: marking up which
-surfaces should receive material, and serialising the mapped material. Step 1 no
-longer needs a file. The receivers are designated *in code*, while the blueprint
-tree is built, with `Acts::MaterialDesignatorBlueprintNode`. Only steps 3 and 4
-still exchange a file.
-
 ## 1. Designation
 
 Done in
@@ -119,8 +111,8 @@ the beampipe's outer cylinder, shared all the way down.
 The layer surfaces alone are not enough for a detector whose solenoid sits
 between the tracker and the calorimeter, as MAIA_v0's does: the coil spans
 **r = 1500 → 1857 mm** and the ECAL barrel face is at **1857 mm**, so every
-extrapolation to the calorimeter face crosses several hundred mm of vacuum tank
-and conductor.
+extrapolation to the calorimeter face crosses several hundred mm of vacuum tank,
+stabilisation material and conductor.
 
 The radial stack closes gaps by expanding the inner volume, so the outer tracker
 — whose sensors end at 1498.5 mm — was stretched all the way out to 1856 mm,
@@ -199,8 +191,7 @@ file being the same one reconstruction uses.
 ### 2a. Export the detector to GDML
 
 Export the geometry to GDML instead and use ACTS'
-`GdmlDetector`, which goes straight to Geant4 and skips the ACTS conversion
-entirely.
+`GdmlDetector`, which goes straight to Geant4.
 
 ```bash
 ddsim --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml --outputFile /tmp/gdmldump.root --numberOfEvents 1 --enableGun --geometry.dumpGDML MAIA_v0.gdml
@@ -245,27 +236,6 @@ Files and directories can be mixed, and a file named twice — say a directory p
 one of its own members — is only chained once, since chaining a scan file twice
 would double count its geantinos instead of failing visibly.
 
-> **Why the wrapper is needed.** ACTS' script exposes neither `--skip` nor
-> `--seed`, and hardcodes `RandomNumbers(seed=228)`. Submitting N batch jobs with
-> it as-is records the *same* geantinos N times: N times the files and the wall
-> time, one scan's worth of statistics, and nothing in the output looks wrong.
-> The wrapper adds only the missing knob — it calls ACTS' `runMaterialRecording`
-> unchanged, so the generator and `RootMaterialTrackWriter` settings stay exactly
-> what step 3 expects.
-
-**The scan is single-threaded, and cannot be otherwise.**
-`material_recording.py` hardcodes `numThreads=1`, and that is not an oversight:
-ACTS creates its Geant4 run manager as
-`G4RunManagerFactory::CreateRunManager(G4RunManagerType::SerialOnly)`
-(`Examples/Algorithms/Geant4/src/Geant4Manager.cpp`), i.e. never Geant4's MT or
-Tasking run manager, and `Geant4Manager` is a process-wide singleton whose
-`createHandle` throws *"creating a second handle is prohibited"*.
-
-> `--skip` is what makes chunks differ: the Sequencer derives its per-event
-> random seeds from the event number. Verified — two runs differing only in
-> `--skip` produce entirely different geantino directions, so the seed does not
-> also need to vary.
-
 **Statistics.** In the MAIA_v0 case, the 51 receivers carry roughly 15 000 bins
 in total (cylinder
 faces 20 × 20, disc faces 10 × 20). At ~100 entries per bin you need of order
@@ -295,9 +265,8 @@ but if you write your own driver these must hold, because they are what the step
 > outside this repository will load without complaint and decorate nothing (or,
 > worse, the wrong surfaces).
 >
-> This matters more now that `acts.examples` *is* importable in the stack: ACTS
-> ships its own `Examples/Scripts/Python/material_mapping.py`, and it will run
-> happily here. Do not use it. It maps onto whatever geometry it built itself,
+> ACTS ships its own `Examples/Scripts/Python/material_mapping.py`, and it will 
+> run happily here. Do not use it. It maps onto whatever geometry it built itself,
 > not onto ours.
 
 That is why the mapping is a Gaudi algorithm here rather than an external
@@ -368,11 +337,8 @@ material, and there is no volume material.
 
 ## 4. Reading the map back
 
-`Acts::Blueprint::construct` always passes a null material decorator to the
-`Acts::TrackingGeometry` constructor and closes the geometry itself, so the Gen1
-closure path that normally applies a decorator never runs. `ActsGeoSvc`
-therefore applies the map itself, after construction, by walking the geometry and
-decorating volumes, portal surfaces and sensitive surfaces
+`ActsGeoSvc` applies the map itself, after construction, by walking the 
+geometry and decorating volumes, portal surfaces and sensitive surfaces
 (`MaterialDecorationVisitor` in
 [`ActsGeoSvc.cpp`](../k4ActsTracking/src/components/ActsGeoSvc.cpp)).
 
@@ -416,7 +382,7 @@ k4run k4ActsTracking/examples/test_visualize_acts_geo.py --compactFile $k4geo_DI
 Expect `51 ... 51 of them a proto-material placeholder`. A different total means
 the blueprint changed and **any existing map is now invalid** — regenerate it.
 
-**5b. The map keys line up.** The cheapest real check, and the one that catches a
+**5b. The map keys line up.** To catch a
 map produced against the wrong geometry:
 
 ```bash
@@ -425,30 +391,33 @@ k4run k4ActsTracking/examples/test_visualize_acts_geo.py --compactFile $k4geo_DI
 
 - proto count drops `51 → 0`: correct.
 - proto count unchanged at 51: none of the map's identifiers matched. The map was
-  built against a different geometry — almost always an external ACTS job, or a
-  map predating a blueprint change.
+  built against a different geometry.
 - proto count drops only partly: some receivers got no material. Usually too few
   geantinos, or a receiver the scan never crosses.
 - **total** rises above 51: the map carries entries for surfaces we never
   designated. Harmless but a sign the map writer config in step 3 was too
   permissive (`processSensitives` left on).
 
-**5c. Round-trip check with a synthetic scan.** You do not need a real Geant4
-scan to exercise steps 3 and 4. Any file in the recording format works, so a
-throwaway generator that writes straight rays with material steps along them
-(using `ActsPlugins::RootMaterialTrackIo` in write mode, so the format is
-guaranteed to match) is enough to confirm the plumbing before committing to a
-long scan. Running that through `material_mapping.py` and back through
-`MaterialMapFile` should give `51 -> 0` proto, a map with 51 `(volume,
-boundary)` entries of type `binned`. It will not give physically meaningful
-material, only a correct pipeline.
-
-**5d. Physics validation.** `MaterialValidationAlg` propagates geantinos through
+**5c. Physics validation.** `MaterialValidationAlg` propagates geantinos through
 the *mapped* geometry and compares the accumulated X₀/L₀ against the original
 scan, binned in η and φ. Agreement to a few percent is the target; a systematic
-deficit means material that fell outside every receiver, which for MAIA most
-likely means the region between the outer tracker and the solenoid, or the
-nozzles.
+deficit means material that fell outside every receiver.
+
+Feed it the *same* scan the map was built from — directions are taken from it
+entry by entry, so the two files line up track by track and need no rebinning to
+difference. `--inputFiles` expands directories exactly as the mapping job does,
+so the same `scan/` works for both:
+
+```bash
+k4run test/options/material_validation.py \
+  --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \
+  --materialMapFile MAIA_v0_gen3_material_map.json \
+  --inputFiles scan/ \
+  --outputFile propagated_material_tracks.root
+```
+
+The expansion is sorted, so a directory always yields the same order and that
+track-by-track correspondence is reproducible.
 
 It has two assigners, selected with the `Assigner` property:
 
@@ -461,24 +430,9 @@ It has two assigners, selected with the `Assigner` property:
 
 > **The geantino propagator must be field-free**, which is why
 > `ACTSTracking::makeGeantinoPropagator` uses a `StraightLineStepper` rather than
-> the CKF's `EigenStepper` over the detector field. A geantino is neutral, and
-> `Acts::ChargeHypothesis::extractMomentum` is `charge / qOverP`, which is exactly
-> `0` for a neutral particle whatever q/p it was given. With a non-zero field
-> `Acts::detail::setupLoopProtection` then computes a full helix path of
-> `2*pi*p/B == 0` and clamps the propagator's path limit to zero, so the
-> propagation aborts *before its first step* — silently, with no exception and no
-> error, just an empty collector and zero material on every track. This is not
-> Gen3-specific and has nothing to do with portals; it bites any geometry in any
-> real field. ACTS' own unit test for the class only ever uses a
-> `StraightLineStepper`, which is why it does not show up upstream. A straight
-> ray is also the physically correct choice here: the Geant4 scan being compared
-> against is made of straight geantinos.
+> the CKF's `EigenStepper` over the detector field. 
 
-With that in place the two assigners agree exactly on which surfaces are crossed
-(for MAIA, 13/13 at η = 0, 16/16 at η = 1, 18/18 at η = 2, …), which is the
-positive statement that the Gen3 navigator does see material mounted on portals.
-
-**5e. No tracking regression.**
+**5d. No tracking regression.**
 
 ```bash
 ctest -R reco_MAIA_Gen3 --output-on-failure
@@ -487,7 +441,7 @@ ctest -R reco_MAIA_Gen3 --output-on-failure
 Note that adding real material *should* change the fit results — this test checks
 the chain still runs, not that the numbers are unchanged.
 
-**5f. Add the map to the repository.** Once validated, add the file to
+**5e. Add the map to the repository.** Once validated, add the file to
 `data/file_list.txt` with its md5 and upload it alongside the other data files;
 `data/CMakeLists.txt` downloads and installs it at configure time.
 
@@ -502,5 +456,5 @@ refers to a different surface. Regenerate the map whenever
 
 `Acts::PortalDesignatorBlueprintNode` (ACTS
 [#5593](https://github.com/acts-project/acts/pull/5593)) gives portals stable
-string tags and is the obvious way to make this robust later; it is not used
+string tags and could be a way to make this robust later; it is not used
 yet.
