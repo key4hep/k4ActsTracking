@@ -265,7 +265,7 @@ but if you write your own driver these must hold, because they are what the step
 > outside this repository will load without complaint and decorate nothing (or,
 > worse, the wrong surfaces).
 >
-> ACTS ships its own `Examples/Scripts/Python/material_mapping.py`, and it will 
+> ACTS ships its own `Examples/Scripts/Python/material_mapping.py`, and it will
 > run happily here. Do not use it. It maps onto whatever geometry it built itself,
 > not onto ours.
 
@@ -337,7 +337,7 @@ material, and there is no volume material.
 
 ## 4. Reading the map back
 
-`ActsGeoSvc` applies the map itself, after construction, by walking the 
+`ActsGeoSvc` applies the map itself, after construction, by walking the
 geometry and decorating volumes, portal surfaces and sensitive surfaces
 (`MaterialDecorationVisitor` in
 [`ActsGeoSvc.cpp`](../k4ActsTracking/src/components/ActsGeoSvc.cpp)).
@@ -430,7 +430,7 @@ It has two assigners, selected with the `Assigner` property:
 
 > **The geantino propagator must be field-free**, which is why
 > `ACTSTracking::makeGeantinoPropagator` uses a `StraightLineStepper` rather than
-> the CKF's `EigenStepper` over the detector field. 
+> the CKF's `EigenStepper` over the detector field.
 
 **5d. No tracking regression.**
 
