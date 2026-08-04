@@ -1,4 +1,22 @@
 #!/usr/bin/env python3
+#
+# Copyright (c) 2014-2024 Key4hep-Project.
+#
+# This file is part of Key4hep.
+# See https://key4hep.github.io/key4hep-doc/ for further info.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
 """Project a recorded geantino scan onto the blueprint's material receivers.
 
 This is step 3 of doc/material_mapping.md. It has to run in the same job as
@@ -29,13 +47,11 @@ Do NOT pass --materialMapFile here: the mapping needs the geometry to still
 carry its proto-material placeholders, which is what a loaded map replaces.
 """
 
-from pathlib import Path
-
 from Gaudi.Configuration import INFO
 from Configurables import ApplicationMgr, MaterialMappingAlg
 from k4FWCore.parseArgs import parser
 
-from _ckf_helpers import make_services
+from _ckf_helpers import expand_scan_inputs, make_services
 
 parser.add_argument(
     "--inputFiles",
@@ -63,56 +79,9 @@ parser.add_argument(
 
 args = parser.parse_known_args()[0]
 
-
-def expand_input_files(entries):
-    """Resolve --inputFiles to a flat list of scan files.
-
-    Directories contribute every ``*.root`` file directly inside them, sorted so
-    a given directory always maps in the same order. Anything else is taken as a
-    file path. Duplicates are dropped, since chaining the same scan file twice
-    would double count its geantinos rather than fail visibly.
-
-    Bad paths are reported here rather than left to TChain::Add, which otherwise
-    fails deep inside the algorithm with much less context.
-    """
-    files = []
-    seen = set()
-    expanded_any = False
-
-    for entry in entries:
-        path = Path(entry)
-        if path.is_dir():
-            found = sorted(p for p in path.glob("*.root") if p.is_file())
-            if not found:
-                raise SystemExit(
-                    f"material_mapping.py: directory '{entry}' contains no .root "
-                    "files. Note the search is not recursive."
-                )
-            expanded_any = True
-            candidates = found
-        elif path.exists():
-            candidates = [path]
-        else:
-            raise SystemExit(f"material_mapping.py: '{entry}' does not exist.")
-
-        for candidate in candidates:
-            key = candidate.resolve()
-            if key in seen:
-                continue
-            seen.add(key)
-            files.append(str(candidate))
-
-    if expanded_any:
-        print(f"material_mapping.py: mapping {len(files)} scan file(s):")
-        for f in files:
-            print(f"    {f}")
-
-    return files
-
-
 mapping = MaterialMappingAlg(
     "MaterialMappingAlg",
-    InputFiles=expand_input_files(args.inputFiles),
+    InputFiles=expand_scan_inputs(args.inputFiles),
     TreeName=args.treeName,
     OutputFile=args.outputFile,
     MaxTracks=args.maxTracks,

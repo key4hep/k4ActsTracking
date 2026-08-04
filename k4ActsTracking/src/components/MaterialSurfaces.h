@@ -97,8 +97,7 @@ namespace MaterialSurfaces {
   /// @param trackingGeometry The constructed tracking geometry
   ///
   /// @returns The material-carrying surfaces, in traversal order
-  inline std::vector<const Acts::Surface*> collectMaterialSurfaces(
-      const Acts::TrackingGeometry& trackingGeometry) {
+  inline std::vector<const Acts::Surface*> collectMaterialSurfaces(const Acts::TrackingGeometry& trackingGeometry) {
     std::vector<const Acts::Surface*>        surfaces{};
     std::unordered_set<const Acts::Surface*> seen{};
 

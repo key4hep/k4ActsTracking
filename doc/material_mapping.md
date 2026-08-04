@@ -230,7 +230,20 @@ python3 k4ActsTracking/examples/material_recording_chunk.py --input MAIA_v0.gdml
 
 Each job writes `scan/geant4_material_tracks_<skip>.root`. Pass them all to the
 mapping step at once — `MaterialMappingAlg` chains its `InputFiles`, so there is
-no `hadd` step.
+no `hadd` step. The simplest way is to hand `--inputFiles` the directory:
+
+```bash
+k4run test/options/material_mapping.py \
+  --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \
+  --inputFiles scan/ \
+  --outputFile MAIA_v0_gen3_material_map.json
+```
+
+Every `*.root` file directly inside the directory is used, in sorted order;
+anything else in there (logs, notes) is ignored, and the search does not recurse.
+Files and directories can be mixed, and a file named twice — say a directory plus
+one of its own members — is only chained once, since chaining a scan file twice
+would double count its geantinos instead of failing visibly.
 
 > **Why the wrapper is needed.** ACTS' script exposes neither `--skip` nor
 > `--seed`, and hardcodes `RandomNumbers(seed=228)`. Submitting N batch jobs with
@@ -322,7 +335,7 @@ mistake looks like.
 
 | property | default | note |
 | -------- | ------- | ---- |
-| `InputFiles` | *(required)* | scan ROOT files; several may be chained |
+| `InputFiles` | *(required)* | scan ROOT files; several may be chained. The options file also accepts directories and expands them to the `*.root` files inside |
 | `TreeName` | `material_tracks` | must match the recording job's `treeName` |
 | `OutputFile` | `material-map.json` | `.json` via `MaterialMapJsonConverter` |
 | `MaxTracks` | `-1` | cap for quick smoke tests; negative reads everything |

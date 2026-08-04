@@ -29,6 +29,22 @@ so what gets recorded here is what reconstruction will actually see.
       --inputFiles geant4_material_tracks.root \\
       --outputFile propagated_material_tracks.root
 
+--inputFiles also takes directories, so a scan that was split across batch jobs
+by examples/material_recording_chunk.py can be replayed by pointing at it:
+
+  k4run material_validation.py \\
+      --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \\
+      --materialMapFile MAIA_v0_gen3_material_map.json \\
+      --inputFiles scan/ \\
+      --outputFile propagated_material_tracks.root
+
+Every *.root file directly inside such a directory is used, in sorted order.
+Files and directories can be mixed freely.
+
+Pass the *same* scan the map was built from. Directions are taken from it entry
+by entry, so the propagated output lines up track by track with the Geant4 one
+and compare_material_tracks.py can difference them without any rebinning.
+
 Then compare the two files:
 
   python3 k4ActsTracking/examples/compare_material_tracks.py \\
@@ -43,13 +59,14 @@ from Gaudi.Configuration import INFO
 from Configurables import ApplicationMgr, MaterialValidationAlg
 from k4FWCore.parseArgs import parser
 
-from _ckf_helpers import make_services
+from _ckf_helpers import expand_scan_inputs, make_services
 
 parser.add_argument(
     "--inputFiles",
     nargs="+",
     default=[],
-    help="Geantino scan ROOT file(s); only the track directions are used",
+    help="Geantino scan ROOT file(s), and/or directories, in which case every "
+    "*.root file directly inside is used; only the track directions are used",
 )
 parser.add_argument(
     "--treeName",
@@ -80,7 +97,7 @@ args = parser.parse_known_args()[0]
 
 validation = MaterialValidationAlg(
     "MaterialValidationAlg",
-    InputFiles=args.inputFiles,
+    InputFiles=expand_scan_inputs(args.inputFiles),
     TreeName=args.treeName,
     OutputFile=args.outputFile,
     MaxTracks=args.maxTracks,
