@@ -263,7 +263,7 @@ namespace Blueprints {
                                                   Acts::DirectedProtoAxis{AxisZ, Acts::AxisBoundaryType::Bound, 20}};
 
   /// Binning of the material projected onto a disc face
-  const auto kDiscMaterialBinning = std::pair{Acts::DirectedProtoAxis{AxisR, Acts::AxisBoundaryType::Bound, 10},
+  const auto kDiscMaterialBinning = std::pair{Acts::DirectedProtoAxis{AxisR, Acts::AxisBoundaryType::Bound, 50},
                                               Acts::DirectedProtoAxis{AxisPhi, Acts::AxisBoundaryType::Closed, 20}};
 
   /// Wrap @p child in a material designator marking @p face of the child's

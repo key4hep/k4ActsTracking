@@ -16,6 +16,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "GeantinoMaterialAssigner.h"
 #include "MaterialSurfaces.h"
 
 #include "k4ActsTracking/ActsGaudiLogger.h"
@@ -34,7 +35,6 @@
 #include <Acts/Material/IntersectionMaterialAssigner.hpp>
 #include <Acts/Material/MaterialInteraction.hpp>
 #include <Acts/Material/MaterialValidator.hpp>
-#include <Acts/Material/PropagatorMaterialAssigner.hpp>
 #include <ActsPlugins/Root/RootMaterialTrackIo.hpp>
 
 #include <TChain.h>
@@ -96,6 +96,12 @@ struct MaterialValidationAlg final : public Gaudi::Algorithm {
       this, "ResolvePassive", true,
       "Let the navigator stop on passive surfaces. The material receivers are volume portals, so this must stay true "
       "for the propagation to see them."};
+  Gaudi::Property<unsigned int> m_maxPropagationSteps{
+      this, "MaxPropagationSteps", 1000,
+      "Step limit for one geantino propagation, for the 'propagator' assigner. This is a safety valve against a "
+      "propagation that never terminates, not a budget to be tuned: on MAIA_v0 a geantino needs about 40 steps, so "
+      "the default is already an ample margin. A track that exceeds it is stuck rather than slow -- raising the "
+      "limit does not rescue it, it only takes longer to give up."};
 
 private:
   SmartIF<IActsGeoSvc> m_actsGeoSvc;
@@ -104,8 +110,11 @@ private:
   std::unique_ptr<TChain>                           m_chain{nullptr};
   std::unique_ptr<ActsPlugins::RootMaterialTrackIo> m_reader{nullptr};
 
-  using Assigner = Acts::PropagatorMaterialAssigner<ACTSTracking::GeantinoPropagator>;
+  using Assigner = ACTSTracking::GeantinoMaterialAssigner<ACTSTracking::GeantinoPropagator>;
   std::unique_ptr<Acts::MaterialValidator> m_validator{nullptr};
+  /// Non-null only for the 'propagator' assigner; read in finalize() to report
+  /// how many propagations failed.
+  std::shared_ptr<const Assigner::Stats> m_assignerStats{nullptr};
 
   // Mutated from the const execute(); this is a one-shot job.
   mutable std::unique_ptr<TFile>                            m_outFile{nullptr};
@@ -119,6 +128,10 @@ private:
 };
 
 DECLARE_COMPONENT(MaterialValidationAlg)
+
+/// How many individual propagation failures are reported before falling back to
+/// the run-level count in finalize().
+static constexpr std::size_t kMaxReportedFailures = 5;
 
 StatusCode MaterialValidationAlg::initialize() {
   if (auto sc = Gaudi::Algorithm::initialize(); sc.isFailure()) {
@@ -137,8 +150,11 @@ StatusCode MaterialValidationAlg::initialize() {
 
   Acts::MaterialValidator::Config cfg;
   if (m_assigner.value() == "propagator") {
-    cfg.materialAssigner =
-        std::make_shared<const Assigner>(ACTSTracking::makeGeantinoPropagator(*m_actsGeoSvc, m_resolvePassive.value()));
+    auto assigner =
+        std::make_shared<const Assigner>(ACTSTracking::makeGeantinoPropagator(*m_actsGeoSvc, m_resolvePassive.value()),
+                                         m_maxPropagationSteps.value(), m_actsLogger->cloneWithSuffix("|Assigner"));
+    m_assignerStats      = assigner->stats();
+    cfg.materialAssigner = std::move(assigner);
   } else if (m_assigner.value() == "intersection") {
     const auto surfaces = MaterialSurfaces::collectMaterialSurfaces(*m_actsGeoSvc->trackingGeometry());
     if (surfaces.empty()) {
@@ -215,7 +231,26 @@ StatusCode MaterialValidationAlg::execute(const EventContext&) const {
     const Acts::Vector3  direction = scanTrack.first.second.normalized();
 
     // Same entry index as the scan, so the two files line up track by track.
+    const std::size_t failedBefore = m_assignerStats != nullptr ? m_assignerStats->nFailed : 0;
+
     const auto propagated = m_validator->recordMaterial(m_gctx, m_mctx, position, direction);
+
+    // Name the offending scan entry: the assigner knows the reason but not
+    // which entry it came from, and the entry index is what makes the failure
+    // reproducible. Loud for the first few, then only the finalize() summary --
+    // a scan is millions of tracks.
+    if (m_assignerStats != nullptr && m_assignerStats->nFailed > failedBefore) {
+      if (m_assignerStats->nFailed <= kMaxReportedFailures) {
+        warning() << fmt::format(
+                         "Entry {} (direction {:.6f} {:.6f} {:.6f}) could not be propagated: {}. It is written with "
+                         "no material to keep the output aligned with the scan, so exclude it from the comparison.",
+                         entry, direction.x(), direction.y(), direction.z(), m_assignerStats->lastError)
+                  << endmsg;
+      } else if (m_assignerStats->nFailed == kMaxReportedFailures + 1) {
+        warning() << "Further propagation failures will only be counted; see the summary at the end." << endmsg;
+      }
+    }
+
     m_writer->write(m_gctx, static_cast<std::uint32_t>(entry), propagated);
     m_outTree->Fill();
     m_nProcessed++;
@@ -245,5 +280,19 @@ StatusCode MaterialValidationAlg::finalize() {
   }
 
   info() << fmt::format("Wrote {} propagated material tracks to '{}'.", m_nProcessed, m_outputFile.value()) << endmsg;
+
+  if (m_assignerStats != nullptr) {
+    info() << fmt::format("Deepest propagation took {} of the {} allowed steps.", m_assignerStats->maxStepsObserved,
+                          m_maxPropagationSteps.value())
+           << endmsg;
+    if (m_assignerStats->nFailed > 0) {
+      warning() << fmt::format(
+                       "{} of {} propagations failed and were written with no material, which biases the comparison "
+                       "low for those entries. Raise MaxPropagationSteps (currently {}) and re-run.",
+                       m_assignerStats->nFailed, m_assignerStats->nTracks, m_maxPropagationSteps.value())
+                << endmsg;
+    }
+  }
+
   return Gaudi::Algorithm::finalize();
 }

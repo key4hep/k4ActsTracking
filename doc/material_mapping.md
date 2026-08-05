@@ -424,13 +424,39 @@ It has two assigners, selected with the `Assigner` property:
 - `intersection` (default) uses `Acts::IntersectionMaterialAssigner`, which
   intersects the designated surfaces geometrically. This is what the mapping step
   uses, so it validates the map's *content*.
-- `propagator` uses `Acts::PropagatorMaterialAssigner`, which walks the geometry
-  with the navigator. It additionally validates that *navigation* reaches the
-  material, i.e. that tracking will actually apply it.
+- `propagator` uses `ACTSTracking::GeantinoMaterialAssigner`, which walks the
+  geometry with the navigator. It additionally validates that *navigation*
+  reaches the material, i.e. that tracking will actually apply it.
 
 > **The geantino propagator must be field-free**, which is why
 > `ACTSTracking::makeGeantinoPropagator` uses a `StraightLineStepper` rather than
 > the CKF's `EigenStepper` over the detector field.
+
+> **Why not `Acts::PropagatorMaterialAssigner` directly.** It calls `.value()` on
+> the propagation result, which throws if the propagation did not terminate
+> normally, so one pathological direction in a million-geantino scan aborts the
+> whole job — after writing every track before it, which reads as a crash rather
+> than as one unusable track:
+>
+> ```
+> Value called on error value: PropagatorError: Propagation reached the configured maximum number of steps
+> ```
+>
+> `GeantinoMaterialAssigner` counts such a track instead, records it with no
+> material so the output stays aligned entry-by-entry with the scan, and names
+> the entry so you can exclude it. The run then ends with a summary:
+>
+> ```
+> MaterialValidationAlg    INFO Deepest propagation took 44 of the 1000 allowed steps.
+> MaterialValidationAlg WARNING 1 of 50000 propagations failed and were written with no material [...]
+> ```
+>
+> **`MaxPropagationSteps` is a safety valve, not a budget.** A geantino through
+> MAIA_v0 needs about 40 steps, so the default of 1000 is already ample. A track
+> that exceeds it is *stuck*, not slow: raising the limit a hundredfold does not
+> rescue it, it only takes longer to give up. Treat a non-zero failure count as a
+> navigation problem for those directions, and exclude those entries from the
+> comparison rather than trusting their zero.
 
 **5d. No tracking regression.**
 
