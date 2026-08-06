@@ -1,6 +1,6 @@
-# v00-04
+# Unreleased
 
-* 2026-08-05 Thomas Madlener ([PR#59](https://github.com/key4hep/k4ActsTracking/pull/59))
+* 2026-08-05 Thomas Madlener, Lukas Bauckhage, Federico Meloni ([PR#59](https://github.com/key4hep/k4ActsTracking/pull/59))
   - Add a GNN based track finding pipeline (`GNNTrackFinder`). It runs metric-learning graph construction and edge classification via ONNX Runtime and the ACTS `PluginGnn` to build track candidates from EDM4hep tracker hits, and fits the resulting candidates with the ACTS Kalman fitter to produce an `edm4hep::TrackCollection`.
   - Guard the GNN code behind the new `K4ACTSTRACKING_BUILD_GNN` CMake option (default `OFF`). When enabled it pulls in the required `Torch`, `onnxruntime` and ACTS `PluginGnn` dependencies, so builds without ML dependencies are unaffected.
   - Support configurable per-stage input features and scales (`x`, `y`, `z`, `r`, `phi`, `t`, and module/layer/system IDs) and a list of edge classifiers, each with its own feature selection, scales and cut value.
@@ -10,6 +10,8 @@
   - Add `ONNXInferenceModel` and `OnnxMetricLearning` helpers, plus the `mlutils::parseList`/`parseMultiList` utilities for parsing comma-separated configuration.
   - Add an example Gaudi options file (`GNNTrackFinding/options/runGNNTrackFinding.py`) and unit tests for the ONNX inference model.
   - Move the shared runner helpers (`prepareTrackerHits`, `estimateSeedParameters`, `SeedHit`, `collectSeedHits`, ...) from `CKFRunner.hxx` into a new `RunnerCommon.hxx`, and add an `estimateSeedParameters` overload that takes the radius-ordered seed hits, so that `CKFTrackingFromSeedsAlg` and `GNNTrackFinder` share the seed building.
+
+# v00-04
 
 * 2026-06-03 Thomas Madlener ([PR#49](https://github.com/key4hep/k4ActsTracking/pull/49))
   - Added an initial proof-of-concept CKF tracking workflow for Gen3/DD4hep geometries, including DD4hep-to-ACTS conversion, CellID-based seed selection, and reusable test helpers.
