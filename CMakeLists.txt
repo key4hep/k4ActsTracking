@@ -26,13 +26,27 @@ SET( ${PROJECT_NAME}_VERSION_PATCH 0 )
 
 SET( ${PROJECT_NAME}_VERSION  "${${PROJECT_NAME}_VERSION_MAJOR}.${${PROJECT_NAME}_VERSION_MINOR}.${${PROJECT_NAME}_VERSION_PATCH}" )
 
+# The GNN track finding code depends on Torch, onnxruntime and the Acts Gnn
+# plugin. Guard it behind an option so that the package can also be built
+# without those dependencies.
+option(K4ACTSTRACKING_BUILD_GNN
+  "Build the GNN track finding code (requires Torch, onnxruntime and the Acts Gnn plugin)"
+  OFF)
 include(cmake/MaybeBuildActs.cmake)
 
 find_package(EDM4HEP REQUIRED)
 find_package(k4FWCore REQUIRED)
-find_package(Acts REQUIRED COMPONENTS Core PluginDD4hep)
+set(ACTS_COMPONENTS Core PluginDD4hep)
+if(K4ACTSTRACKING_BUILD_GNN)
+  list(APPEND ACTS_COMPONENTS PluginGnn)
+endif()
+find_package(Acts REQUIRED COMPONENTS ${ACTS_COMPONENTS})
 find_package(DD4hep REQUIRED COMPONENTS DDCore DDRec)
 find_package(TBB REQUIRED)
+if(K4ACTSTRACKING_BUILD_GNN)
+  find_package(onnxruntime REQUIRED)
+  find_package(Torch REQUIRED)
+endif()
 
 include(cmake/Key4hepConfig.cmake)
 
@@ -43,6 +57,9 @@ include(GNUInstallDirs)
 include(CTest)
 
 add_subdirectory(k4ActsTracking)
+if(K4ACTSTRACKING_BUILD_GNN)
+  add_subdirectory(GNNTrackFinding)
+endif()
 add_subdirectory(data)
 if (BUILD_TESTING)
   add_subdirectory(test)

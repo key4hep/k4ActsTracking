@@ -29,6 +29,11 @@ environment is to source a nightly or stable Key4hep stack, e.g.:
 source /cvmfs/sw-nightlies.hsf.org/key4hep/setup.sh
 ```
 
+The optional GNN track finding (see below) additionally needs ACTS with the
+`PluginGnn`, [ONNX Runtime](https://onnxruntime.ai/) and Torch. These are not
+part of a Key4hep release yet, see
+[`GNNTrackFinding/README.md`](GNNTrackFinding/README.md).
+
 ## Building
 
 ```sh
@@ -40,6 +45,10 @@ cmake -B build -S . -GNinja \
 cmake --build build
 cmake --build build --target install
 ```
+
+The GNN track finding is **not** built by default. Add
+`-DK4ACTSTRACKING_BUILD_GNN=ON` to the `cmake` call to enable it; only then are
+the additional dependencies required.
 
 After installing, make the package visible to Gaudi/`k4run`:
 
@@ -79,6 +88,16 @@ The Gaudi plugin module `k4ActsTrackingPlugins` provides, among others:
 * **`ActsTestPropagator`** — propagates ACTS particle-gun tracks through the
   converted geometry (useful for geometry validation).
 
+Additionally, the optional `GNNTrackingTrackFinding` plugin module (enabled with
+`-DK4ACTSTRACKING_BUILD_GNN=ON`) provides:
+
+* **`GNNTrackFinder`** — ML based track finding: a metric-learning ONNX model
+  embeds the hits, edges are built in embedding space, one or more ONNX edge
+  classifiers score them, and the resulting track candidates are fitted with the
+  ACTS Kalman fitter. Hits can be segmented in theta/phi to keep the graphs
+  small. See [`GNNTrackFinding/README.md`](GNNTrackFinding/README.md) for the
+  dependencies, the full list of properties and an example configuration.
+
 ## Usage
 
 The algorithms are configured and run through `k4run` option files. See the
@@ -106,6 +125,11 @@ examples and the test option files for working configurations:
 
   > **Note:** the parameters in these option files are tuned only for technical
   > tests and are *not* a meaningful physics tracking configuration.
+
+* [`GNNTrackFinding/options/runGNNTrackFinding.py`](GNNTrackFinding/options/runGNNTrackFinding.py)
+  — GNN based track finding (only available with
+  `-DK4ACTSTRACKING_BUILD_GNN=ON`), needs the ONNX models to be passed via
+  `--modelBase`.
 
 ## Tests
 
