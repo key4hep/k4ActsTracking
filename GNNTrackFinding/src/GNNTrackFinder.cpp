@@ -314,18 +314,6 @@ StatusCode GNNTrackFinder::initialize() {
     }
   }
 
-  // Check that the embedding dimension matches the number of features selected
-  // for the graph construction model (if specified).
-  if (m_embeddingDim.value() > 0 && !embeddingFeatures.empty() &&
-      static_cast<std::size_t>(m_embeddingDim.value()) != embeddingFeatures.size()) {
-    error() << fmt::format(
-                   "Embedding dimension {} does not match the number of selected features {} for the graph "
-                   "construction model",
-                   m_embeddingDim.value(), embeddingFeatures.size())
-            << endmsg;
-    return StatusCode::FAILURE;
-  }
-
   try {
     m_runDevice = parseDevice(m_device.value());
 

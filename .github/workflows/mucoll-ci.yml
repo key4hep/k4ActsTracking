@@ -58,6 +58,7 @@ jobs:
           cd /packages
           cmake -B build -S . -GNinja \
             -DCMAKE_CXX_STANDARD=20 \
+            -DK4ACTSTRACKING_BUILD_GNN=ON \
             -DCMAKE_INSTALL_PREFIX=$(pwd)/install \
             -DCMAKE_CXX_FLAGS=" -fdiagnostics-color=always -Werror -Wno-error=deprecated-declarations"
           cmake --build build
