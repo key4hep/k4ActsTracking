@@ -3,7 +3,7 @@
 * 2026-08-05 Thomas Madlener, Lukas Bauckhage, Federico Meloni ([PR#59](https://github.com/key4hep/k4ActsTracking/pull/59))
   - Add a GNN based track finding pipeline (`GNNTrackFinder`). It runs metric-learning graph construction and edge classification via ONNX Runtime and the ACTS `PluginGnn` to build track candidates from EDM4hep tracker hits, and fits the resulting candidates with the ACTS Kalman fitter to produce an `edm4hep::TrackCollection`.
   - Guard the GNN code behind the new `K4ACTSTRACKING_BUILD_GNN` CMake option (default `OFF`). When enabled it pulls in the required `Torch`, `onnxruntime` and ACTS `PluginGnn` dependencies, so builds without ML dependencies are unaffected.
-  - Support configurable per-stage input features and scales (`x`, `y`, `z`, `r`, `phi`, `t`, and module/layer/system IDs) and a list of edge classifiers, each with its own feature selection, scales and cut value.
+  - Support configurable per-stage input features and scales (`x`, `y`, `z`, `r`, `phi`, `theta`, `eta`, `t`, `E`, and module/layer/system IDs) and a list of edge classifiers, each with its own feature selection, scales and cut value.
   - Add an optional segmentation of the input hits into overlapping theta/phi bins (`ThetaBins`, `PhiBins`, `ThetaOverlap`, `PhiOverlap`) that are run through the pipeline independently.
   - Allow to select the device the pipeline runs on via the `Device` property (`cpu`, `cuda` or `cuda:<index>`), and validate the (parallel) model configuration lists, the input scales and the CellID based input features in `initialize`.
   - Add a monitoring histogram (number of input hits, number of track candidates, candidate length) and a `DetailedDebugOut` property for dumping all pipeline inputs and outputs.

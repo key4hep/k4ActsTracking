@@ -136,7 +136,10 @@ The supported (case insensitive) feature names are
 | `x`, `y`, `z` | Global hit position |
 | `r` | Transverse radius of the hit position |
 | `phi` | Azimuthal angle of the hit position |
+| `theta` | Polar angle of the hit position |
+| `eta` | Pseudorapidity of the hit position |
 | `t` (or `time`) | Hit time |
+| `E` (or `energy`) | Energy deposited by the hit (`eDep`) |
 | `module_id` | `module` field of the CellID |
 | `layer_id` | `layer` field of the CellID |
 | `system_id` (or `volume_id`) | `system` field of the CellID |

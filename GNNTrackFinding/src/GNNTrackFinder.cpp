@@ -114,8 +114,14 @@ namespace {
         resolved.push_back({HitFeature::R});
       } else if (key == "phi") {
         resolved.push_back({HitFeature::Phi});
+      } else if (key == "theta") {
+        resolved.push_back({HitFeature::Theta});
+      } else if (key == "eta") {
+        resolved.push_back({HitFeature::Eta});
       } else if (key == "t" || key == "time") {
         resolved.push_back({HitFeature::Time});
+      } else if (key == "e" || key == "energy") {
+        resolved.push_back({HitFeature::Energy});
       } else if (key == "module_id") {
         resolved.push_back(cellIdField(f, "module"));
       } else if (key == "layer_id") {
@@ -158,8 +164,17 @@ namespace {
           case HitFeature::Phi:
             hitInfo.push_back(position.phi());
             break;
+          case HitFeature::Theta:
+            hitInfo.push_back(position.theta());
+            break;
+          case HitFeature::Eta:
+            hitInfo.push_back(position.eta());
+            break;
           case HitFeature::Time:
             hitInfo.push_back(hit.getTime());
+            break;
+          case HitFeature::Energy:
+            hitInfo.push_back(hit.getEDep());
             break;
           case HitFeature::CellIdField:
             hitInfo.push_back(static_cast<float>(decoder.get(cellID, feature.cellIdField)));

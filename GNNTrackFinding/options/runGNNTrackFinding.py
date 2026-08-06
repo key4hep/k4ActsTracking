@@ -84,7 +84,8 @@ TrackFinder = GNNTrackFinder(
         args.modelBase / "graph_construction-MetricLearning.onnx"
     ),
     # The features (and their scales) the embedding model has been trained with.
-    # Supported names: x, y, z, r, phi, t (time), module_id, layer_id, system_id
+    # Supported names: x, y, z, r, phi, theta, eta, t (time), E (energy),
+    # module_id, layer_id, system_id
     InputFeaturesEmbedding="r,phi,z,t",
     InputScalesEmbedding="1,1,1,1",
     EmbeddingDim=4,

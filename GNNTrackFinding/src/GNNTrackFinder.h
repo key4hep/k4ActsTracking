@@ -57,7 +57,7 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
   /// The per-hit quantity a configured feature name maps to. All CellID based
   /// features share one enumerator and are distinguished by the decoder field
   /// index stored alongside it.
-  enum class HitFeature { X, Y, Z, R, Phi, Time, CellIdField };
+  enum class HitFeature { X, Y, Z, R, Phi, Theta, Eta, Time, Energy, CellIdField };
 
   /// A configured input feature, resolved once in initialize() to the quantity
   /// that has to be read from a hit. Keeping the resolution out of the event
