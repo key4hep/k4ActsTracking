@@ -17,12 +17,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Example configuration for the GNN based track finding.
-#
-# NOTE: The values below are an example of how to configure the algorithm, they
-# are not a tuned (or even meaningful) tracking configuration! In particular the
-# input features, their scales and the segmentation have to match the models
-# that are passed via --modelBase.
 
 from pathlib import Path
 
@@ -32,6 +26,13 @@ from Configurables import ActsGeoSvc, EventDataSvc, GeoSvc, GNNTrackFinder
 from Configurables import Gaudi__Histograming__Sink__Root as RootHistoSink
 
 from Gaudi.Configuration import INFO
+
+# Example configuration for the GNN based track finding.
+#
+# NOTE: The values below are an example of how to configure the algorithm, they
+# are not a tuned (or even meaningful) tracking configuration! In particular the
+# input features, their scales and the segmentation have to match the models
+# that are passed via --modelBase.
 
 parser.add_argument(
     "--compactFile",
