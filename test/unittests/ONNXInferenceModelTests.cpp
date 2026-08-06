@@ -150,10 +150,14 @@ TEST_CASE("model metadata without a loaded model") {
   // have to stay safe before (or after a failed) loadModel.
   mlutils::ONNXInferenceModel model{"UnitTest"};
 
+  REQUIRE(model.numInputs() == 0);
   REQUIRE(model.numOutputs() == 0);
+  REQUIRE(model.inputShape(0).empty());
   REQUIRE(model.outputShape(0).empty());
 
   REQUIRE_FALSE(model.loadModel("this-file-does-not-exist.onnx"));
+  REQUIRE(model.numInputs() == 0);
   REQUIRE(model.numOutputs() == 0);
+  REQUIRE(model.inputShape(0).empty());
   REQUIRE(model.outputShape(0).empty());
 }

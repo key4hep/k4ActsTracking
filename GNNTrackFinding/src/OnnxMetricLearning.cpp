@@ -35,6 +35,7 @@
 #include <fmt/ostream.h>
 #include <fmt/ranges.h>
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -123,6 +124,24 @@ OnnxMetricLearning::OnnxMetricLearning(const Config& cfg, std::unique_ptr<const 
                     "the inference output",
                     config().modelPath, fmt::join(outputShape, ", ")));
   }
+
+  // A model exported with a fixed-size input pins its node axis instead of
+  // leaving it dynamic. Read it so that a mismatch can be reported against the
+  // configured padding rather than as a bare onnxruntime shape error.
+  const auto& modelInputShape = m_model.inputShape(0);
+  if (modelInputShape.size() >= 2) {
+    m_inputLength = modelInputShape.front();
+  }
+  if (m_inputLength > 0) {
+    ACTS_INFO(fmt::format("Model expects a fixed input length of {} nodes", m_inputLength));
+  } else {
+    ACTS_DEBUG(fmt::format("Model '{}' takes a variable number of input nodes (input shape [{}])", config().modelPath,
+                           fmt::join(modelInputShape, ", ")));
+  }
+
+  if (config().fixedInputLength > 0) {
+    ACTS_INFO(fmt::format("Zero-padding the model input up to {} nodes", config().fixedInputLength));
+  }
 }
 
 ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& inputValues, std::size_t numNodes,
@@ -137,7 +156,31 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
   // The model only sees the selected features (all of them if no selection is
   // configured)
   const std::size_t numFeatures = selectedFeatures.empty() ? fullNumFeatures : selectedFeatures.size();
-  const std::vector inputShape  = {static_cast<int64_t>(numNodes), static_cast<int64_t>(numFeatures)};
+
+  // Optionally the input is extended with all-zero rows up to a fixed length,
+  // for models that were exported with a fixed-size input. The padding rows sit
+  // after the real nodes, so a node keeps the row index the rest of the pipeline
+  // refers to it by, and the embedding of the padding rows is dropped again
+  // below.
+  const std::size_t fixedInputLength =
+      config().fixedInputLength > 0 ? static_cast<std::size_t>(config().fixedInputLength) : 0;
+  if (fixedInputLength != 0 && fixedInputLength < numNodes) {
+    throw std::runtime_error(fmt::format(
+        "Cannot zero-pad the node embedding model input to a fixed length of {} nodes, this segment already has {}. "
+        "Increase EmbeddingFixedInputLength, or raise ThetaBins / PhiBins so that fewer hits land in one segment.",
+        fixedInputLength, numNodes));
+  }
+  const std::size_t paddedNumNodes = std::max(fixedInputLength, numNodes);
+  const std::vector inputShape     = {static_cast<int64_t>(paddedNumNodes), static_cast<int64_t>(numFeatures)};
+
+  // Fail with a message that names the padding knob rather than letting
+  // onnxruntime reject the tensor with a bare shape mismatch.
+  if (m_inputLength > 0 && static_cast<int64_t>(paddedNumNodes) != m_inputLength) {
+    throw std::runtime_error(fmt::format(
+        "Node embedding model expects a fixed input length of {} nodes, but {} would be passed to it "
+        "({} real nodes, zero-padding {}). Set EmbeddingFixedInputLength to {}.",
+        m_inputLength, paddedNumNodes, numNodes, fixedInputLength == 0 ? "disabled" : "enabled", m_inputLength));
+  }
 
   for (const int idx : selectedFeatures) {
     if (idx < 0 || static_cast<std::size_t>(idx) >= fullNumFeatures) {
@@ -150,11 +193,13 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
 
   // Select and scale the model inputs in one pass. This is done into a separate
   // buffer (and not in place) because the pipeline expects to get the full,
-  // unscaled node features back from this stage. Only if neither a selection
-  // nor a scaling is configured can the inputs be used as they are.
+  // unscaled node features back from this stage. Only if none of a selection, a
+  // scaling and a padding is configured can the inputs be used as they are.
   std::vector<float> preparedValues{};
-  if (!selectedFeatures.empty() || !featureScales.empty()) {
-    preparedValues.resize(numNodes * numFeatures);
+  if (!selectedFeatures.empty() || !featureScales.empty() || paddedNumNodes != numNodes) {
+    // The padding rows are the [numNodes, paddedNumNodes) tail of the buffer and
+    // are never written to below, so zero-initialise the whole thing.
+    preparedValues.assign(paddedNumNodes * numFeatures, 0.f);
     for (std::size_t n = 0; n < numNodes; ++n) {
       for (std::size_t f = 0; f < numFeatures; ++f) {
         const std::size_t idx   = selectedFeatures.empty() ? f : static_cast<std::size_t>(selectedFeatures[f]);
@@ -186,6 +231,17 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
                     embeddedPoints.size(1), m_embeddingDim));
   }
   ACTS_DEBUG(fmt::format("Embedding output tensor shape: [{}, {}]", embeddedPoints.size(0), embeddedPoints.size(1)));
+
+  // Drop the embedding of the padding rows again. They are not real hits, and
+  // the network maps an all-zero row onto some arbitrary (bias dependent) point
+  // in embedding space, so leaving them in would let edge building connect them
+  // to each other and to real nodes. Slicing along the node axis of a contiguous
+  // tensor is a view, so this costs nothing.
+  if (paddedNumNodes != numNodes) {
+    embeddedPoints = embeddedPoints.slice(0, 0, static_cast<int64_t>(numNodes));
+    ACTS_DEBUG(fmt::format("Dropped {} padding nodes, {} real nodes go into the edge building",
+                           paddedNumNodes - numNodes, numNodes));
+  }
   ACTS_VERBOSE(fmt::format("Embedding space of first SP: [{}]", fmt::streamed(embeddedPoints.slice(0, 0, 1))));
 
   ACTS_DEBUG("Starting to build edges");

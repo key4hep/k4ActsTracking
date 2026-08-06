@@ -126,6 +126,7 @@ list lengths are rejected in `initialize`.
 | --- | --- | --- |
 | `InputFeaturesEmbedding` | `"r,phi,z,t"` | Comma separated features for the embedding model |
 | `InputScalesEmbedding` | `"1,1,1,1"` | Comma separated scales, each feature is divided by its scale |
+| `EmbeddingFixedInputLength` | `0` | If `> 0`, pad the embedding model input with all-zero rows up to this many nodes. `0` disables the padding |
 | `InputFeaturesEdgeClassifier` | `["r,phi,z,t"]` | Per classifier list of comma separated features |
 | `InputScalesEdgeClassifier` | `["1,1,1,1"]` | Per classifier list of comma separated scales |
 
@@ -150,6 +151,33 @@ scale lists have to have either the same number of entries as the corresponding
 feature list, or none at all (in which case no scaling is applied). All of this
 is validated in `initialize`, as are the CellID based features, which have to be
 part of the CellID encoding of the geometry.
+
+#### Zero padding the embedding model input to a fixed length
+
+The number of hits handed to the node embedding model varies from segment to
+segment, so the model normally has to accept a variable number of input nodes. A
+model that was instead exported with a **fixed-size input** can be used by
+padding each segment up to that length with all-zero rows:
+
+```python
+# a model whose input is fixed at 4096 nodes
+EmbeddingFixedInputLength=4096,
+```
+
+The padding rows are appended *after* the hits of the segment, so every real hit
+keeps the row index the rest of the pipeline identifies it by. Their embedding is
+discarded again as soon as the inference returns, before the edge building: an
+all-zero row is not a hit, and the network maps it onto some arbitrary point in
+embedding space that would otherwise get connected to its neighbours and to real
+hits. Nothing downstream of the embedding stage — edge building, the edge
+classifiers, the track building — ever sees the padding.
+
+This is off by default (`0`) and only affects the node embedding stage. A segment
+with **more** hits than `EmbeddingFixedInputLength` is an error: either raise the
+length, or raise `ThetaBins` / `PhiBins` so that fewer hits land in one segment.
+When the model itself declares a fixed input length, a mismatch between it and
+the padded input is reported with a message naming this property rather than as a
+bare onnxruntime shape error.
 
 ### Segmentation
 

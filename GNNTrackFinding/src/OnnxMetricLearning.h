@@ -46,11 +46,15 @@ class OnnxMetricLearning final : public ActsPlugins::GraphConstructionBase {
 public:
   struct Config {
     std::string        modelPath{};
-    std::vector<int>   selectedFeatures{};        // If empty, use all features
-    std::vector<float> featureScales{};           // Must be same size as selectedFeatures
-    float              rVal{1.6};                 // Same as TorchMetricLearning
-    float              knnVal{500.};              // Same as TorchMetricLearning
-    bool               shuffleDirections{false};  // Same as TorchMetricLearning
+    std::vector<int>   selectedFeatures{};  // If empty, use all features
+    std::vector<float> featureScales{};     // Must be same size as selectedFeatures
+    /// If > 0, the model input is padded with all-zero rows up to this many
+    /// nodes, for models exported with a fixed-size input. The embedding of the
+    /// padding rows is discarded before the edge building. 0 disables it.
+    int   fixedInputLength{0};
+    float rVal{1.6};                 // Same as TorchMetricLearning
+    float knnVal{500.};              // Same as TorchMetricLearning
+    bool  shuffleDirections{false};  // Same as TorchMetricLearning
 
     // Device the embedding model and edge building run on. Defaults to CPU;
     // CUDA requires a CUDA-enabled onnxruntime/torch build.
@@ -71,6 +75,11 @@ public:
   /// it does not have to be configured.
   int64_t embeddingDim() const { return m_embeddingDim; }
 
+  /// The fixed number of input nodes the loaded model declares, or -1 if it
+  /// takes a variable number. Used to check that the (optionally padded) input
+  /// is the length the model expects.
+  int64_t inputLength() const { return m_inputLength; }
+
 private:
   mlutils::ONNXInferenceModel m_model;
 
@@ -79,6 +88,10 @@ private:
   /// Output width of the embedding model as declared in the .onnx file
   /// (-1 if the model does not fix that axis), see embeddingDim()
   int64_t m_embeddingDim{-1};
+
+  /// Fixed input length of the embedding model as declared in the .onnx file
+  /// (-1 if the model does not fix that axis), see inputLength()
+  int64_t m_inputLength{-1};
 
   // Common Acts infrastructure setup
   const auto&                         logger() const { return *m_logger; }
