@@ -53,9 +53,6 @@ public:
     float              knnVal{500.};              // Same as TorchMetricLearning
     bool               shuffleDirections{false};  // Same as TorchMetricLearning
 
-    // For edge features
-    float phiScale = 3.141592654;  // Same as TorchmetricLearning
-
     // Device the embedding model and edge building run on. Defaults to CPU;
     // CUDA requires a CUDA-enabled onnxruntime/torch build.
     ActsPlugins::Device device = ActsPlugins::Device::Cpu();
@@ -75,7 +72,7 @@ private:
 
   Config m_config;
 
-  // Common Acts iunfrastructure setuup
+  // Common Acts infrastructure setup
   const auto&                         logger() const { return *m_logger; }
   std::unique_ptr<const Acts::Logger> m_logger{nullptr};
 };

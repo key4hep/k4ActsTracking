@@ -241,20 +241,9 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingFromSe
         continue;
       }
 
-      const ACTSTracking::SeedHit& bottom = hits.front();
-      const ACTSTracking::SeedHit& middle = hits[hits.size() / 2];
-      const ACTSTracking::SeedHit& top    = hits.back();
-
-      const Acts::Surface* bottomSurface = m_actsGeoSvc->trackingGeometry()->findSurface(bottom.sl.geometryId());
-      if (bottomSurface == nullptr) {
-        warning() << "Surface with geoID " << bottom.sl.geometryId() << " not found in tracking geometry" << endmsg;
-        continue;
-      }
-
       std::optional<Acts::BoundTrackParameters> paramseed = ACTSTracking::estimateSeedParameters(
-          *this, *m_actsGeoSvc, geoCtx, *bottomSurface, bottom.pos, middle.pos, top.pos,
-          hitContainer[bottom.sl.index()].getTime(), magCacheLocal, m_initialTrackError_pos, m_initialTrackError_phi,
-          m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time);
+          *this, *m_actsGeoSvc, geoCtx, hits, hitContainer, magCacheLocal, m_initialTrackError_pos,
+          m_initialTrackError_phi, m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time);
       if (!paramseed) {
         continue;
       }

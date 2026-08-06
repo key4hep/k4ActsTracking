@@ -23,7 +23,6 @@ add_library(GNNTrackingONNXInferenceModels SHARED
 target_include_directories(GNNTrackingONNXInferenceModels
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
 )
 target_link_libraries(GNNTrackingONNXInferenceModels
   PUBLIC
@@ -31,9 +30,11 @@ target_link_libraries(GNNTrackingONNXInferenceModels
     EDM4HEP::edm4hep
 )
 
+# NOTE: This is an internal helper library of the GNN track finding module and
+# is not part of the exported k4ActsTracking package, it is only installed
+# because the Gaudi module links against it.
 install(TARGETS GNNTrackingONNXInferenceModels
-  EXPORT GNNTrackingTargets
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT shlib
 )
 
 set(sources
@@ -55,9 +56,5 @@ gaudi_add_module(GNNTrackingTrackFinding
     TBB::tbb
     ROOT::Physics
 )
-
-target_include_directories(GNNTrackingTrackFinding
-  PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
-)
+# NOTE: the GNNTrackFinding/include directory comes in via the usage
+# requirements of GNNTrackingONNXInferenceModels

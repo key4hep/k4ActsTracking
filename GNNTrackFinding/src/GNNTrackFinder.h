@@ -31,7 +31,7 @@
 #else
 #include <Acts/Plugins/Gnn/GnnPipeline.hpp>
 namespace ActsPlugins {
-  using GnnPipeline = Acts::Pipeline;
+  using GnnPipeline = Acts::GnnPipeline;
   using Device      = Acts::Device;
 }  // namespace ActsPlugins
 #endif
@@ -42,13 +42,31 @@ namespace ActsPlugins {
 #include <edm4hep/TrackCollection.h>
 #include <edm4hep/TrackerHitPlaneCollection.h>
 
+#include <DDSegmentation/BitFieldCoder.h>
+
+#include <cstddef>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
                             std::vector<const edm4hep::TrackerHitPlaneCollection*> const&)> {
+  /// The per-hit quantity a configured feature name maps to. All CellID based
+  /// features share one enumerator and are distinguished by the decoder field
+  /// index stored alongside it.
+  enum class HitFeature { X, Y, Z, R, Phi, Time, CellIdField };
+
+  /// A configured input feature, resolved once in initialize() to the quantity
+  /// that has to be read from a hit. Keeping the resolution out of the event
+  /// loop avoids per-hit string comparisons and CellID field name lookups.
+  struct ResolvedFeature {
+    HitFeature  kind{};
+    std::size_t cellIdField{0};  ///< only used for HitFeature::CellIdField
+  };
+
   GNNTrackFinder(const std::string& name, ISvcLocator* svcLoc);
 
   StatusCode initialize() override;
@@ -62,7 +80,7 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
                                        "Fractional phi overlap for segmentation (fraction of bin width)."};
 
   Gaudi::Property<std::string> m_nodeEmbeddingModelPath{
-      this, "NodeEmbeddingModelPath",
+      this, "NodeEmbeddingModelPath", "",
       "Path to the ONNX model file for the node embedding / graph construction metric model"};
   Gaudi::Property<float>       m_edgeBuildingRadius{this, "EdgeBuildingRadius", 0.1f,
                                               "The radius parameter for the KD-Tree that is used in edge building"};
@@ -119,7 +137,13 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
       "CUDA-enabled onnxruntime/torch build for \"cuda\"."};
 
 private:
+  /// Construct the pipeline stages from the (already validated) configuration.
+  /// Loads the ONNX models and throws if that or the pipeline setup fails.
+  void buildPipeline(const std::vector<float>&              embeddingScales,
+                     const std::vector<std::vector<float>>& edgeClassifierScales);
+
   std::vector<std::string>                  m_allHitFeatures{};
+  std::vector<ResolvedFeature>              m_resolvedHitFeatures{};
   std::vector<std::pair<double, double>>    m_thetaBinEdges{};
   std::vector<std::pair<double, double>>    m_phiBinEdges{};
   std::vector<int>                          m_embeddingFeatureIndices{};
@@ -127,6 +151,10 @@ private:
   std::unique_ptr<ActsPlugins::GnnPipeline> m_pipeline{nullptr};
   std::unique_ptr<const Acts::Logger>       m_logger{nullptr};
   ActsPlugins::Device                       m_runDevice{ActsPlugins::Device::Type::eCPU, 0};
+
+  /// CellID decoder, built once from the geometry service's encoding string
+  /// (parsing it is too expensive to redo for every event / segment).
+  std::optional<dd4hep::DDSegmentation::BitFieldCoder> m_cellIDDecoder{};
 
   SmartIF<IActsGeoSvc> m_actsGeoSvc{nullptr};
 

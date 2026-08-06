@@ -275,4 +275,40 @@ namespace ACTSTracking {
     return seedHits;
   }
 
+  /**
+   * @brief Estimate initial bound track parameters from radius-ordered seed hits.
+   *
+   * Convenience overload for candidates whose hits were collected with
+   * collectSeedHits(): it picks the innermost / middle / outermost hit as the
+   * three-point seed, resolves the surface of the innermost hit and takes the
+   * seed time from the corresponding entry of @p hitContainer.
+   *
+   * @param hits Radius-ordered seed hits.
+   * @return The estimated parameters, or std::nullopt if there are no hits, the
+   *         innermost hit's surface is unknown or the estimation itself fails.
+   */
+  template <class Alg>
+  std::optional<Acts::BoundTrackParameters> estimateSeedParameters(
+      const Alg& alg, const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx, const std::vector<SeedHit>& hits,
+      const ACTSTracking::HitContainer& hitContainer, Acts::MagneticFieldProvider::Cache& magCache, double errPos,
+      double errPhi, double errLambda, double errRelP, double errTime) {
+    if (hits.empty()) {
+      return std::nullopt;
+    }
+
+    const SeedHit& bottom = hits.front();
+    const SeedHit& middle = hits[hits.size() / 2];
+    const SeedHit& top    = hits.back();
+
+    const Acts::Surface* bottomSurface = geo.trackingGeometry()->findSurface(bottom.sl.geometryId());
+    if (bottomSurface == nullptr) {
+      alg.warning() << "Surface with geoID " << bottom.sl.geometryId() << " not found in tracking geometry" << endmsg;
+      return std::nullopt;
+    }
+
+    return estimateSeedParameters(alg, geo, geoCtx, *bottomSurface, bottom.pos, middle.pos, top.pos,
+                                  hitContainer[bottom.sl.index()].getTime(), magCache, errPos, errPhi, errLambda,
+                                  errRelP, errTime);
+  }
+
 }  // namespace ACTSTracking

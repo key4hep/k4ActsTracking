@@ -21,6 +21,7 @@
 
 #include "ONNXInferenceModel.h"
 
+#include <string>
 #include <vector>
 
 TEST_CASE("totalSize") {
@@ -99,4 +100,47 @@ TEST_CASE("getDimensions") {
     auto                                         dims = mlutils::getDimensions(input);
     REQUIRE_THAT(dims, Catch::Matchers::Equals(std::vector<int64_t>{2, 2, 2}));
   }
+}
+
+TEST_CASE("parseList") {
+  SECTION("strings") {
+    REQUIRE_THAT(mlutils::parseList<std::string>("r,phi,z,t"),
+                 Catch::Matchers::Equals(std::vector<std::string>{"r", "phi", "z", "t"}));
+  }
+
+  SECTION("surrounding whitespace is trimmed") {
+    REQUIRE_THAT(mlutils::parseList<std::string>(" r , phi ,z "),
+                 Catch::Matchers::Equals(std::vector<std::string>{"r", "phi", "z"}));
+  }
+
+  SECTION("empty elements are skipped") {
+    REQUIRE_THAT(mlutils::parseList<std::string>("r,,phi,"),
+                 Catch::Matchers::Equals(std::vector<std::string>{"r", "phi"}));
+    REQUIRE(mlutils::parseList<std::string>("").empty());
+    REQUIRE(mlutils::parseList<float>("  ").empty());
+  }
+
+  SECTION("numeric values") {
+    REQUIRE_THAT(mlutils::parseList<float>("1, 2.5,1000"),
+                 Catch::Matchers::Equals(std::vector<float>{1.0f, 2.5f, 1000.0f}));
+    REQUIRE_THAT(mlutils::parseList<int>("1,-2,3"), Catch::Matchers::Equals(std::vector<int>{1, -2, 3}));
+  }
+}
+
+TEST_CASE("parseMultiList") {
+  SECTION("one list per entry") {
+    const auto parsed = mlutils::parseMultiList<std::string>({"r,phi", "x,y,z"});
+    REQUIRE(parsed.size() == 2);
+    REQUIRE_THAT(parsed[0], Catch::Matchers::Equals(std::vector<std::string>{"r", "phi"}));
+    REQUIRE_THAT(parsed[1], Catch::Matchers::Equals(std::vector<std::string>{"x", "y", "z"}));
+  }
+
+  SECTION("empty entries yield empty lists") {
+    const auto parsed = mlutils::parseMultiList<float>({"1,2", ""});
+    REQUIRE(parsed.size() == 2);
+    REQUIRE_THAT(parsed[0], Catch::Matchers::Equals(std::vector<float>{1.0f, 2.0f}));
+    REQUIRE(parsed[1].empty());
+  }
+
+  SECTION("empty input") { REQUIRE(mlutils::parseMultiList<std::string>({}).empty()); }
 }

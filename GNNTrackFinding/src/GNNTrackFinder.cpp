@@ -56,71 +56,118 @@ namespace ActsPlugins {
 #include <DDSegmentation/BitFieldCoder.h>
 
 #include <fmt/format.h>
+#include <fmt/ranges.h>
 
 #include <algorithm>
+#include <cassert>
 #include <cctype>
 #include <cmath>
-#include <map>
+#include <cstddef>
+#include <iterator>
 #include <optional>
+#include <ranges>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace {
-  // Extract requested hit information
-  std::vector<float> extractHitInformation(const edm4hep::TrackerHitPlaneCollection& hits,
-                                           const std::vector<std::string>&           features,
-                                           const std::string&                        cellIDEncoding) {
-    // Could use a std::array here, but that would make switching between 3D and
-    // 4D a bit more cumbersome
-    std::vector<std::vector<float>> embeddingInputs{};
-    embeddingInputs.reserve(hits.size());
+  using HitFeature      = GNNTrackFinder::HitFeature;
+  using ResolvedFeature = GNNTrackFinder::ResolvedFeature;
 
-    // CellID decoder
-    dd4hep::DDSegmentation::BitFieldCoder decoder{cellIDEncoding};
+  /// Lower-case an (ASCII) configuration string, so that feature names and the
+  /// device specification can be given in any case.
+  std::string toLower(std::string str) {
+    std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) { return std::tolower(c); });
+    return str;
+  }
+
+  /// Resolve the configured feature names into the accessors used at event
+  /// time. Throws std::runtime_error for an unknown feature name or for a
+  /// CellID based feature whose field is not part of the encoding.
+  std::vector<ResolvedFeature> resolveHitFeatures(const std::vector<std::string>&              features,
+                                                  const dd4hep::DDSegmentation::BitFieldCoder& decoder) {
+    // Look up the index of a CellID field once, so that decoding a hit is a
+    // plain array access instead of a string based lookup.
+    const auto cellIdField = [&decoder](const std::string& feature, const char* field) {
+      try {
+        return ResolvedFeature{HitFeature::CellIdField, decoder.index(field)};
+      } catch (const std::exception& ex) {
+        throw std::runtime_error(fmt::format("Cannot use hit feature '{}': the CellID encoding has no '{}' field ({})",
+                                             feature, field, ex.what()));
+      }
+    };
+
+    std::vector<ResolvedFeature> resolved{};
+    resolved.reserve(features.size());
+    for (const auto& f : features) {
+      const auto key = toLower(f);
+      if (key == "x") {
+        resolved.push_back({HitFeature::X});
+      } else if (key == "y") {
+        resolved.push_back({HitFeature::Y});
+      } else if (key == "z") {
+        resolved.push_back({HitFeature::Z});
+      } else if (key == "r") {
+        resolved.push_back({HitFeature::R});
+      } else if (key == "phi") {
+        resolved.push_back({HitFeature::Phi});
+      } else if (key == "t" || key == "time") {
+        resolved.push_back({HitFeature::Time});
+      } else if (key == "module_id") {
+        resolved.push_back(cellIdField(f, "module"));
+      } else if (key == "layer_id") {
+        resolved.push_back(cellIdField(f, "layer"));
+      } else if (key == "system_id" || key == "volume_id") {
+        resolved.push_back(cellIdField(f, "system"));
+      } else {
+        throw std::runtime_error(fmt::format("Unknown hit feature '{}'", f));
+      }
+    }
+    return resolved;
+  }
+
+  /// Extract the requested hit information into a flat, row-major
+  /// (nHits x nFeatures) buffer, i.e. the layout the ONNX models expect.
+  std::vector<float> extractHitInformation(const edm4hep::TrackerHitPlaneCollection&    hits,
+                                           const std::vector<ResolvedFeature>&          features,
+                                           const dd4hep::DDSegmentation::BitFieldCoder& decoder) {
+    std::vector<float> hitInfo{};
+    hitInfo.reserve(hits.size() * features.size());
 
     for (const auto hit : hits) {
       const auto position = ROOT::Math::XYZPointF(hit.getPosition().x, hit.getPosition().y, hit.getPosition().z);
+      const auto cellID   = hit.getCellID();
 
-      std::vector<float> hitInfo{};
-      hitInfo.reserve(features.size());
-      const auto cellID = hit.getCellID();
-
-      for (const auto& f : features) {
-        std::string key = f;
-        std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c) { return std::tolower(c); });
-        try {
-          if (key == "x") {
+      for (const auto& feature : features) {
+        switch (feature.kind) {
+          case HitFeature::X:
             hitInfo.push_back(position.x());
-          } else if (key == "y") {
+            break;
+          case HitFeature::Y:
             hitInfo.push_back(position.y());
-          } else if (key == "z") {
+            break;
+          case HitFeature::Z:
             hitInfo.push_back(position.z());
-          } else if (key == "r") {
+            break;
+          case HitFeature::R:
             hitInfo.push_back(position.rho());
-          } else if (key == "phi") {
+            break;
+          case HitFeature::Phi:
             hitInfo.push_back(position.phi());
-          } else if (key == "t" || key == "time") {
+            break;
+          case HitFeature::Time:
             hitInfo.push_back(hit.getTime());
-          } else if (key == "module_id") {
-            hitInfo.push_back(static_cast<float>(decoder.get(cellID, decoder.index("module"))));
-          } else if (key == "layer_id") {
-            hitInfo.push_back(static_cast<float>(decoder.get(cellID, decoder.index("layer"))));
-          } else if (key == "system_id" || key == "volume_id") {
-            hitInfo.push_back(static_cast<float>(decoder.get(cellID, decoder.index("system"))));
-          } else {
-            throw std::runtime_error(fmt::format("Unknown hit feature '{}'", f));
-          }
-        } catch (const std::exception& ex) {
-          throw std::runtime_error(
-              fmt::format("Error extracting feature '{}' for hit with CellID {}: {}", f, cellID, ex.what()));
+            break;
+          case HitFeature::CellIdField:
+            hitInfo.push_back(static_cast<float>(decoder.get(cellID, feature.cellIdField)));
+            break;
         }
       }
-      embeddingInputs.emplace_back(std::move(hitInfo));
     }
-    return mlutils::flatten(embeddingInputs);
+    return hitInfo;
   }
 
   // Build bin edges for segmentation
@@ -150,10 +197,40 @@ namespace {
     return edges;
   }
 
+  /// Indices of the bins of @p edges that contain @p value, as an inclusive
+  /// [first, last] range. Since a bin only ever overlaps with its successor, a
+  /// value falls into at most two adjacent bins.
+  ///
+  /// @param value must be inside the [min, max) range @p edges was built for
+  /// @param invBinWidth numBins / (max - min), i.e. the inverse (unextended) bin width
+  std::pair<std::size_t, std::size_t> binsFor(double value, double min, double invBinWidth,
+                                              const std::vector<std::pair<double, double>>& edges) {
+    // Direct lookup instead of a scan over all bins. The clamping guards
+    // against rounding differences w.r.t. the bin edges (and against a value
+    // sitting exactly on max).
+    std::size_t bin = std::min(static_cast<std::size_t>((value - min) * invBinWidth), edges.size() - 1);
+    if (bin > 0 && value < edges[bin].first) {
+      --bin;
+    }
+    // The preceding bin's upper edge is extended by the overlap, so it may
+    // still contain the value.
+    const std::size_t firstBin = (bin > 0 && value < edges[bin - 1].second) ? bin - 1 : bin;
+    return {firstBin, bin};
+  }
+
+  /// Format bin edges for the debug output
+  std::string formatBinEdges(const std::vector<std::pair<double, double>>& edges) {
+    std::string formatted{};
+    for (const auto& [low, high] : edges) {
+      formatted += fmt::format(" [{}, {}]", low, high);
+    }
+    return formatted;
+  }
+
   /// Parse a device string ("cpu", "cuda", "cuda:<index>") into an Acts Device.
   /// Throws std::invalid_argument on an unrecognised value.
-  ActsPlugins::Device parseDevice(std::string spec) {
-    std::transform(spec.begin(), spec.end(), spec.begin(), [](unsigned char c) { return std::tolower(c); });
+  ActsPlugins::Device parseDevice(const std::string& deviceSpec) {
+    const auto spec = toLower(deviceSpec);
 
     if (spec == "cpu") {
       return ActsPlugins::Device::Cpu();
@@ -179,81 +256,53 @@ StatusCode GNNTrackFinder::initialize() {
   m_actsGeoSvc = svcLoc()->service<IActsGeoSvc>("ActsGeoSvc");
   K4_GAUDI_CHECK(m_actsGeoSvc);
 
-  try {
-    m_runDevice = parseDevice(m_device.value());
-  } catch (const std::invalid_argument& ex) {
-    error() << ex.what() << endmsg;
+  // All edge classifier properties are parallel lists with one entry per model
+  const std::size_t nEdgeClassifiers = m_edgeClassifierModelPath.size();
+  if (nEdgeClassifiers == 0) {
+    error() << "No edge classifier model configured, please set EdgeClassifierModelPath" << endmsg;
     return StatusCode::FAILURE;
   }
-  info() << fmt::format("Running GNN pipeline on device '{}'", m_device.value()) << endmsg;
+  if (m_inputFeaturesEdgeClassifier.size() != nEdgeClassifiers ||
+      m_inputScalesEdgeClassifier.size() != nEdgeClassifiers || m_edgeClassifierCut.size() != nEdgeClassifiers) {
+    error() << fmt::format(
+                   "Inconsistent edge classifier configuration: {} model paths, but {} input feature lists, {} input "
+                   "scale lists and {} cut values (all have to have one entry per edge classifier model)",
+                   nEdgeClassifiers, m_inputFeaturesEdgeClassifier.size(), m_inputScalesEdgeClassifier.size(),
+                   m_edgeClassifierCut.size())
+            << endmsg;
+    return StatusCode::FAILURE;
+  }
 
-  // Build bin edges for theta/phi segmentation
-  m_thetaBinEdges = buildBinEdges(0.0, M_PI, m_thetaBins.value(), m_thetaOverlap.value());
-  m_phiBinEdges   = buildBinEdges(-M_PI, M_PI, m_phiBins.value(), m_phiOverlap.value());
-  debug() << fmt::format("Theta bin edges: ");
-  for (const auto& e : m_thetaBinEdges) {
-    debug() << fmt::format(" [{}, {}],", e.first, e.second);
-  }
-  debug() << endmsg;
-  debug() << fmt::format("Phi bin edges: ");
-  for (const auto& e : m_phiBinEdges) {
-    debug() << fmt::format(" [{}, {}],", e.first, e.second);
-  }
-  debug() << endmsg;
+  const auto embeddingFeatures          = mlutils::parseList<std::string>(m_inputFeaturesEmbedding.value());
+  const auto embeddingScales            = mlutils::parseList<float>(m_inputScalesEmbedding.value());
+  const auto edgeClassifierFeaturesList = mlutils::parseMultiList<std::string>(m_inputFeaturesEdgeClassifier.value());
+  const auto edgeClassifierScalesList   = mlutils::parseMultiList<float>(m_inputScalesEdgeClassifier.value());
 
-  // Build the list of all hit features, and separately for the embedding model
-  // and the edge classifiers.
-  const auto& embeddingFeatures = mlutils::parseList<std::string>(m_inputFeaturesEmbedding.value());
-  m_allHitFeatures.insert(m_allHitFeatures.end(), embeddingFeatures.begin(), embeddingFeatures.end());
-  const auto& edgeClassifierFeaturesList = mlutils::parseMultiList<std::string>(m_inputFeaturesEdgeClassifier.value());
-  for (const auto& edgeClassifierFeatures : edgeClassifierFeaturesList) {
-    m_allHitFeatures.insert(m_allHitFeatures.end(), edgeClassifierFeatures.begin(), edgeClassifierFeatures.end());
-  }
-  // Remove duplicates from m_allHitFeatures preserving initial order
-  std::unordered_set<std::string> seenFeatures;
-  std::vector<std::string>        uniqueHitFeatures;
-  uniqueHitFeatures.reserve(m_allHitFeatures.size());
-  for (const auto& feature : m_allHitFeatures) {
-    if (seenFeatures.insert(feature).second) {
-      uniqueHitFeatures.push_back(feature);
+  // The models divide each feature by its scale, so there has to be exactly one
+  // scale per feature (or none at all, in which case no scaling is applied).
+  const auto checkScales = [this](const std::string& what, std::size_t nFeatures, std::size_t nScales) {
+    if (nScales == 0 || nFeatures == nScales) {
+      return true;
     }
+    error() << fmt::format("Number of input scales ({}) does not match the number of input features ({}) for {}",
+                           nScales, nFeatures, what)
+            << endmsg;
+    return false;
+  };
+  if (!checkScales("the node embedding model", embeddingFeatures.size(), embeddingScales.size())) {
+    return StatusCode::FAILURE;
   }
-  m_allHitFeatures = std::move(uniqueHitFeatures);
-
-  debug() << fmt::format("All hit features: ");
-  for (const auto& f : m_allHitFeatures) {
-    debug() << fmt::format(" {},", f);
-  }
-  debug() << endmsg;
-
-  // Translate the lists of input features into lists of indices in the full
-  // per-hit feature vector for each model.
-  const auto& allFeatures = m_allHitFeatures;
-  m_embeddingFeatureIndices.clear();
-  m_edgeClassifierFeatureIndices.clear();
-  for (const auto& f : embeddingFeatures) {
-    auto it = std::find(allFeatures.begin(), allFeatures.end(), f);
-    if (it != allFeatures.end()) {
-      m_embeddingFeatureIndices.push_back(static_cast<int>(std::distance(allFeatures.begin(), it)));
+  for (std::size_t i = 0; i < nEdgeClassifiers; ++i) {
+    if (!checkScales(fmt::format("edge classifier {}", i), edgeClassifierFeaturesList[i].size(),
+                     edgeClassifierScalesList[i].size())) {
+      return StatusCode::FAILURE;
     }
-  }
-  for (const auto& edgeClassifierFeatures : edgeClassifierFeaturesList) {
-    std::vector<int> featureIndices;
-    featureIndices.reserve(edgeClassifierFeatures.size());
-    for (const auto& f : edgeClassifierFeatures) {
-      auto it = std::find(allFeatures.begin(), allFeatures.end(), f);
-      if (it != allFeatures.end()) {
-        featureIndices.push_back(static_cast<int>(std::distance(allFeatures.begin(), it)));
-      }
-    }
-    m_edgeClassifierFeatureIndices.push_back(std::move(featureIndices));
   }
 
   // Check that the embedding dimension matches the number of features selected
   // for the graph construction model (if specified).
   if (m_embeddingDim.value() > 0 && !embeddingFeatures.empty() &&
-      (static_cast<std::size_t>(m_embeddingDim.value()) != embeddingFeatures.size() ||
-       static_cast<std::size_t>(m_embeddingDim.value()) != m_embeddingFeatureIndices.size())) {
+      static_cast<std::size_t>(m_embeddingDim.value()) != embeddingFeatures.size()) {
     error() << fmt::format(
                    "Embedding dimension {} does not match the number of selected features {} for the graph "
                    "construction model",
@@ -262,43 +311,111 @@ StatusCode GNNTrackFinder::initialize() {
     return StatusCode::FAILURE;
   }
 
-  auto graphConstructor = std::make_shared<OnnxMetricLearning>(
-      OnnxMetricLearning::Config{.modelPath        = m_nodeEmbeddingModelPath.value(),
-                                 .selectedFeatures = m_embeddingFeatureIndices,
-                                 .featureScales    = mlutils::parseList<float>(m_inputScalesEmbedding.value()),
-                                 .embeddingDim     = m_embeddingDim.value(),
-                                 .rVal             = m_edgeBuildingRadius.value(),
-                                 .knnVal           = m_edgeBuildingKnn.value(),
-                                 .device           = m_runDevice},
-      m_logger->clone(name() + ".MetricLearning"));
+  try {
+    m_runDevice = parseDevice(m_device.value());
+
+    // Build bin edges for theta/phi segmentation
+    m_thetaBinEdges = buildBinEdges(0.0, M_PI, m_thetaBins.value(), m_thetaOverlap.value());
+    m_phiBinEdges   = buildBinEdges(-M_PI, M_PI, m_phiBins.value(), m_phiOverlap.value());
+  } catch (const std::invalid_argument& ex) {
+    error() << ex.what() << endmsg;
+    return StatusCode::FAILURE;
+  }
+  info() << fmt::format("Running GNN pipeline on device '{}'", m_device.value()) << endmsg;
+  debug() << fmt::format("Theta bin edges:{}", formatBinEdges(m_thetaBinEdges)) << endmsg;
+  debug() << fmt::format("Phi bin edges:{}", formatBinEdges(m_phiBinEdges)) << endmsg;
+
+  // Build the deduplicated list of all hit features that have to be extracted,
+  // preserving the order in which they are configured. The pipeline passes the
+  // full per-hit feature vector to every stage, and each stage selects the
+  // features it needs from it by index.
+  m_allHitFeatures.clear();
+  std::unordered_set<std::string> seenFeatures{};
+  const auto                      addFeatures = [&seenFeatures, this](const std::vector<std::string>& features) {
+    for (const auto& feature : features) {
+      if (seenFeatures.insert(feature).second) {
+        m_allHitFeatures.push_back(feature);
+      }
+    }
+  };
+  addFeatures(embeddingFeatures);
+  for (const auto& edgeClassifierFeatures : edgeClassifierFeaturesList) {
+    addFeatures(edgeClassifierFeatures);
+  }
+  debug() << fmt::format("All hit features: {}", fmt::join(m_allHitFeatures, ", ")) << endmsg;
+
+  // Translate the lists of input features into lists of indices in the full
+  // per-hit feature vector for each model.
+  const auto featureIndices = [this](const std::vector<std::string>& features) {
+    std::vector<int> indices{};
+    indices.reserve(features.size());
+    for (const auto& f : features) {
+      const auto it = std::find(m_allHitFeatures.begin(), m_allHitFeatures.end(), f);
+      indices.push_back(static_cast<int>(std::distance(m_allHitFeatures.begin(), it)));
+    }
+    return indices;
+  };
+  m_embeddingFeatureIndices = featureIndices(embeddingFeatures);
+  m_edgeClassifierFeatureIndices.clear();
+  m_edgeClassifierFeatureIndices.reserve(nEdgeClassifiers);
+  for (const auto& edgeClassifierFeatures : edgeClassifierFeaturesList) {
+    m_edgeClassifierFeatureIndices.push_back(featureIndices(edgeClassifierFeatures));
+  }
+
+  // Resolve the feature names into per-hit accessors once, so that the event
+  // loop neither compares strings nor looks up CellID fields by name.
+  try {
+    m_cellIDDecoder.emplace(m_actsGeoSvc->cellIDEncodingString());
+    m_resolvedHitFeatures = resolveHitFeatures(m_allHitFeatures, *m_cellIDDecoder);
+  } catch (const std::exception& ex) {
+    error() << ex.what() << endmsg;
+    return StatusCode::FAILURE;
+  }
+
+  // Building the stages loads the ONNX models, so anything from a missing model
+  // file to an inconsistent pipeline shows up here.
+  try {
+    buildPipeline(embeddingScales, edgeClassifierScalesList);
+  } catch (const std::exception& ex) {
+    error() << "Failed to construct the GNN pipeline: " << ex.what() << endmsg;
+    return StatusCode::FAILURE;
+  }
+
+  return StatusCode::SUCCESS;
+}
+
+void GNNTrackFinder::buildPipeline(const std::vector<float>&              embeddingScales,
+                                   const std::vector<std::vector<float>>& edgeClassifierScales) {
+  auto graphConstructor =
+      std::make_shared<OnnxMetricLearning>(OnnxMetricLearning::Config{.modelPath = m_nodeEmbeddingModelPath.value(),
+                                                                      .selectedFeatures = m_embeddingFeatureIndices,
+                                                                      .featureScales    = embeddingScales,
+                                                                      .embeddingDim     = m_embeddingDim.value(),
+                                                                      .rVal             = m_edgeBuildingRadius.value(),
+                                                                      .knnVal           = m_edgeBuildingKnn.value(),
+                                                                      .device           = m_runDevice},
+                                           m_logger->clone(name() + ".MetricLearning"));
 
   std::vector<std::shared_ptr<ActsPlugins::EdgeClassificationBase>> edgeClassifiers{};
-  for (size_t i = 0; i < m_edgeClassifierModelPath.size(); ++i) {
+  edgeClassifiers.reserve(m_edgeClassifierModelPath.size());
+  for (std::size_t i = 0; i < m_edgeClassifierModelPath.size(); ++i) {
     edgeClassifiers.push_back(std::make_shared<ActsPlugins::OnnxEdgeClassifier>(
-        ActsPlugins::OnnxEdgeClassifier::Config{
-            .modelPath        = m_edgeClassifierModelPath[i],
-            .selectedFeatures = m_edgeClassifierFeatureIndices[i],
-            .featureScales    = mlutils::parseList<float>(m_inputScalesEdgeClassifier[i]),
-            .cut              = m_edgeClassifierCut[i],
-            // The Acts Config defaults to Device::Cuda(); use the configured
-            // device (default "cpu") since the onnxruntime build may not have a
-            // CUDA execution provider.
-            .device = m_runDevice},
+        ActsPlugins::OnnxEdgeClassifier::Config{.modelPath        = m_edgeClassifierModelPath[i],
+                                                .selectedFeatures = m_edgeClassifierFeatureIndices[i],
+                                                .featureScales    = edgeClassifierScales[i],
+                                                .cut              = m_edgeClassifierCut[i],
+                                                // The Acts Config defaults to Device::Cuda(); use the configured
+                                                // device (default "cpu") since the onnxruntime build may not have a
+                                                // CUDA execution provider.
+                                                .device = m_runDevice},
         m_logger->clone(name() + fmt::format(".EdgeClassifier{}", i))));
   }
 
   auto trackBuilder = std::make_shared<ActsPlugins::BoostTrackBuilding>(ActsPlugins::BoostTrackBuilding::Config{},
                                                                         m_logger->clone(name() + ".TrackBuilder"));
 
-  try {
-    m_pipeline = std::make_unique<ActsPlugins::GnnPipeline>(graphConstructor, edgeClassifiers, trackBuilder,
-                                                            m_logger->clone(name() + ".Pipeline"));
-  } catch (const std::invalid_argument& ex) {
-    error() << "Failed to construct GNN Pipeline: " << ex.what() << endmsg;
-    return StatusCode::FAILURE;
-  }
-
-  return StatusCode::SUCCESS;
+  m_pipeline = std::make_unique<ActsPlugins::GnnPipeline>(graphConstructor, edgeClassifiers, trackBuilder,
+                                                          m_logger->clone(name() + ".Pipeline"));
 }
 
 edm4hep::TrackCollection GNNTrackFinder::operator()(
@@ -328,69 +445,30 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
   const double thetaMin = 0.0;
   const double thetaMax = M_PI;
   const double phiMin   = -M_PI;
+  const double phiMax   = M_PI;
 
   const double invThetaBinWidth = static_cast<double>(nThetaBins) / (thetaMax - thetaMin);
-  const double invPhiBinWidth   = static_cast<double>(nPhiBins) / (2.0 * M_PI);
+  const double invPhiBinWidth   = static_cast<double>(nPhiBins) / (phiMax - phiMin);
+
+  // Largest representable values that are still inside the binned ranges
+  const double thetaUpper = std::nextafter(thetaMax, thetaMin);
+  const double phiUpper   = std::nextafter(phiMax, phiMin);
 
   int hitIndex = 0;
   for (const auto& hit : allHits) {
-    const auto   position = ROOT::Math::XYZPointF(hit.getPosition().x, hit.getPosition().y, hit.getPosition().z);
-    const double theta    = position.theta();
-    const double phi      = position.phi();
+    const auto position = ROOT::Math::XYZPointF(hit.getPosition().x, hit.getPosition().y, hit.getPosition().z);
 
-    // indices of theta bins containing hit (at most 2 bins with overlap)
-    std::vector<std::size_t> thetaBinsToAdd;
-    std::vector<std::size_t> phiBinsToAdd;
+    // theta is in [0, pi] and phi in (-pi, pi], i.e. both are already in the
+    // binned ranges, the clamping only removes the (closed) upper edge.
+    const double theta = std::clamp<double>(position.theta(), thetaMin, thetaUpper);
+    const double phi   = std::clamp<double>(position.phi(), phiMin, phiUpper);
 
-    // Clamp theta to [thetaMin, thetaMax]
-    const double thetaClamped = std::clamp(theta, thetaMin, std::nextafter(thetaMax, thetaMin));
+    // With overlapping bins a hit can end up in two adjacent bins per coordinate
+    const auto [thetaBinFirst, thetaBinLast] = binsFor(theta, thetaMin, invThetaBinWidth, m_thetaBinEdges);
+    const auto [phiBinFirst, phiBinLast]     = binsFor(phi, phiMin, invPhiBinWidth, m_phiBinEdges);
 
-    // find bins theta belongs into (using m_thetaBinEdges)
-    for (std::size_t i = 0; i < nThetaBins; ++i) {
-      if (thetaClamped >= m_thetaBinEdges[i].first && thetaClamped < m_thetaBinEdges[i].second) {
-        thetaBinsToAdd.push_back(i);
-      }
-      if (thetaBinsToAdd.size() > 1)
-        break;  // found both bins
-    }
-
-    // faster? alternative calculating bin index directly
-    /*const std::size_t thetaBin =
-        std::min(static_cast<std::size_t>((thetaClamped - thetaMin) * invThetaBinWidth), nThetaBins - 1);
-    thetaBinsToAdd.push_back(thetaBin);
-    // check if theta also in next bin (overlap)
-    if (thetaBin < nThetaBins - 1 &&
-        (thetaClamped - thetaMin) * invThetaBinWidth > static_cast<double>(thetaBin + 1) - m_thetaOverlap.value()) {
-      thetaBinsToAdd.push_back(thetaBin + 1);
-    }
-    */
-
-    // Normalize phi to [0, 2pi) then map directly to [0, nPhiBins).
-    double phiNorm = std::fmod(phi - phiMin, 2.0 * M_PI);
-    if (phiNorm < 0.0) {
-      phiNorm += 2.0 * M_PI;
-    }
-
-    // find bins phi belongs into (using m_phiBinEdges)
-    for (std::size_t i = 0; i < nPhiBins; ++i) {
-      if (phiNorm >= m_phiBinEdges[i].first && phiNorm < m_phiBinEdges[i].second) {
-        phiBinsToAdd.push_back(i);
-      }
-      if (phiBinsToAdd.size() > 1)
-        break;  // found both bins
-    }
-
-    // faster? alternative calculating bin index directly
-    /*const std::size_t phiBin = std::min(static_cast<std::size_t>(phiNorm * invPhiBinWidth), nPhiBins - 1);
-    phiBinsToAdd.push_back(phiBin);
-    // check if phi in also in next bin (overlap)
-    if (phiBin < nPhiBins - 1 && (phiNorm * invPhiBinWidth) > static_cast<double>(phiBin + 1) - m_phiOverlap.value()) {
-      phiBinsToAdd.push_back(phiBin + 1);
-    }
-    */
-
-    for (const auto thetaBin : thetaBinsToAdd) {
-      for (const auto phiBin : phiBinsToAdd) {
+    for (std::size_t thetaBin = thetaBinFirst; thetaBin <= thetaBinLast; ++thetaBin) {
+      for (std::size_t phiBin = phiBinFirst; phiBin <= phiBinLast; ++phiBin) {
         const std::size_t segmentIdx = thetaBin * nPhiBins + phiBin;
         thetaPhiHits[segmentIdx].push_back(hit);
         hitIdcs[segmentIdx].push_back(hitIndex);
@@ -403,8 +481,10 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
                          nPhiBins)
           << endmsg;
 
-  // Run GNN pipeline on all segments and collect track candidates
-  std::vector<std::vector<std::vector<int>>> trackCandIdcs_allSegments;
+  // Run GNN pipeline on all segments and collect the track candidates of all of
+  // them in one flat list. The candidates refer to the indices in allHits.
+  const std::size_t             nFeatures = m_resolvedHitFeatures.size();
+  std::vector<std::vector<int>> trackCandIdcs;
   for (std::size_t segmentIdx = 0; segmentIdx < nSegments; ++segmentIdx) {
     const auto& segmentHits = thetaPhiHits[segmentIdx];
     if (segmentHits.empty()) {
@@ -414,44 +494,33 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
       continue;
     }
     auto& segmentHitIdcs  = hitIdcs[segmentIdx];
-    auto  embeddingInputs = extractHitInformation(segmentHits, m_allHitFeatures, m_actsGeoSvc->cellIDEncodingString());
-    assert(embeddingInputs.size() == segmentHits.size() * m_allHitFeatures.size());
+    auto  embeddingInputs = extractHitInformation(segmentHits, m_resolvedHitFeatures, *m_cellIDDecoder);
+    assert(embeddingInputs.size() == segmentHits.size() * nFeatures);
 
     // Full detailed output of inputs
     if (m_detailedDebugOut.value()) {
-      debug() << "Embedding input tensor shape: (" << segmentHits.size() << ", " << m_allHitFeatures.size() << ")"
-              << endmsg;
+      debug() << "Embedding input tensor shape: (" << segmentHits.size() << ", " << nFeatures << ")" << endmsg;
       for (std::size_t i = 0; i < segmentHits.size(); ++i) {
         debug() << fmt::format("Input space point {}: ", i);
-        for (std::size_t j = 0; j < m_allHitFeatures.size(); ++j) {
-          debug() << fmt::format("  {}: {}", m_allHitFeatures[j], embeddingInputs[i * m_allHitFeatures.size() + j]);
+        for (std::size_t j = 0; j < nFeatures; ++j) {
+          debug() << fmt::format("  {}: {}", m_allHitFeatures[j], embeddingInputs[i * nFeatures + j]);
         }
         debug() << endmsg;
       }
     }
 
-    const auto trackCandIdcs = m_pipeline->run(embeddingInputs, {}, segmentHitIdcs, m_runDevice);
-    debug() << fmt::format("Received {} track candidates", trackCandIdcs.size()) << endmsg;
+    auto segmentCandIdcs = m_pipeline->run(embeddingInputs, {}, segmentHitIdcs, m_runDevice);
+    debug() << fmt::format("Received {} track candidates", segmentCandIdcs.size()) << endmsg;
 
     // Full detailed output of track candidates
     if (m_detailedDebugOut.value()) {
-      for (std::size_t i = 0; i < trackCandIdcs.size(); ++i) {
-        debug() << fmt::format("Track candidate {}: ", i);
-        for (const auto idx : trackCandIdcs[i]) {
-          debug() << fmt::format(" {}", idx);
-        }
-        debug() << endmsg;
+      for (std::size_t i = 0; i < segmentCandIdcs.size(); ++i) {
+        debug() << fmt::format("Track candidate {}: {}", i, fmt::join(segmentCandIdcs[i], " ")) << endmsg;
       }
     }
-    trackCandIdcs_allSegments.push_back(trackCandIdcs);
-  }
 
-  // Flatten candidates into single list
-  std::vector<std::vector<int>> trackCandIdcs;
-  trackCandIdcs.reserve(1024);
-  for (const auto& seg : trackCandIdcs_allSegments) {
-    for (const auto& c : seg)
-      trackCandIdcs.push_back(c);
+    trackCandIdcs.insert(trackCandIdcs.end(), std::make_move_iterator(segmentCandIdcs.begin()),
+                         std::make_move_iterator(segmentCandIdcs.end()));
   }
 
   // Default-construct ACTS contexts
@@ -481,48 +550,35 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
   edm4hep::TrackCollection trackCands{};
   auto                     histBuffer = m_monitoringHist.buffer();
   for (const auto& candIdcs : trackCandIdcs) {
-    ++histBuffer[{allHits.size(), trackCands.size(), candIdcs.size()}];
+    ++histBuffer[{allHits.size(), trackCandIdcs.size(), candIdcs.size()}];
     if (candIdcs.size() < m_minHitsPerTrk.value()) {
       continue;
     }
 
-    // Gather this candidate's hits and build the radius-ordered seed hits.
-    std::vector<edm4hep::TrackerHitPlane> candHits;
-    candHits.reserve(candIdcs.size());
-    for (const auto idx : candIdcs) {
-      candHits.push_back(allHits[idx]);
-    }
-    const std::vector<ACTSTracking::SeedHit> hits = ACTSTracking::collectSeedHits(candHits, slByHit, hitContainer);
+    // Build the radius-ordered seed hits from this candidate's hits.
+    const std::vector<ACTSTracking::SeedHit> hits = ACTSTracking::collectSeedHits(
+        candIdcs | std::views::transform([&allHits](int idx) { return allHits[idx]; }), slByHit, hitContainer);
 
     if (hits.size() < m_minHitsPerTrk.value()) {
       debug() << "Skipping candidate with " << hits.size() << " usable hits." << endmsg;
       continue;
     }
 
-    // The radius-ordered source links (innermost / middle / outermost form the
-    // seed) are handed to the Kalman fitter.
+    // The innermost / middle / outermost hit form the seed from which the
+    // initial parameters are estimated.
+    std::optional<Acts::BoundTrackParameters> startParams = ACTSTracking::estimateSeedParameters(
+        *this, *m_actsGeoSvc, geoCtx, hits, hitContainer, magCache, m_initialTrackError_pos, m_initialTrackError_phi,
+        m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time);
+    if (!startParams) {
+      continue;
+    }
+
+    // All (radius-ordered) source links of the candidate are handed to the
+    // Kalman fitter.
     std::vector<Acts::SourceLink> candSourceLinks;
     candSourceLinks.reserve(hits.size());
     for (const ACTSTracking::SeedHit& h : hits) {
       candSourceLinks.emplace_back(h.sl);
-    }
-
-    const ACTSTracking::SeedHit& bottom = hits.front();
-    const ACTSTracking::SeedHit& middle = hits[hits.size() / 2];
-    const ACTSTracking::SeedHit& top    = hits.back();
-
-    const Acts::Surface* bottomSurface = m_actsGeoSvc->trackingGeometry()->findSurface(bottom.sl.geometryId());
-    if (bottomSurface == nullptr) {
-      warning() << "Surface with geoID " << bottom.sl.geometryId() << " not found in tracking geometry" << endmsg;
-      continue;
-    }
-
-    std::optional<Acts::BoundTrackParameters> startParams = ACTSTracking::estimateSeedParameters(
-        *this, *m_actsGeoSvc, geoCtx, *bottomSurface, bottom.pos, middle.pos, top.pos,
-        hitContainer[bottom.sl.index()].getTime(), magCache, m_initialTrackError_pos, m_initialTrackError_phi,
-        m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time);
-    if (!startParams) {
-      continue;
     }
 
     std::optional<edm4hep::MutableTrack> track = kfRunner.fit(*this, candSourceLinks, *startParams, magCache);

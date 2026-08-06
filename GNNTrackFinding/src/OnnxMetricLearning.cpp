@@ -36,8 +36,11 @@
 #include <fmt/ranges.h>
 
 #include <cassert>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <span>
+#include <stdexcept>
 #include <vector>
 
 namespace {
@@ -100,52 +103,55 @@ OnnxMetricLearning::OnnxMetricLearning(const Config& cfg, std::unique_ptr<const 
       m_config(cfg),
       m_logger(std::move(lggr)) {
   ACTS_INFO(fmt::format("Loading model from {}", config().modelPath));
-  m_model.loadModel(config().modelPath);
+  if (!m_model.loadModel(config().modelPath)) {
+    throw std::runtime_error(fmt::format("Could not load the node embedding ONNX model from '{}'", config().modelPath));
+  }
 }
 
 ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& inputValues, std::size_t numNodes,
                                                             const std::vector<uint64_t>&,
                                                             const ActsPlugins::ExecutionContext& execContext) {
   assert(inputValues.size() % numNodes == 0);
-  std::vector inputShape = {static_cast<int64_t>(numNodes), static_cast<int64_t>(inputValues.size() / numNodes)};
 
-  // only use selected features given in cfg.selectedFeatures
-  const std::size_t fullNumFeatures = inputValues.size() / numNodes;
-  // By default we use the original inputValues. If selectedFeatures is
-  // non-empty, build a compact buffer containing only those features and
-  // pass that to the ONNX model.
-  std::vector<float>* inferenceValues = &inputValues;
-  std::vector<float>  selectedValues;
-  if (!config().selectedFeatures.empty()) {
-    selectedValues.reserve(numNodes * config().selectedFeatures.size());
+  const std::size_t         fullNumFeatures  = inputValues.size() / numNodes;
+  const std::vector<int>&   selectedFeatures = config().selectedFeatures;
+  const std::vector<float>& featureScales    = config().featureScales;
+
+  // The model only sees the selected features (all of them if no selection is
+  // configured)
+  const std::size_t numFeatures = selectedFeatures.empty() ? fullNumFeatures : selectedFeatures.size();
+  const std::vector inputShape  = {static_cast<int64_t>(numNodes), static_cast<int64_t>(numFeatures)};
+
+  for (const int idx : selectedFeatures) {
+    if (idx < 0 || static_cast<std::size_t>(idx) >= fullNumFeatures) {
+      throw std::runtime_error("Selected feature index out of range");
+    }
+  }
+  if (!featureScales.empty() && featureScales.size() != numFeatures) {
+    throw std::runtime_error("featureScales size must match the number of input features");
+  }
+
+  // Select and scale the model inputs in one pass. This is done into a separate
+  // buffer (and not in place) because the pipeline expects to get the full,
+  // unscaled node features back from this stage. Only if neither a selection
+  // nor a scaling is configured can the inputs be used as they are.
+  std::vector<float> preparedValues{};
+  if (!selectedFeatures.empty() || !featureScales.empty()) {
+    preparedValues.resize(numNodes * numFeatures);
     for (std::size_t n = 0; n < numNodes; ++n) {
-      for (int idx : config().selectedFeatures) {
-        if (idx < 0 || static_cast<std::size_t>(idx) >= fullNumFeatures) {
-          throw std::runtime_error("Selected feature index out of range");
-        }
-        selectedValues.push_back(inputValues[n * fullNumFeatures + static_cast<std::size_t>(idx)]);
+      for (std::size_t f = 0; f < numFeatures; ++f) {
+        const std::size_t idx   = selectedFeatures.empty() ? f : static_cast<std::size_t>(selectedFeatures[f]);
+        const float       value = inputValues[n * fullNumFeatures + idx];
+        preparedValues[n * numFeatures + f] = featureScales.empty() ? value : value / featureScales[f];
       }
     }
-    // Update the feature dimension for the inference input shape
-    inputShape[1]   = static_cast<int64_t>(config().selectedFeatures.size());
-    inferenceValues = &selectedValues;
   }
+  const std::vector<float>& inferenceValues = preparedValues.empty() ? inputValues : preparedValues;
+
   ACTS_DEBUG(fmt::format("Embedding input tensor shape: {}", inputShape));
-  ACTS_DEBUG(fmt::format("First input space point: {}", std::span(inputValues.data(), inputShape[1])));
+  ACTS_DEBUG(fmt::format("First input space point: {}", std::span(inferenceValues.data(), numFeatures)));
 
-  // Scale features if featureScales is given in cfg
-  if (!config().featureScales.empty()) {
-    if (config().featureScales.size() != static_cast<std::size_t>(inputShape[1])) {
-      throw std::runtime_error("featureScales size must match the number of input features");
-    }
-    for (std::size_t n = 0; n < numNodes; ++n) {
-      for (std::size_t f = 0; f < static_cast<std::size_t>(inputShape[1]); ++f) {
-        (*inferenceValues)[n * static_cast<std::size_t>(inputShape[1]) + f] /= config().featureScales[f];
-      }
-    }
-  }
-
-  const auto outputs = m_model.runInference(*inferenceValues, inputShape);
+  const auto outputs = m_model.runInference(inferenceValues, inputShape);
   // The ONNX session returns its outputs in host memory. Move the embedding to
   // the pipeline's target device so that the edge building below (buildEdges
   // dispatches FRNN/CUDA vs KD-Tree/CPU based on the tensor's device) runs on
