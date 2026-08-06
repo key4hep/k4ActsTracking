@@ -260,7 +260,7 @@ namespace Blueprints {
   /// Binning of the material projected onto a cylindrical face. The proto axes
   /// use auto-range equidistant binning, so only the bin counts matter here.
   const auto kCylinderMaterialBinning = std::pair{Acts::DirectedProtoAxis{AxisRPhi, Acts::AxisBoundaryType::Closed, 20},
-                                                  Acts::DirectedProtoAxis{AxisZ, Acts::AxisBoundaryType::Bound, 20}};
+                                                  Acts::DirectedProtoAxis{AxisZ, Acts::AxisBoundaryType::Bound, 200}};
 
   /// Binning of the material projected onto a disc face
   const auto kDiscMaterialBinning = std::pair{Acts::DirectedProtoAxis{AxisR, Acts::AxisBoundaryType::Bound, 50},
