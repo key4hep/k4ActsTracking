@@ -93,7 +93,6 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
       this, "InputScalesEmbedding", "1,1,1,1",
       "Comma-separated list of scales for the hit features for the node embedding model. "
       "Must be same size as InputFeaturesEmbedding."};
-  Gaudi::Property<int> m_embeddingDim{this, "EmbeddingDim", 4, "The embedding dimension for the node embedding model"};
 
   Gaudi::Property<std::vector<std::string>> m_edgeClassifierModelPath{
       this, "EdgeClassifierModelPath", {}, "List of paths to ONNX model files for edge classifier(s)."};

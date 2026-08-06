@@ -106,6 +106,23 @@ OnnxMetricLearning::OnnxMetricLearning(const Config& cfg, std::unique_ptr<const 
   if (!m_model.loadModel(config().modelPath)) {
     throw std::runtime_error(fmt::format("Could not load the node embedding ONNX model from '{}'", config().modelPath));
   }
+
+  // Take the embedding dimension from the model itself instead of having it
+  // configured. The last axis of the (nNodes x embeddingDim) output carries it,
+  // unless the model was exported with that axis dynamic, in which case ONNX
+  // reports -1 and we can only report what the model actually returns.
+  const auto& outputShape = m_model.outputShape(0);
+  if (outputShape.size() >= 2) {
+    m_embeddingDim = outputShape.back();
+  }
+  if (m_embeddingDim > 0) {
+    ACTS_INFO(fmt::format("Model declares an embedding dimension of {}", m_embeddingDim));
+  } else {
+    ACTS_INFO(
+        fmt::format("Model '{}' does not declare a fixed embedding dimension (output shape [{}]), taking it from "
+                    "the inference output",
+                    config().modelPath, fmt::join(outputShape, ", ")));
+  }
 }
 
 ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& inputValues, std::size_t numNodes,
@@ -160,7 +177,14 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
       execContext.device.isCuda() ? torch::Device(torch::kCUDA, execContext.device.index) : torch::Device(torch::kCPU);
   auto embeddedPoints = toTorchTensor(outputs[0]).to(torchDevice);
   assert(embeddedPoints.size(0) == inputShape[0]);  // Do not change the number of points
-  assert(embeddedPoints.size(1) == config().embeddingDim);
+  // A model that declares its embedding dimension has to stick to it. This is
+  // checked (rather than asserted) because a mismatch here means the loaded
+  // model is not the one its own metadata describes.
+  if (m_embeddingDim > 0 && embeddedPoints.size(1) != m_embeddingDim) {
+    throw std::runtime_error(
+        fmt::format("Node embedding model returned {} embedding dimensions, but its ONNX metadata declares {}",
+                    embeddedPoints.size(1), m_embeddingDim));
+  }
   ACTS_DEBUG(fmt::format("Embedding output tensor shape: [{}, {}]", embeddedPoints.size(0), embeddedPoints.size(1)));
   ACTS_VERBOSE(fmt::format("Embedding space of first SP: [{}]", fmt::streamed(embeddedPoints.slice(0, 0, 1))));
 

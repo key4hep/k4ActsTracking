@@ -88,7 +88,6 @@ TrackFinder = GNNTrackFinder(
     # module_id, layer_id, system_id
     InputFeaturesEmbedding="r,phi,z,t",
     InputScalesEmbedding="1,1,1,1",
-    EmbeddingDim=4,
     EdgeBuildingRadius=0.1,
     EdgeBuildingKnn=100.0,
     # --- Edge classification -------------------------------------------------

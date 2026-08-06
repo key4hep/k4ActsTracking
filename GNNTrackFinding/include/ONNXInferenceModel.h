@@ -218,6 +218,17 @@ namespace mlutils {
     // Print model information to stream
     template <typename StreamT> void dumpModel(StreamT& stream) const;
 
+    // The shape the loaded model declares for its @p i-th output. Axes that the
+    // model marks as dynamic are reported as -1. Returns an empty shape if no
+    // model is loaded or if @p i is out of range.
+    [[nodiscard]] const std::vector<int64_t>& outputShape(std::size_t i) const {
+      static const std::vector<int64_t> empty{};
+      return i < m_outputShapes.size() ? m_outputShapes[i] : empty;
+    }
+
+    // Number of outputs of the loaded model
+    [[nodiscard]] std::size_t numOutputs() const { return m_outputShapes.size(); }
+
   private:
     // ONNX Runtime objects
     std::unique_ptr<Ort::Env>            m_env{nullptr};

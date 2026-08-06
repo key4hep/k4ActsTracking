@@ -393,7 +393,6 @@ void GNNTrackFinder::buildPipeline(const std::vector<float>&              embedd
       std::make_shared<OnnxMetricLearning>(OnnxMetricLearning::Config{.modelPath = m_nodeEmbeddingModelPath.value(),
                                                                       .selectedFeatures = m_embeddingFeatureIndices,
                                                                       .featureScales    = embeddingScales,
-                                                                      .embeddingDim     = m_embeddingDim.value(),
                                                                       .rVal             = m_edgeBuildingRadius.value(),
                                                                       .knnVal           = m_edgeBuildingKnn.value(),
                                                                       .device           = m_runDevice},

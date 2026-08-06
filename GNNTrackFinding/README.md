@@ -98,8 +98,9 @@ k4run GNNTrackFinding/options/runGNNTrackFinding.py \
 
 > **Note:** the models are not shipped with this package and the values in the
 > example options file are *not* a tuned tracking configuration. The input
-> features, their scales and the embedding dimension have to match the models
-> that are used.
+> features and their scales have to match the models that are used. The
+> embedding dimension is not configured: it is read from the `.onnx` file of the
+> node embedding model.
 
 ## Configuration
 
@@ -108,7 +109,6 @@ k4run GNNTrackFinding/options/runGNNTrackFinding.py \
 | Property | Default | Description |
 | --- | --- | --- |
 | `NodeEmbeddingModelPath` | `""` | Path to the ONNX model of the metric learning / graph construction stage |
-| `EmbeddingDim` | `4` | Output dimension of the embedding model. Has to match `InputFeaturesEmbedding` |
 | `EdgeBuildingRadius` | `0.1` | Radius parameter of the edge building in embedding space |
 | `EdgeBuildingKnn` | `100` | KNN parameter of the edge building in embedding space |
 | `EdgeClassifierModelPath` | `[]` | Paths to the ONNX models of the edge classifiers |

@@ -46,9 +46,8 @@ class OnnxMetricLearning final : public ActsPlugins::GraphConstructionBase {
 public:
   struct Config {
     std::string        modelPath{};
-    std::vector<int>   selectedFeatures{};  // If empty, use all features
-    std::vector<float> featureScales{};     // Must be same size as selectedFeatures
-    int                embeddingDim{4};
+    std::vector<int>   selectedFeatures{};        // If empty, use all features
+    std::vector<float> featureScales{};           // Must be same size as selectedFeatures
     float              rVal{1.6};                 // Same as TorchMetricLearning
     float              knnVal{500.};              // Same as TorchMetricLearning
     bool               shuffleDirections{false};  // Same as TorchMetricLearning
@@ -67,10 +66,19 @@ public:
 
   const Config& config() const { return m_config; }
 
+  /// The embedding dimension the loaded model declares, or -1 if the model
+  /// leaves that axis dynamic. Read from the ONNX metadata at construction, so
+  /// it does not have to be configured.
+  int64_t embeddingDim() const { return m_embeddingDim; }
+
 private:
   mlutils::ONNXInferenceModel m_model;
 
   Config m_config;
+
+  /// Output width of the embedding model as declared in the .onnx file
+  /// (-1 if the model does not fix that axis), see embeddingDim()
+  int64_t m_embeddingDim{-1};
 
   // Common Acts infrastructure setup
   const auto&                         logger() const { return *m_logger; }
