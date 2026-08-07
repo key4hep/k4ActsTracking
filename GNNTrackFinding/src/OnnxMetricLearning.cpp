@@ -155,9 +155,9 @@ OnnxMetricLearning::OnnxMetricLearning(const Config& cfg, std::unique_ptr<const 
                       kNumEdgeFeatureInputs, config().edgeFeatureIndices.size()));
     }
     if (!config().edgeFeatureScales.empty() && config().edgeFeatureScales.size() != kNumEdgeFeatureInputs) {
-      throw std::invalid_argument(
-          fmt::format("edgeFeatureScales has {} entries, but has to have one per edge feature input ({}) or none at all",
-                      config().edgeFeatureScales.size(), kNumEdgeFeatureInputs));
+      throw std::invalid_argument(fmt::format(
+          "edgeFeatureScales has {} entries, but has to have one per edge feature input ({}) or none at all",
+          config().edgeFeatureScales.size(), kNumEdgeFeatureInputs));
     }
     ACTS_INFO(fmt::format("Computing {} edge features (dr, dphi, dz, deta, phislope, rphislope) for every built edge",
                           kNumEdgeFeatures));
@@ -337,10 +337,9 @@ std::optional<ActsPlugins::Tensor<float>> OnnxMetricLearning::buildEdgeFeatures(
 
   // Doublets on the same radius have no defined slope and get a flat zero. The
   // substitute denominator only keeps the discarded branch from producing infs.
-  const auto hasDr     = dr != 0.f;
-  const auto phislope  = torch::where(hasDr, torch::clamp(dphi / torch::where(hasDr, dr, torch::ones_like(dr)),
-                                                          -100.f, 100.f),
-                                      torch::zeros_like(dr));
+  const auto hasDr    = dr != 0.f;
+  const auto phislope = torch::where(
+      hasDr, torch::clamp(dphi / torch::where(hasDr, dr, torch::ones_like(dr)), -100.f, 100.f), torch::zeros_like(dr));
   const auto rphislope = 0.5f * (tgtValues.select(1, eR) + srcValues.select(1, eR)) * phislope;
 
   auto edgeFeatures = ActsPlugins::detail::torchToActsTensor<float>(

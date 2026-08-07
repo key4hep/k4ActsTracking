@@ -309,7 +309,8 @@ StatusCode GNNTrackFinder::initialize() {
   return StatusCode::SUCCESS;
 }
 
-void GNNTrackFinder::buildPipeline(const std::vector<float>& embeddingScales, const std::vector<float>& edgeFeatureScales,
+void GNNTrackFinder::buildPipeline(const std::vector<float>&              embeddingScales,
+                                   const std::vector<float>&              edgeFeatureScales,
                                    const std::vector<std::vector<float>>& edgeClassifierScales) {
   auto graphConstructor = std::make_shared<OnnxMetricLearning>(
       OnnxMetricLearning::Config{.modelPath          = m_nodeEmbeddingModelPath.value(),
