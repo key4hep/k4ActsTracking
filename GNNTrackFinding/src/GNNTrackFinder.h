@@ -87,6 +87,30 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
       "with a fixed-size input. The padding rows are appended after the hits of the segment and their embedding is "
       "discarded before the edge building. A segment with more hits than this is an error. 0 (the default) "
       "disables the padding."};
+  Gaudi::Property<bool> m_keepEmbeddingPadding{
+      this, "KeepEmbeddingPadding", false,
+      "If true, the zero rows added by EmbeddingFixedInputLength are kept in the node features handed to the edge "
+      "classifiers, for classifier models that are themselves exported at that same fixed number of nodes. The edge "
+      "building always runs on the real hits alone, whatever this is set to, so the padding rows arrive at the "
+      "classifiers as nodes without edges. Needs EmbeddingFixedInputLength > 0."};
+  Gaudi::Property<int> m_edgeClassifierFixedInputLength{
+      this, "EdgeClassifierFixedInputLength", 0,
+      "If > 0, pad the edge index and the edge features up to this many edges, for edge classifier models exported "
+      "with a fixed-size edge input. The padding edges are self loops on the last padding node, so they touch no "
+      "real hit, and they are removed again after the classification. A segment with more edges than this is an "
+      "error. Needs KeepEmbeddingPadding, and only one edge classifier. 0 (the default) disables the padding."};
+
+  Gaudi::Property<bool> m_computeEdgeFeatures{
+      this, "ComputeEdgeFeatures", false,
+      "If true, compute the six edge features (dr, dphi, dz, deta, phislope, rphislope) for every built edge, which "
+      "is what edge classifier models with three inputs take as their \"edge_attr\" input. False (the default) "
+      "computes none, which is what two-input models expect."};
+  Gaudi::Property<std::string> m_edgeFeatureScales{
+      this, "EdgeFeatureScales", "",
+      "Comma-separated list of the four scales the edge features are computed with. They are always computed from "
+      "r, phi, z and eta, so these are the scales of those four - in that order, whichever order the models take "
+      "their own inputs in. The edge features are handed to the classifiers unscaled, so these have to be the "
+      "scales the classifier was trained with. Empty applies no scaling. Only read if ComputeEdgeFeatures is true."};
 
   Gaudi::Property<std::vector<std::string>> m_edgeClassifierModelPath{
       this, "EdgeClassifierModelPath", {}, "List of paths to ONNX model files for edge classifier(s)."};
@@ -108,6 +132,21 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
 
   Gaudi::Property<uint32_t> m_minHitsPerTrk{this, "MinHitsPerTrack", 3,
                                             "Minimum number of hits per track for it to be considered for the output"};
+
+  Gaudi::Property<std::string> m_trackBuilding{
+      this, "TrackBuilding", "connected-components",
+      "Track building algorithm: \"connected-components\" emits every connected component of the classified graph as "
+      "one candidate (Acts' BoostTrackBuilding, which ignores the edge scores); \"cc-and-walk\" additionally resolves "
+      "the components that are not already a path by walking them along the best-scoring edges, as in the ExaTrkX / "
+      "GNN4ITk pipeline."};
+  Gaudi::Property<float> m_walkAddScore{
+      this, "WalkAddScore", 0.6f,
+      "\"cc-and-walk\" only: a neighbour whose edge scores above this is always followed, and the walk branches if "
+      "several do."};
+  Gaudi::Property<float> m_walkMinScore{
+      this, "WalkMinScore", 0.1f,
+      "\"cc-and-walk\" only: if no neighbour reaches WalkAddScore, the best one is followed if it scores above this, "
+      "otherwise the walk stops. Must not be above WalkAddScore."};
 
   /// @name Kalman-fit configuration
   ///@{
@@ -132,7 +171,7 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
 private:
   /// Construct the pipeline stages from the (already validated) configuration.
   /// Loads the ONNX models and throws if that or the pipeline setup fails.
-  void buildPipeline(const std::vector<float>&              embeddingScales,
+  void buildPipeline(const std::vector<float>& embeddingScales, const std::vector<float>& edgeFeatureScales,
                      const std::vector<std::vector<float>>& edgeClassifierScales);
 
   std::vector<std::string>                   m_allHitFeatures{};
@@ -140,6 +179,8 @@ private:
   std::vector<std::pair<double, double>>     m_thetaBinEdges{};
   std::vector<std::pair<double, double>>     m_phiBinEdges{};
   std::vector<int>                           m_embeddingFeatureIndices{};
+  std::vector<int>                           m_edgeFeatureIndices{};
+  int                                        m_radiusFeatureIndex{-1};
   std::vector<std::vector<int>>              m_edgeClassifierFeatureIndices{};
   std::unique_ptr<ActsPlugins::GnnPipeline>  m_pipeline{nullptr};
   std::unique_ptr<const Acts::Logger>        m_logger{nullptr};
