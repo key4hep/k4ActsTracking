@@ -88,7 +88,9 @@ TrackFinder = GNNTrackFinder(
     # module_id, layer_id, system_id
     InputFeaturesEmbedding="r,phi,z,t",
     InputScalesEmbedding="1,1,1,1",
-    EmbeddingDim=4,
+    # If the embedding model was exported with a fixed-size input, pad the hits
+    # of each segment with all-zero rows up to that length (0 = no padding).
+    EmbeddingFixedInputLength=0,
     EdgeBuildingRadius=0.1,
     EdgeBuildingKnn=100.0,
     # --- Edge classification -------------------------------------------------

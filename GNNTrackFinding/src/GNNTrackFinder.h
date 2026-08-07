@@ -21,6 +21,7 @@
 #include <k4FWCore/Transformer.h>
 
 #include <k4ActsTracking/IActsGeoSvc.h>
+#include <k4ActsTracking/HitFeatures.hxx>
 
 #include <Acts/Definitions/Units.hpp>
 #include <Acts/Utilities/Logger.hpp>
@@ -54,19 +55,6 @@ namespace ActsPlugins {
 
 struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
                             std::vector<const edm4hep::TrackerHitPlaneCollection*> const&)> {
-  /// The per-hit quantity a configured feature name maps to. All CellID based
-  /// features share one enumerator and are distinguished by the decoder field
-  /// index stored alongside it.
-  enum class HitFeature { X, Y, Z, R, Phi, Theta, Eta, Time, Energy, CellIdField };
-
-  /// A configured input feature, resolved once in initialize() to the quantity
-  /// that has to be read from a hit. Keeping the resolution out of the event
-  /// loop avoids per-hit string comparisons and CellID field name lookups.
-  struct ResolvedFeature {
-    HitFeature  kind{};
-    std::size_t cellIdField{0};  ///< only used for HitFeature::CellIdField
-  };
-
   GNNTrackFinder(const std::string& name, ISvcLocator* svcLoc);
 
   StatusCode initialize() override;
@@ -93,7 +81,12 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
       this, "InputScalesEmbedding", "1,1,1,1",
       "Comma-separated list of scales for the hit features for the node embedding model. "
       "Must be same size as InputFeaturesEmbedding."};
-  Gaudi::Property<int> m_embeddingDim{this, "EmbeddingDim", 4, "The embedding dimension for the node embedding model"};
+  Gaudi::Property<int> m_embeddingFixedInputLength{
+      this, "EmbeddingFixedInputLength", 0,
+      "If > 0, pad the node embedding model input with all-zero rows up to this many nodes, for models exported "
+      "with a fixed-size input. The padding rows are appended after the hits of the segment and their embedding is "
+      "discarded before the edge building. A segment with more hits than this is an error. 0 (the default) "
+      "disables the padding."};
 
   Gaudi::Property<std::vector<std::string>> m_edgeClassifierModelPath{
       this, "EdgeClassifierModelPath", {}, "List of paths to ONNX model files for edge classifier(s)."};
@@ -142,15 +135,15 @@ private:
   void buildPipeline(const std::vector<float>&              embeddingScales,
                      const std::vector<std::vector<float>>& edgeClassifierScales);
 
-  std::vector<std::string>                  m_allHitFeatures{};
-  std::vector<ResolvedFeature>              m_resolvedHitFeatures{};
-  std::vector<std::pair<double, double>>    m_thetaBinEdges{};
-  std::vector<std::pair<double, double>>    m_phiBinEdges{};
-  std::vector<int>                          m_embeddingFeatureIndices{};
-  std::vector<std::vector<int>>             m_edgeClassifierFeatureIndices{};
-  std::unique_ptr<ActsPlugins::GnnPipeline> m_pipeline{nullptr};
-  std::unique_ptr<const Acts::Logger>       m_logger{nullptr};
-  ActsPlugins::Device                       m_runDevice{ActsPlugins::Device::Type::eCPU, 0};
+  std::vector<std::string>                   m_allHitFeatures{};
+  std::vector<ACTSTracking::ResolvedFeature> m_resolvedHitFeatures{};
+  std::vector<std::pair<double, double>>     m_thetaBinEdges{};
+  std::vector<std::pair<double, double>>     m_phiBinEdges{};
+  std::vector<int>                           m_embeddingFeatureIndices{};
+  std::vector<std::vector<int>>              m_edgeClassifierFeatureIndices{};
+  std::unique_ptr<ActsPlugins::GnnPipeline>  m_pipeline{nullptr};
+  std::unique_ptr<const Acts::Logger>        m_logger{nullptr};
+  ActsPlugins::Device                        m_runDevice{ActsPlugins::Device::Type::eCPU, 0};
 
   /// CellID decoder, built once from the geometry service's encoding string
   /// (parsing it is too expensive to redo for every event / segment).

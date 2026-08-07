@@ -144,3 +144,20 @@ TEST_CASE("parseMultiList") {
 
   SECTION("empty input") { REQUIRE(mlutils::parseMultiList<std::string>({}).empty()); }
 }
+
+TEST_CASE("model metadata without a loaded model") {
+  // The embedding dimension is read from the model metadata, so the accessors
+  // have to stay safe before (or after a failed) loadModel.
+  mlutils::ONNXInferenceModel model{"UnitTest"};
+
+  REQUIRE(model.numInputs() == 0);
+  REQUIRE(model.numOutputs() == 0);
+  REQUIRE(model.inputShape(0).empty());
+  REQUIRE(model.outputShape(0).empty());
+
+  REQUIRE_FALSE(model.loadModel("this-file-does-not-exist.onnx"));
+  REQUIRE(model.numInputs() == 0);
+  REQUIRE(model.numOutputs() == 0);
+  REQUIRE(model.inputShape(0).empty());
+  REQUIRE(model.outputShape(0).empty());
+}

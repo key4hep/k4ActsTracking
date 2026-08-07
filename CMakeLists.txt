@@ -16,7 +16,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ]]
-CMAKE_MINIMUM_REQUIRED(VERSION 3.18)
+# 3.22 is required by the DL_PATHS option of catch_discover_tests, see
+# test/unittests/CMakeLists.txt
+CMAKE_MINIMUM_REQUIRED(VERSION 3.22)
 
 project(k4ActsTracking LANGUAGES CXX)
 
