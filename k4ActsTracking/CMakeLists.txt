@@ -22,6 +22,7 @@ gaudi_add_library(k4ActsTracking
   SOURCES
     src/ActsGaudiLogger.cpp
     src/CellIDSelector.cxx
+    src/HitFeatures.cxx
     src/components/Helpers.cxx
   LINK
     DD4hep::DDCore
@@ -43,6 +44,7 @@ set(_plugin_sources
   src/components/FilterTracksAlg.cxx
   src/components/GeometryIdMappingTool.cxx
   src/components/GeometryIdSelector.cxx
+  src/components/SortTrackerHitsAlg.cxx
   src/components/TrackTruthAlg.cxx
   src/components/ActsTestPropagator.cpp
   src/components/DD4hepBlueprintConstruction.cpp

@@ -74,115 +74,11 @@ namespace ActsPlugins {
 #include <vector>
 
 namespace {
-  using HitFeature      = GNNTrackFinder::HitFeature;
-  using ResolvedFeature = GNNTrackFinder::ResolvedFeature;
-
-  /// Lower-case an (ASCII) configuration string, so that feature names and the
-  /// device specification can be given in any case.
+  /// Lower-case an (ASCII) configuration string, so that the device
+  /// specification can be given in any case.
   std::string toLower(std::string str) {
     std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) { return std::tolower(c); });
     return str;
-  }
-
-  /// Resolve the configured feature names into the accessors used at event
-  /// time. Throws std::runtime_error for an unknown feature name or for a
-  /// CellID based feature whose field is not part of the encoding.
-  std::vector<ResolvedFeature> resolveHitFeatures(const std::vector<std::string>&              features,
-                                                  const dd4hep::DDSegmentation::BitFieldCoder& decoder) {
-    // Look up the index of a CellID field once, so that decoding a hit is a
-    // plain array access instead of a string based lookup.
-    const auto cellIdField = [&decoder](const std::string& feature, const char* field) {
-      try {
-        return ResolvedFeature{HitFeature::CellIdField, decoder.index(field)};
-      } catch (const std::exception& ex) {
-        throw std::runtime_error(fmt::format("Cannot use hit feature '{}': the CellID encoding has no '{}' field ({})",
-                                             feature, field, ex.what()));
-      }
-    };
-
-    std::vector<ResolvedFeature> resolved{};
-    resolved.reserve(features.size());
-    for (const auto& f : features) {
-      const auto key = toLower(f);
-      if (key == "x") {
-        resolved.push_back({HitFeature::X});
-      } else if (key == "y") {
-        resolved.push_back({HitFeature::Y});
-      } else if (key == "z") {
-        resolved.push_back({HitFeature::Z});
-      } else if (key == "r") {
-        resolved.push_back({HitFeature::R});
-      } else if (key == "phi") {
-        resolved.push_back({HitFeature::Phi});
-      } else if (key == "theta") {
-        resolved.push_back({HitFeature::Theta});
-      } else if (key == "eta") {
-        resolved.push_back({HitFeature::Eta});
-      } else if (key == "t" || key == "time") {
-        resolved.push_back({HitFeature::Time});
-      } else if (key == "e" || key == "energy") {
-        resolved.push_back({HitFeature::Energy});
-      } else if (key == "module_id") {
-        resolved.push_back(cellIdField(f, "module"));
-      } else if (key == "layer_id") {
-        resolved.push_back(cellIdField(f, "layer"));
-      } else if (key == "system_id" || key == "volume_id") {
-        resolved.push_back(cellIdField(f, "system"));
-      } else {
-        throw std::runtime_error(fmt::format("Unknown hit feature '{}'", f));
-      }
-    }
-    return resolved;
-  }
-
-  /// Extract the requested hit information into a flat, row-major
-  /// (nHits x nFeatures) buffer, i.e. the layout the ONNX models expect.
-  std::vector<float> extractHitInformation(const edm4hep::TrackerHitPlaneCollection&    hits,
-                                           const std::vector<ResolvedFeature>&          features,
-                                           const dd4hep::DDSegmentation::BitFieldCoder& decoder) {
-    std::vector<float> hitInfo{};
-    hitInfo.reserve(hits.size() * features.size());
-
-    for (const auto hit : hits) {
-      const auto position = ROOT::Math::XYZPointF(hit.getPosition().x, hit.getPosition().y, hit.getPosition().z);
-      const auto cellID   = hit.getCellID();
-
-      for (const auto& feature : features) {
-        switch (feature.kind) {
-          case HitFeature::X:
-            hitInfo.push_back(position.x());
-            break;
-          case HitFeature::Y:
-            hitInfo.push_back(position.y());
-            break;
-          case HitFeature::Z:
-            hitInfo.push_back(position.z());
-            break;
-          case HitFeature::R:
-            hitInfo.push_back(position.rho());
-            break;
-          case HitFeature::Phi:
-            hitInfo.push_back(position.phi());
-            break;
-          case HitFeature::Theta:
-            hitInfo.push_back(position.theta());
-            break;
-          case HitFeature::Eta:
-            hitInfo.push_back(position.eta());
-            break;
-          case HitFeature::Time:
-            hitInfo.push_back(hit.getTime());
-            break;
-          case HitFeature::Energy:
-            hitInfo.push_back(hit.getEDep());
-            break;
-          case HitFeature::CellIdField:
-            hitInfo.push_back(static_cast<float>(decoder.get(cellID, feature.cellIdField)));
-            break;
-        }
-      }
-    }
-    return hitInfo;
   }
 
   // Build bin edges for segmentation
@@ -314,18 +210,6 @@ StatusCode GNNTrackFinder::initialize() {
     }
   }
 
-  // Check that the embedding dimension matches the number of features selected
-  // for the graph construction model (if specified).
-  if (m_embeddingDim.value() > 0 && !embeddingFeatures.empty() &&
-      static_cast<std::size_t>(m_embeddingDim.value()) != embeddingFeatures.size()) {
-    error() << fmt::format(
-                   "Embedding dimension {} does not match the number of selected features {} for the graph "
-                   "construction model",
-                   m_embeddingDim.value(), embeddingFeatures.size())
-            << endmsg;
-    return StatusCode::FAILURE;
-  }
-
   try {
     m_runDevice = parseDevice(m_device.value());
 
@@ -381,7 +265,7 @@ StatusCode GNNTrackFinder::initialize() {
   // loop neither compares strings nor looks up CellID fields by name.
   try {
     m_cellIDDecoder.emplace(m_actsGeoSvc->cellIDEncodingString());
-    m_resolvedHitFeatures = resolveHitFeatures(m_allHitFeatures, *m_cellIDDecoder);
+    m_resolvedHitFeatures = ACTSTracking::resolveHitFeatures(m_allHitFeatures, &*m_cellIDDecoder);
   } catch (const std::exception& ex) {
     error() << ex.what() << endmsg;
     return StatusCode::FAILURE;
@@ -401,15 +285,15 @@ StatusCode GNNTrackFinder::initialize() {
 
 void GNNTrackFinder::buildPipeline(const std::vector<float>&              embeddingScales,
                                    const std::vector<std::vector<float>>& edgeClassifierScales) {
-  auto graphConstructor =
-      std::make_shared<OnnxMetricLearning>(OnnxMetricLearning::Config{.modelPath = m_nodeEmbeddingModelPath.value(),
-                                                                      .selectedFeatures = m_embeddingFeatureIndices,
-                                                                      .featureScales    = embeddingScales,
-                                                                      .embeddingDim     = m_embeddingDim.value(),
-                                                                      .rVal             = m_edgeBuildingRadius.value(),
-                                                                      .knnVal           = m_edgeBuildingKnn.value(),
-                                                                      .device           = m_runDevice},
-                                           m_logger->clone(name() + ".MetricLearning"));
+  auto graphConstructor = std::make_shared<OnnxMetricLearning>(
+      OnnxMetricLearning::Config{.modelPath        = m_nodeEmbeddingModelPath.value(),
+                                 .selectedFeatures = m_embeddingFeatureIndices,
+                                 .featureScales    = embeddingScales,
+                                 .fixedInputLength = m_embeddingFixedInputLength.value(),
+                                 .rVal             = m_edgeBuildingRadius.value(),
+                                 .knnVal           = m_edgeBuildingKnn.value(),
+                                 .device           = m_runDevice},
+      m_logger->clone(name() + ".MetricLearning"));
 
   std::vector<std::shared_ptr<ActsPlugins::EdgeClassificationBase>> edgeClassifiers{};
   edgeClassifiers.reserve(m_edgeClassifierModelPath.size());
@@ -509,7 +393,7 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
       continue;
     }
     auto& segmentHitIdcs  = hitIdcs[segmentIdx];
-    auto  embeddingInputs = extractHitInformation(segmentHits, m_resolvedHitFeatures, *m_cellIDDecoder);
+    auto  embeddingInputs = ACTSTracking::extractHitInformation(segmentHits, m_resolvedHitFeatures, &*m_cellIDDecoder);
     assert(embeddingInputs.size() == segmentHits.size() * nFeatures);
 
     // Full detailed output of inputs

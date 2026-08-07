@@ -85,6 +85,29 @@ The Gaudi plugin module `k4ActsTrackingPlugins` provides, among others:
 * **`ACTSDuplicateRemoval`** — removes duplicate tracks produced by the CKF.
 * **`FilterTracksAlg`** — applies quality cuts to a track collection.
 * **`TrackTruthAlg`** — associates reconstructed tracks with truth particles.
+* **`SortTrackerHitsAlg`** — reorders a tracker hit collection by one hit
+  feature (`SortBy`, optionally `Descending`), using the same feature vocabulary
+  as `GNNTrackFinder`: `x`, `y`, `z`, `r`, `phi`, `theta`, `eta`, `t` (or
+  `time`), `E` (or `energy`), `module_id`, `layer_id`, `system_id` (or
+  `volume_id`), all case insensitive. The output is a *subset* collection, so it
+  refers to the very same hits and only changes their order; hits with an equal
+  key keep their input order. Only the CellID based features need the
+  `ActsGeoSvc` (for the CellID encoding), so sorting by e.g. `r` does not pull in
+  the ACTS geometry. Useful to give a downstream algorithm a deterministic hit
+  order — for instance to feed `GNNTrackFinder` a reproducible input when its
+  embedding model has a fixed input length.
+
+  ```python
+  from Configurables import SortTrackerHitsAlg
+
+  sorter = SortTrackerHitsAlg(
+      "SortHitsByR",
+      InputHitCollection=["VertexBarrelHits"],
+      OutputHitCollection=["VertexBarrelHitsSortedByR"],
+      SortBy="r",
+      Descending=False,
+  )
+  ```
 * **`ActsTestPropagator`** — propagates ACTS particle-gun tracks through the
   converted geometry (useful for geometry validation).
 
