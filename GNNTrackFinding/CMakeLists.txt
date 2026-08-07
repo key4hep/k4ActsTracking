@@ -38,6 +38,7 @@ install(TARGETS GNNTrackingONNXInferenceModels
 )
 
 set(sources
+    src/CCAndWalkTrackBuilding.cpp
     src/GNNTrackFinder.cpp
     src/OnnxMetricLearning.cpp
     src/PaddedEdgeRemoval.cpp

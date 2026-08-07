@@ -18,6 +18,7 @@
  */
 #include "GNNTrackFinder.h"
 
+#include "CCAndWalkTrackBuilding.h"
 #include "OnnxMetricLearning.h"
 #include "PaddedEdgeRemoval.h"
 
@@ -37,6 +38,7 @@ namespace ActsPlugins {
   using EdgeClassificationBase = Acts::EdgeClassificationBase;
   using GnnPipeline            = Acts::GnnPipeline;
   using OnnxEdgeClassifier     = Acts::OnnxEdgeClassifier;
+  using TrackBuildingBase      = Acts::TrackBuildingBase;
 }  // namespace ActsPlugins
 #endif
 
@@ -82,6 +84,16 @@ namespace {
   /// their scales are, see GNNTrackFinder::m_edgeFeatureScales.
   const std::array<std::string, OnnxMetricLearning::kNumEdgeFeatureInputs> kEdgeFeatureInputs{"r", "phi", "z", "eta"};
 
+  /// Track building by connected components alone, i.e. Acts' BoostTrackBuilding
+  constexpr const char* kTrackBuildingCC = "connected-components";
+  /// Track building that additionally walks the components that are not paths
+  constexpr const char* kTrackBuildingCCAndWalk = "cc-and-walk";
+
+  /// The hit feature the "cc-and-walk" track building orders the two hits of an
+  /// edge by, to give the graph a direction. Not configurable: any other choice
+  /// would not be a radius.
+  const std::array<std::string, 1> kRadiusFeature{"r"};
+
   /// Lower-case an (ASCII) configuration string, so that the device
   /// specification can be given in any case.
   std::string toLower(std::string str) {
@@ -89,9 +101,15 @@ namespace {
     return str;
   }
 
-  // Build bin edges for segmentation
+  /// Build bin edges for segmentation. Every bin's upper edge is extended by
+  /// @p overlapFraction of the bin width into its successor.
+  ///
+  /// @param wrap whether the coordinate is periodic, i.e. whether the last bin
+  ///        has a successor to reach into. If it is, the last bin's upper edge
+  ///        is extended past @p max, and a value just above @p min falls into
+  ///        it as well - see binsFor().
   std::vector<std::pair<double, double>> buildBinEdges(double min, double max, std::size_t numBins,
-                                                       double overlapFraction) {
+                                                       double overlapFraction, bool wrap) {
     if (numBins == 0) {
       throw std::invalid_argument("Number of bins must be greater than zero");
     }
@@ -110,20 +128,23 @@ namespace {
       const double left  = min + i * binWidth;
       const double right = left + binWidth;
       edges[i]           = {left, right};
-      if (i < numBins - 1)
+      if (i < numBins - 1 || wrap)
         edges[i].second += overlapWidth;
     }
     return edges;
   }
 
-  /// Indices of the bins of @p edges that contain @p value, as an inclusive
-  /// [first, last] range. Since a bin only ever overlaps with its successor, a
-  /// value falls into at most two adjacent bins.
+  /// Bins of @p edges that @p value falls into, written into @p bins. Returns
+  /// how many there are: since a bin only ever overlaps with its successor, a
+  /// value is in one or two of them.
   ///
   /// @param value must be inside the [min, max) range @p edges was built for
   /// @param invBinWidth numBins / (max - min), i.e. the inverse (unextended) bin width
-  std::pair<std::size_t, std::size_t> binsFor(double value, double min, double invBinWidth,
-                                              const std::vector<std::pair<double, double>>& edges) {
+  /// @param wrap whether the coordinate is periodic, see buildBinEdges(). The
+  ///        two bins are adjacent, but with wrapping they can be the last and
+  ///        the first one rather than i - 1 and i.
+  std::size_t binsFor(double value, double min, double invBinWidth, const std::vector<std::pair<double, double>>& edges,
+                      bool wrap, std::array<std::size_t, 2>& bins) {
     // Direct lookup instead of a scan over all bins. The clamping guards
     // against rounding differences w.r.t. the bin edges (and against a value
     // sitting exactly on max).
@@ -131,17 +152,39 @@ namespace {
     if (bin > 0 && value < edges[bin].first) {
       --bin;
     }
-    // The preceding bin's upper edge is extended by the overlap, so it may
-    // still contain the value.
-    const std::size_t firstBin = (bin > 0 && value < edges[bin - 1].second) ? bin - 1 : bin;
-    return {firstBin, bin};
+    bins[0] = bin;
+
+    // The preceding bin's upper edge is extended by the overlap, so it may still
+    // contain the value.
+    if (bin > 0) {
+      if (value < edges[bin - 1].second) {
+        bins[1] = bin - 1;
+        return 2;
+      }
+    } else if (wrap && edges.size() > 1) {
+      // Bin 0's predecessor is the last bin, whose upper edge was extended past
+      // max. Comparing against it means lifting the value by one period. With a
+      // single bin there is no predecessor - it already covers the full period,
+      // and returning it twice would put the hit into the same segment twice.
+      const double period = static_cast<double>(edges.size()) / invBinWidth;
+      if (value + period < edges.back().second) {
+        bins[1] = edges.size() - 1;
+        return 2;
+      }
+    }
+    return 1;
   }
 
-  /// Format bin edges for the debug output
-  std::string formatBinEdges(const std::vector<std::pair<double, double>>& edges) {
+  /// Format bin edges for the debug output. An upper edge past @p max belongs to
+  /// a bin that wraps around, so show where it actually reaches to.
+  std::string formatBinEdges(const std::vector<std::pair<double, double>>& edges, double min, double max) {
     std::string formatted{};
     for (const auto& [low, high] : edges) {
-      formatted += fmt::format(" [{}, {}]", low, high);
+      if (high > max) {
+        formatted += fmt::format(" [{}, {} -> {}]", low, max, min + (high - max));
+      } else {
+        formatted += fmt::format(" [{}, {}]", low, high);
+      }
     }
     return formatted;
   }
@@ -237,6 +280,22 @@ StatusCode GNNTrackFinder::initialize() {
     }
   }
 
+  const bool ccAndWalk = m_trackBuilding.value() == kTrackBuildingCCAndWalk;
+  if (!ccAndWalk && m_trackBuilding.value() != kTrackBuildingCC) {
+    error() << fmt::format(R"(Unknown TrackBuilding "{}", expected "{}" or "{}")", m_trackBuilding.value(),
+                           kTrackBuildingCC, kTrackBuildingCCAndWalk)
+            << endmsg;
+    return StatusCode::FAILURE;
+  }
+  if (ccAndWalk && m_walkMinScore.value() > m_walkAddScore.value()) {
+    error() << fmt::format(
+                   "WalkMinScore ({}) is above WalkAddScore ({}), so the threshold for branching would be "
+                   "looser than the one for following a single edge",
+                   m_walkMinScore.value(), m_walkAddScore.value())
+            << endmsg;
+    return StatusCode::FAILURE;
+  }
+
   // The models divide each feature by its scale, so there has to be exactly one
   // scale per feature (or none at all, in which case no scaling is applied).
   const auto checkScales = [this](const std::string& what, std::size_t nFeatures, std::size_t nScales) {
@@ -267,15 +326,17 @@ StatusCode GNNTrackFinder::initialize() {
     m_runDevice = parseDevice(m_device.value());
 
     // Build bin edges for theta/phi segmentation
-    m_thetaBinEdges = buildBinEdges(0.0, M_PI, m_thetaBins.value(), m_thetaOverlap.value());
-    m_phiBinEdges   = buildBinEdges(-M_PI, M_PI, m_phiBins.value(), m_phiOverlap.value());
+    // theta runs from 0 to pi and stops there, phi is periodic and its last bin
+    // reaches back around into the first one.
+    m_thetaBinEdges = buildBinEdges(0.0, M_PI, m_thetaBins.value(), m_thetaOverlap.value(), /*wrap=*/false);
+    m_phiBinEdges   = buildBinEdges(-M_PI, M_PI, m_phiBins.value(), m_phiOverlap.value(), /*wrap=*/true);
   } catch (const std::invalid_argument& ex) {
     error() << ex.what() << endmsg;
     return StatusCode::FAILURE;
   }
   info() << fmt::format("Running GNN pipeline on device '{}'", m_device.value()) << endmsg;
-  debug() << fmt::format("Theta bin edges:{}", formatBinEdges(m_thetaBinEdges)) << endmsg;
-  debug() << fmt::format("Phi bin edges:{}", formatBinEdges(m_phiBinEdges)) << endmsg;
+  debug() << fmt::format("Theta bin edges:{}", formatBinEdges(m_thetaBinEdges, 0.0, M_PI)) << endmsg;
+  debug() << fmt::format("Phi bin edges:{}", formatBinEdges(m_phiBinEdges, -M_PI, M_PI)) << endmsg;
 
   // Build the deduplicated list of all hit features that have to be extracted,
   // preserving the order in which they are configured. The pipeline passes the
@@ -293,6 +354,9 @@ StatusCode GNNTrackFinder::initialize() {
   addFeatures(embeddingFeatures);
   if (computeEdgeFeatures) {
     addFeatures(kEdgeFeatureInputs);
+  }
+  if (ccAndWalk) {
+    addFeatures(kRadiusFeature);
   }
   for (const auto& edgeClassifierFeatures : edgeClassifierFeaturesList) {
     addFeatures(edgeClassifierFeatures);
@@ -312,6 +376,7 @@ StatusCode GNNTrackFinder::initialize() {
   };
   m_embeddingFeatureIndices = featureIndices(embeddingFeatures);
   m_edgeFeatureIndices      = computeEdgeFeatures ? featureIndices(kEdgeFeatureInputs) : std::vector<int>{};
+  m_radiusFeatureIndex      = ccAndWalk ? featureIndices(kRadiusFeature).front() : -1;
   m_edgeClassifierFeatureIndices.clear();
   m_edgeClassifierFeatureIndices.reserve(nEdgeClassifiers);
   for (const auto& edgeClassifierFeatures : edgeClassifierFeaturesList) {
@@ -378,8 +443,19 @@ void GNNTrackFinder::buildPipeline(const std::vector<float>&              embedd
     edgeClassifiers.push_back(std::make_shared<PaddedEdgeRemoval>(m_logger->clone(name() + ".PaddedEdgeRemoval")));
   }
 
-  auto trackBuilder = std::make_shared<ActsPlugins::BoostTrackBuilding>(ActsPlugins::BoostTrackBuilding::Config{},
-                                                                        m_logger->clone(name() + ".TrackBuilder"));
+  std::shared_ptr<ActsPlugins::TrackBuildingBase> trackBuilder{};
+  if (m_trackBuilding.value() == kTrackBuildingCCAndWalk) {
+    trackBuilder = std::make_shared<CCAndWalkTrackBuilding>(
+        CCAndWalkTrackBuilding::Config{.rFeatureIndex    = m_radiusFeatureIndex,
+                                       .addScore         = m_walkAddScore.value(),
+                                       .minScore         = m_walkMinScore.value(),
+                                       .minCandidateSize = m_minHitsPerTrk.value()},
+        m_logger->clone(name() + ".TrackBuilder"));
+  } else {
+    trackBuilder = std::make_shared<ActsPlugins::BoostTrackBuilding>(ActsPlugins::BoostTrackBuilding::Config{},
+                                                                     m_logger->clone(name() + ".TrackBuilder"));
+  }
+  info() << fmt::format("Building track candidates with the \"{}\" algorithm", m_trackBuilding.value()) << endmsg;
 
   m_pipeline = std::make_unique<ActsPlugins::GnnPipeline>(graphConstructor, edgeClassifiers, trackBuilder,
                                                           m_logger->clone(name() + ".Pipeline"));
@@ -430,13 +506,19 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
     const double theta = std::clamp<double>(position.theta(), thetaMin, thetaUpper);
     const double phi   = std::clamp<double>(position.phi(), phiMin, phiUpper);
 
-    // With overlapping bins a hit can end up in two adjacent bins per coordinate
-    const auto [thetaBinFirst, thetaBinLast] = binsFor(theta, thetaMin, invThetaBinWidth, m_thetaBinEdges);
-    const auto [phiBinFirst, phiBinLast]     = binsFor(phi, phiMin, invPhiBinWidth, m_phiBinEdges);
+    // With overlapping bins a hit can end up in two adjacent bins per
+    // coordinate. In phi those two are not necessarily consecutive indices: the
+    // last bin wraps around into the first one, so the bins are listed rather
+    // than iterated over as a range.
+    std::array<std::size_t, 2> thetaBins{};
+    std::array<std::size_t, 2> phiBins{};
+    const std::size_t          numThetaBinsFor =
+        binsFor(theta, thetaMin, invThetaBinWidth, m_thetaBinEdges, /*wrap=*/false, thetaBins);
+    const std::size_t numPhiBinsFor = binsFor(phi, phiMin, invPhiBinWidth, m_phiBinEdges, /*wrap=*/true, phiBins);
 
-    for (std::size_t thetaBin = thetaBinFirst; thetaBin <= thetaBinLast; ++thetaBin) {
-      for (std::size_t phiBin = phiBinFirst; phiBin <= phiBinLast; ++phiBin) {
-        const std::size_t segmentIdx = thetaBin * nPhiBins + phiBin;
+    for (std::size_t t = 0; t < numThetaBinsFor; ++t) {
+      for (std::size_t p = 0; p < numPhiBinsFor; ++p) {
+        const std::size_t segmentIdx = thetaBins[t] * nPhiBins + phiBins[p];
         thetaPhiHits[segmentIdx].push_back(hit);
         hitIdcs[segmentIdx].push_back(hitIndex);
       }

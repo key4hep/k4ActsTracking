@@ -63,16 +63,16 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
   Gaudi::Property<std::size_t> m_thetaBins{this, "ThetaBins", 1, "Number of theta bins for segmentation."};
   Gaudi::Property<std::size_t> m_phiBins{this, "PhiBins", 1, "Number of phi bins for segmentation."};
   Gaudi::Property<double>      m_thetaOverlap{this, "ThetaOverlap", 0.0,
-                                         "Fractional theta overlap for segmentation (fraction of bin width)."};
+                                              "Fractional theta overlap for segmentation (fraction of bin width)."};
   Gaudi::Property<double>      m_phiOverlap{this, "PhiOverlap", 0.0,
-                                       "Fractional phi overlap for segmentation (fraction of bin width)."};
+                                            "Fractional phi overlap for segmentation (fraction of bin width)."};
 
   Gaudi::Property<std::string> m_nodeEmbeddingModelPath{
       this, "NodeEmbeddingModelPath", "",
       "Path to the ONNX model file for the node embedding / graph construction metric model"};
-  Gaudi::Property<float>       m_edgeBuildingRadius{this, "EdgeBuildingRadius", 0.1f,
+  Gaudi::Property<float> m_edgeBuildingRadius{this, "EdgeBuildingRadius", 0.1f,
                                               "The radius parameter for the KD-Tree that is used in edge building"};
-  Gaudi::Property<float>       m_edgeBuildingKnn{this, "EdgeBuildingKnn", 100.f,
+  Gaudi::Property<float> m_edgeBuildingKnn{this, "EdgeBuildingKnn", 100.f,
                                            "The KNN parameter for the KD-Tree that is used in edge building"};
   Gaudi::Property<std::string> m_inputFeaturesEmbedding{
       this, "InputFeaturesEmbedding", "r,phi,z,t",
@@ -133,6 +133,21 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
   Gaudi::Property<uint32_t> m_minHitsPerTrk{this, "MinHitsPerTrack", 3,
                                             "Minimum number of hits per track for it to be considered for the output"};
 
+  Gaudi::Property<std::string> m_trackBuilding{
+      this, "TrackBuilding", "connected-components",
+      "Track building algorithm: \"connected-components\" emits every connected component of the classified graph as "
+      "one candidate (Acts' BoostTrackBuilding, which ignores the edge scores); \"cc-and-walk\" additionally resolves "
+      "the components that are not already a path by walking them along the best-scoring edges, as in the ExaTrkX / "
+      "GNN4ITk pipeline."};
+  Gaudi::Property<float> m_walkAddScore{
+      this, "WalkAddScore", 0.6f,
+      "\"cc-and-walk\" only: a neighbour whose edge scores above this is always followed, and the walk branches if "
+      "several do."};
+  Gaudi::Property<float> m_walkMinScore{
+      this, "WalkMinScore", 0.1f,
+      "\"cc-and-walk\" only: if no neighbour reaches WalkAddScore, the best one is followed if it scores above this, "
+      "otherwise the walk stops. Must not be above WalkAddScore."};
+
   /// @name Kalman-fit configuration
   ///@{
   Gaudi::Property<bool> m_propagateBackward{this, "PropagateBackward", false, "Extrapolates tracks towards beamline."};
@@ -165,6 +180,7 @@ private:
   std::vector<std::pair<double, double>>     m_phiBinEdges{};
   std::vector<int>                           m_embeddingFeatureIndices{};
   std::vector<int>                           m_edgeFeatureIndices{};
+  int                                        m_radiusFeatureIndex{-1};
   std::vector<std::vector<int>>              m_edgeClassifierFeatureIndices{};
   std::unique_ptr<ActsPlugins::GnnPipeline>  m_pipeline{nullptr};
   std::unique_ptr<const Acts::Logger>        m_logger{nullptr};

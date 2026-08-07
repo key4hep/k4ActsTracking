@@ -85,7 +85,7 @@ public:
     /// The padding edges are self loops on the last (padding) node, so they
     /// touch no real node, and PaddedEdgeRemoval drops them again after the
     /// classification. Needs keepPadding. 0 disables it.
-    int fixedEdgeLength{0};
+    int   fixedEdgeLength{0};
     float rVal{1.6};                 // Same as TorchMetricLearning
     float knnVal{500.};              // Same as TorchMetricLearning
     bool  shuffleDirections{false};  // Same as TorchMetricLearning

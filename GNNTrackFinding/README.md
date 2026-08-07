@@ -298,6 +298,9 @@ found.
 
 | Property | Default | Description |
 | --- | --- | --- |
+| `TrackBuilding` | `"connected-components"` | Track building algorithm, see below |
+| `WalkAddScore` | `0.6` | `"cc-and-walk"` only: score above which a neighbour is always followed |
+| `WalkMinScore` | `0.1` | `"cc-and-walk"` only: score below which the walk stops |
 | `MinHitsPerTrack` | `3` | Minimum number of hits for a candidate to be fitted |
 | `PropagateBackward` | `false` | Extrapolate the fitted tracks towards the beamline |
 | `InitialTrackError_Pos` | `10 um` | Initial uncertainty of the local position |
@@ -305,6 +308,46 @@ found.
 | `InitialTrackError_Lambda` | `1 degree` | Initial uncertainty of lambda |
 | `InitialTrackError_RelP` | `0.25` | Initial relative momentum uncertainty |
 | `InitialTrackError_Time` | `100 ns` | Initial uncertainty of the time |
+
+#### Track building algorithms
+
+`"connected-components"` (the default) is Acts' `BoostTrackBuilding`: it emits
+every weakly connected component of the classified graph as one candidate. It is
+simple and fast, but it never looks at the edge scores, and it makes no attempt
+to separate tracks — two that share a single surviving edge come out as one
+candidate, and every hit that ended up with no edge becomes a candidate of its
+own.
+
+`"cc-and-walk"` is the algorithm the ExaTrkX / GNN4ITk pipeline uses:
+
+1. the connected components are found, as above;
+2. a component in which every hit has at most one incoming and one outgoing edge
+   is already a path and is accepted as it is, whatever its scores — the score
+   cut has already happened, in the edge classifier;
+3. any other component is *walked*: starting from its innermost unused hit the
+   graph is followed outwards, the longest path that can be reached is taken as
+   a candidate, its hits are retired, and the search restarts from the next
+   unused hit. Candidates shorter than `MinHitsPerTrack` are dropped rather than
+   emitted, which is also what removes the isolated hits.
+
+The walk is steered by two thresholds. Every neighbour scoring above
+`WalkAddScore` is followed — the walk branches if several do, and the longest
+branch wins. If none reaches it, only the single best neighbour is followed, and
+only if it scores above `WalkMinScore`.
+
+To make "incoming", "outgoing" and "outwards" mean something, the graph is
+directed by ordering the two hits of each edge by radius, with the node index
+breaking ties. That is a strict total order, so the directed graph is acyclic by
+construction and the walk cannot loop. `r` is added to the extracted hit features
+automatically when this algorithm is selected.
+
+Ties between two equally long paths go to the lower node index, so the same event
+always gives the same tracks.
+
+On the 10-event sample used during development, switching from
+`"connected-components"` to `"cc-and-walk"` took the candidate count from 114 to
+4 while the number of fitted tracks stayed the same (5 vs 4) — i.e. it removes
+almost only candidates that the fit was going to reject anyway.
 
 ### Monitoring and debugging
 
