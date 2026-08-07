@@ -8,3 +8,4 @@ MAIA_v0.root 3a6b63c917c3777a30fc577e58dc4ad5
 MuColl_v1.root ecec81e34a3a433e8034ff1d1865b151
 MuSIC_v1.root d20172c3e3561774c012f0ff3bad5ea9
 MuSIC_v2.root 0d0413d152f404d30b4f558328d22d41
+MAIA_v0_gen3_material_map.json 60d2c30473f482eb511f6bd1f77872aa
