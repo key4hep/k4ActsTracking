@@ -87,6 +87,18 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
       "with a fixed-size input. The padding rows are appended after the hits of the segment and their embedding is "
       "discarded before the edge building. A segment with more hits than this is an error. 0 (the default) "
       "disables the padding."};
+  Gaudi::Property<bool> m_keepEmbeddingPadding{
+      this, "KeepEmbeddingPadding", false,
+      "If true, the zero rows added by EmbeddingFixedInputLength are kept in the node features handed to the edge "
+      "classifiers, for classifier models that are themselves exported at that same fixed number of nodes. The edge "
+      "building always runs on the real hits alone, whatever this is set to, so the padding rows arrive at the "
+      "classifiers as nodes without edges. Needs EmbeddingFixedInputLength > 0."};
+  Gaudi::Property<int> m_edgeClassifierFixedInputLength{
+      this, "EdgeClassifierFixedInputLength", 0,
+      "If > 0, pad the edge index and the edge features up to this many edges, for edge classifier models exported "
+      "with a fixed-size edge input. The padding edges are self loops on the last padding node, so they touch no "
+      "real hit, and they are removed again after the classification. A segment with more edges than this is an "
+      "error. Needs KeepEmbeddingPadding, and only one edge classifier. 0 (the default) disables the padding."};
 
   Gaudi::Property<bool> m_computeEdgeFeatures{
       this, "ComputeEdgeFeatures", false,

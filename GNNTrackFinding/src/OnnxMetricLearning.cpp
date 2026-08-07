@@ -142,7 +142,8 @@ OnnxMetricLearning::OnnxMetricLearning(const Config& cfg, std::unique_ptr<const 
   }
 
   if (config().fixedInputLength > 0) {
-    ACTS_INFO(fmt::format("Zero-padding the model input up to {} nodes", config().fixedInputLength));
+    ACTS_INFO(fmt::format("Zero-padding the model input up to {} nodes, the padding rows are {} the edge classifiers",
+                          config().fixedInputLength, config().keepPadding ? "kept for" : "dropped before"));
   }
 
   // The edge feature computation is optional, but if it is configured it has to
@@ -259,11 +260,13 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
   }
   ACTS_DEBUG(fmt::format("Embedding output tensor shape: [{}, {}]", embeddedPoints.size(0), embeddedPoints.size(1)));
 
-  // Drop the embedding of the padding rows again. They are not real hits, and
-  // the network maps an all-zero row onto some arbitrary (bias dependent) point
-  // in embedding space, so leaving them in would let edge building connect them
-  // to each other and to real nodes. Slicing along the node axis of a contiguous
-  // tensor is a view, so this costs nothing.
+  // Drop the embedding of the padding rows again. This is unconditional, and
+  // independent of Config::keepPadding below: the padding rows are not hits, and
+  // the network maps every all-zero row onto the same arbitrary (bias dependent)
+  // point in embedding space, so leaving them in would have the edge building
+  // connect all of them to each other and to whatever real node is nearby.
+  // Slicing along the node axis of a contiguous tensor is a view, so this costs
+  // nothing.
   if (paddedNumNodes != numNodes) {
     embeddedPoints = embeddedPoints.slice(0, 0, static_cast<int64_t>(numNodes));
     ACTS_DEBUG(fmt::format("Dropped {} padding nodes, {} real nodes go into the edge building",
@@ -279,19 +282,75 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
   ACTS_VERBOSE(fmt::format("Shape of built edges: ({}, {})", edgeList.size(0), edgeList.size(1)));
   ACTS_VERBOSE(fmt::format("Slice of edgeList: {}", fmt::streamed(edgeList.slice(1, 0, 5))));
 
-  auto edgeFeatures = buildEdgeFeatures(inputValues, numNodes, fullNumFeatures, edgeList, execContext);
+  auto edgeFeatures = buildEdgeFeatures(inputValues, numNodes, fullNumFeatures, edgeList);
+
+  // Optionally pad the graph up to a fixed number of edges, for classifier
+  // models exported with a fixed-size edge input. The padding edges are self
+  // loops on the last (padding) node row: a self loop carries no connectivity,
+  // it touches no real node so it cannot disturb their message passing, and it
+  // is what PaddedEdgeRemoval recognises them by once the classifiers are done -
+  // the edge building never produces one.
+  const std::size_t numEdges = static_cast<std::size_t>(edgeList.size(1));
+  const std::size_t fixedEdgeLength =
+      config().fixedEdgeLength > 0 ? static_cast<std::size_t>(config().fixedEdgeLength) : 0;
+  if (fixedEdgeLength != 0 && fixedEdgeLength < numEdges) {
+    throw std::runtime_error(fmt::format(
+        "Cannot zero-pad the edge classifier input to a fixed length of {} edges, this segment already has {}. "
+        "Increase EdgeClassifierFixedInputLength, or lower EdgeBuildingRadius / EdgeBuildingKnn so that fewer edges "
+        "are built.",
+        fixedEdgeLength, numEdges));
+  }
+  if (fixedEdgeLength > numEdges) {
+    const int64_t numPadEdges = static_cast<int64_t>(fixedEdgeLength - numEdges);
+    const int64_t padNode     = static_cast<int64_t>(paddedNumNodes) - 1;
+    edgeList                  = torch::cat({edgeList, torch::full({2, numPadEdges}, padNode, edgeList.options())}, 1);
+    if (edgeFeatures.has_value()) {
+      // All six features of a self loop on an all-zero node are zero anyway, so
+      // this is the same thing buildEdgeFeatures() would have produced for them.
+      edgeFeatures = torch::cat(
+          {*edgeFeatures, torch::zeros({numPadEdges, static_cast<int64_t>(kNumEdgeFeatures)}, edgeFeatures->options())},
+          0);
+    }
+    ACTS_DEBUG(fmt::format("Padded {} real edges with {} self loops on node {}, {} edges go to the edge classifiers",
+                           numEdges, numPadEdges, padNode, fixedEdgeLength));
+  }
+
+  std::optional<ActsPlugins::Tensor<float>> actsEdgeFeatures{};
+  if (edgeFeatures.has_value()) {
+    actsEdgeFeatures.emplace(ActsPlugins::detail::torchToActsTensor<float>(edgeFeatures->contiguous(), execContext));
+    ACTS_DEBUG(
+        fmt::format("Edge feature tensor shape: [{}, {}]", actsEdgeFeatures->shape()[0], actsEdgeFeatures->shape()[1]));
+  }
+
+  // The node features handed on to the rest of the pipeline normally cover the
+  // real hits only. An edge classifier that was itself exported at a fixed
+  // number of nodes needs the padding rows back, so optionally re-pad the
+  // full-feature buffer to the length the embedding model was fed. Every real
+  // node keeps its row index, so the extra rows are just nodes without edges,
+  // and the edge index built above stays valid. Only the edge classifiers look
+  // at this node count - the track building sizes its graph from the space
+  // point IDs, which stay at the real hits.
+  std::vector<float> paddedInputValues{};
+  if (config().keepPadding && paddedNumNodes != numNodes) {
+    // The rows past the real hits are never written to, so zero-initialise.
+    paddedInputValues.assign(paddedNumNodes * fullNumFeatures, 0.f);
+    std::copy(inputValues.begin(), inputValues.end(), paddedInputValues.begin());
+    ACTS_DEBUG(fmt::format("Kept {} padding nodes, {} rows go on to the edge classifiers", paddedNumNodes - numNodes,
+                           paddedNumNodes));
+  }
+  std::vector<float>& downstreamValues = paddedInputValues.empty() ? inputValues : paddedInputValues;
 
   return {ActsPlugins::detail::torchToActsTensor<float>(
-              // Return the original full-feature node tensor to the pipeline
-              // (do not reduce the node features returned to the pipeline).
-              ActsPlugins::detail::vectorToTensor2D(inputValues, fullNumFeatures), execContext),
-          ActsPlugins::detail::torchToActsTensor<int64_t>(edgeList, execContext), std::move(edgeFeatures),
+              // The full-feature node tensor, unscaled: each stage selects and
+              // scales the features it needs from it.
+              ActsPlugins::detail::vectorToTensor2D(downstreamValues, fullNumFeatures), execContext),
+          ActsPlugins::detail::torchToActsTensor<int64_t>(edgeList, execContext), std::move(actsEdgeFeatures),
           std::nullopt};
 }
 
-std::optional<ActsPlugins::Tensor<float>> OnnxMetricLearning::buildEdgeFeatures(
-    const std::vector<float>& inputValues, std::size_t numNodes, std::size_t fullNumFeatures,
-    const torch::Tensor& edgeList, const ActsPlugins::ExecutionContext& execContext) const {
+std::optional<torch::Tensor> OnnxMetricLearning::buildEdgeFeatures(const std::vector<float>& inputValues,
+                                                                   std::size_t numNodes, std::size_t fullNumFeatures,
+                                                                   const torch::Tensor& edgeList) const {
   if (config().edgeFeatureIndices.empty()) {
     return std::nullopt;
   }
@@ -342,9 +401,7 @@ std::optional<ActsPlugins::Tensor<float>> OnnxMetricLearning::buildEdgeFeatures(
       hasDr, torch::clamp(dphi / torch::where(hasDr, dr, torch::ones_like(dr)), -100.f, 100.f), torch::zeros_like(dr));
   const auto rphislope = 0.5f * (tgtValues.select(1, eR) + srcValues.select(1, eR)) * phislope;
 
-  auto edgeFeatures = ActsPlugins::detail::torchToActsTensor<float>(
-      torch::stack({dr, dphi, dz, deta, phislope, rphislope}, 1).contiguous(), execContext);
-  ACTS_DEBUG(fmt::format("Edge feature tensor shape: [{}, {}]", edgeFeatures.shape()[0], edgeFeatures.shape()[1]));
-
-  return edgeFeatures;
+  // Left as a torch tensor so that the caller can still pad it before it is
+  // handed over to the pipeline.
+  return torch::stack({dr, dphi, dz, deta, phislope, rphislope}, 1).contiguous();
 }

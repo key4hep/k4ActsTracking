@@ -19,6 +19,7 @@
 #include "GNNTrackFinder.h"
 
 #include "OnnxMetricLearning.h"
+#include "PaddedEdgeRemoval.h"
 
 #if __has_include("ActsPlugins/Gnn/Stages.hpp")
 #include <ActsPlugins/Gnn/BoostTrackBuilding.hpp>
@@ -206,6 +207,36 @@ StatusCode GNNTrackFinder::initialize() {
     return StatusCode::FAILURE;
   }
 
+  // There is no padding to keep without the padding itself
+  if (m_keepEmbeddingPadding.value() && m_embeddingFixedInputLength.value() <= 0) {
+    error() << "KeepEmbeddingPadding is set, but EmbeddingFixedInputLength is 0, so the embedding input is not padded"
+            << endmsg;
+    return StatusCode::FAILURE;
+  }
+
+  if (m_edgeClassifierFixedInputLength.value() > 0) {
+    // The padding edges are self loops on a padding node, so there has to be
+    // one. Anchoring them on a real hit instead would feed that hit as many
+    // spurious messages as there are padding edges.
+    if (!m_keepEmbeddingPadding.value()) {
+      error() << "EdgeClassifierFixedInputLength needs KeepEmbeddingPadding, the padding edges are anchored on a "
+                 "padding node so that they touch no real hit"
+              << endmsg;
+      return StatusCode::FAILURE;
+    }
+    // The padding happens once, in the graph construction. Every classifier
+    // applies its own cut, so from the second one on the edge count is whatever
+    // survived the previous cut and no longer the fixed length.
+    if (nEdgeClassifiers > 1) {
+      error() << fmt::format(
+                     "EdgeClassifierFixedInputLength does not work with {} chained edge classifiers: each one "
+                     "cuts on the score, so only the first would see the padded edge count",
+                     nEdgeClassifiers)
+              << endmsg;
+      return StatusCode::FAILURE;
+    }
+  }
+
   // The models divide each feature by its scale, so there has to be exactly one
   // scale per feature (or none at all, in which case no scaling is applied).
   const auto checkScales = [this](const std::string& what, std::size_t nFeatures, std::size_t nScales) {
@@ -319,6 +350,8 @@ void GNNTrackFinder::buildPipeline(const std::vector<float>&              embedd
                                  .edgeFeatureIndices = m_edgeFeatureIndices,
                                  .edgeFeatureScales  = edgeFeatureScales,
                                  .fixedInputLength   = m_embeddingFixedInputLength.value(),
+                                 .keepPadding        = m_keepEmbeddingPadding.value(),
+                                 .fixedEdgeLength    = m_edgeClassifierFixedInputLength.value(),
                                  .rVal               = m_edgeBuildingRadius.value(),
                                  .knnVal             = m_edgeBuildingKnn.value(),
                                  .device             = m_runDevice},
@@ -337,6 +370,12 @@ void GNNTrackFinder::buildPipeline(const std::vector<float>&              embedd
                                                 // CUDA execution provider.
                                                 .device = m_runDevice},
         m_logger->clone(name() + fmt::format(".EdgeClassifier{}", i))));
+  }
+
+  // The padding edges have to be gone before the track building, so this runs
+  // as the last link of the classifier chain.
+  if (m_edgeClassifierFixedInputLength.value() > 0) {
+    edgeClassifiers.push_back(std::make_shared<PaddedEdgeRemoval>(m_logger->clone(name() + ".PaddedEdgeRemoval")));
   }
 
   auto trackBuilder = std::make_shared<ActsPlugins::BoostTrackBuilding>(ActsPlugins::BoostTrackBuilding::Config{},

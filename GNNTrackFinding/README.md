@@ -127,6 +127,8 @@ list lengths are rejected in `initialize`.
 | `InputFeaturesEmbedding` | `"r,phi,z,t"` | Comma separated features for the embedding model |
 | `InputScalesEmbedding` | `"1,1,1,1"` | Comma separated scales, each feature is divided by its scale |
 | `EmbeddingFixedInputLength` | `0` | If `> 0`, pad the embedding model input with all-zero rows up to this many nodes. `0` disables the padding |
+| `KeepEmbeddingPadding` | `False` | Keep those padding rows in the node features handed to the edge classifiers, see below |
+| `EdgeClassifierFixedInputLength` | `0` | If `> 0`, pad the edge index and edge features up to this many edges, see below |
 | `InputFeaturesEdgeClassifier` | `["r,phi,z,t"]` | Per classifier list of comma separated features |
 | `InputScalesEdgeClassifier` | `["1,1,1,1"]` | Per classifier list of comma separated scales |
 | `ComputeEdgeFeatures` | `False` | Compute the six edge features a three-input classifier needs, see below |
@@ -169,10 +171,67 @@ EmbeddingFixedInputLength=4096,
 The padding rows are appended *after* the hits of the segment, so every real hit
 keeps the row index the rest of the pipeline identifies it by. Their embedding is
 discarded again as soon as the inference returns, before the edge building: an
-all-zero row is not a hit, and the network maps it onto some arbitrary point in
-embedding space that would otherwise get connected to its neighbours and to real
-hits. Nothing downstream of the embedding stage — edge building, the edge
-classifiers, the track building — ever sees the padding.
+all-zero row is not a hit, and the network maps every one of them onto the same
+arbitrary point in embedding space, which would otherwise get connected to its
+neighbours and to real hits. That part is unconditional — the edge building
+always runs on the real hits alone.
+
+By default nothing downstream of the embedding stage sees the padding either.
+`KeepEmbeddingPadding` changes that for the node features only:
+
+```python
+EmbeddingFixedInputLength=100,
+KeepEmbeddingPadding=True,
+```
+
+The edge classifiers then get a node tensor of `EmbeddingFixedInputLength` rows,
+of which the trailing ones are all-zero nodes with no edges attached. This is for
+classifier models that were themselves exported at a fixed number of nodes. It
+does not affect the edge index, the edge features or the track building, which
+sizes its graph from the space point IDs and so always stays on the real hits.
+
+#### Padding the edge index to a fixed length
+
+A classifier exported at a fixed node count is usually also exported at a fixed
+*edge* count. `EdgeClassifierFixedInputLength` pads the edge index and, when they
+are computed, the edge features up to that many edges:
+
+```python
+EmbeddingFixedInputLength=100,
+KeepEmbeddingPadding=True,
+EdgeClassifierFixedInputLength=2000,
+```
+
+The padding edges are **self loops on the last padding node**. That choice does
+the work here:
+
+- they touch no real hit, so they add nothing to any real node's message passing
+  (anchoring them on a real hit instead would feed it as many spurious messages
+  as there are padding edges);
+- the edge building never produces a self loop, so they can be told apart from
+  real edges afterwards without bookkeeping;
+- a `PaddedEdgeRemoval` stage, appended to the classifier chain automatically,
+  drops every self loop once the classifiers are done.
+
+That last stage is not optional. A padding edge that passed the score cut would
+otherwise reach the track building pointing at a row index beyond the space point
+IDs, and Boost grows its graph to fit that index while the label vector stays at
+the number of space points — which overruns it.
+
+This needs `KeepEmbeddingPadding` (there has to be a padding node to anchor the
+self loops on) and only works with a **single** edge classifier: the padding
+happens once, in the graph construction, and each classifier cuts on the score,
+so from the second one on the edge count is whatever survived rather than the
+fixed length. Both are rejected in `initialize`, as is a segment with more real
+edges than the configured length.
+
+#### A warning about fixed-size exports
+
+Check that a model exported this way was exported with `model.eval()`. If its
+BatchNorm statistics are computed at runtime instead of frozen, the padding rows
+enter the normalisation and change the scores of the real edges — the padding is
+then not inert no matter how carefully it is chosen, and the same edge gets a
+different score depending on what else is in its segment.
 
 This is off by default (`0`) and only affects the node embedding stage. A segment
 with **more** hits than `EmbeddingFixedInputLength` is an error: either raise the

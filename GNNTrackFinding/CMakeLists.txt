@@ -40,6 +40,7 @@ install(TARGETS GNNTrackingONNXInferenceModels
 set(sources
     src/GNNTrackFinder.cpp
     src/OnnxMetricLearning.cpp
+    src/PaddedEdgeRemoval.cpp
 )
 
 gaudi_add_module(GNNTrackingTrackFinding
