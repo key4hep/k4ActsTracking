@@ -127,8 +127,12 @@ list lengths are rejected in `initialize`.
 | `InputFeaturesEmbedding` | `"r,phi,z,t"` | Comma separated features for the embedding model |
 | `InputScalesEmbedding` | `"1,1,1,1"` | Comma separated scales, each feature is divided by its scale |
 | `EmbeddingFixedInputLength` | `0` | If `> 0`, pad the embedding model input with all-zero rows up to this many nodes. `0` disables the padding |
+| `KeepEmbeddingPadding` | `False` | Keep those padding rows in the node features handed to the edge classifiers, see below |
+| `EdgeClassifierFixedInputLength` | `0` | If `> 0`, pad the edge index and edge features up to this many edges, see below |
 | `InputFeaturesEdgeClassifier` | `["r,phi,z,t"]` | Per classifier list of comma separated features |
 | `InputScalesEdgeClassifier` | `["1,1,1,1"]` | Per classifier list of comma separated scales |
+| `ComputeEdgeFeatures` | `False` | Compute the six edge features a three-input classifier needs, see below |
+| `EdgeFeatureScales` | `""` | Scales of `r`, `phi`, `z`, `eta` used for that computation |
 
 The supported (case insensitive) feature names are
 
@@ -167,10 +171,67 @@ EmbeddingFixedInputLength=4096,
 The padding rows are appended *after* the hits of the segment, so every real hit
 keeps the row index the rest of the pipeline identifies it by. Their embedding is
 discarded again as soon as the inference returns, before the edge building: an
-all-zero row is not a hit, and the network maps it onto some arbitrary point in
-embedding space that would otherwise get connected to its neighbours and to real
-hits. Nothing downstream of the embedding stage — edge building, the edge
-classifiers, the track building — ever sees the padding.
+all-zero row is not a hit, and the network maps every one of them onto the same
+arbitrary point in embedding space, which would otherwise get connected to its
+neighbours and to real hits. That part is unconditional — the edge building
+always runs on the real hits alone.
+
+By default nothing downstream of the embedding stage sees the padding either.
+`KeepEmbeddingPadding` changes that for the node features only:
+
+```python
+EmbeddingFixedInputLength=100,
+KeepEmbeddingPadding=True,
+```
+
+The edge classifiers then get a node tensor of `EmbeddingFixedInputLength` rows,
+of which the trailing ones are all-zero nodes with no edges attached. This is for
+classifier models that were themselves exported at a fixed number of nodes. It
+does not affect the edge index, the edge features or the track building, which
+sizes its graph from the space point IDs and so always stays on the real hits.
+
+#### Padding the edge index to a fixed length
+
+A classifier exported at a fixed node count is usually also exported at a fixed
+*edge* count. `EdgeClassifierFixedInputLength` pads the edge index and, when they
+are computed, the edge features up to that many edges:
+
+```python
+EmbeddingFixedInputLength=100,
+KeepEmbeddingPadding=True,
+EdgeClassifierFixedInputLength=2000,
+```
+
+The padding edges are **self loops on the last padding node**. That choice does
+the work here:
+
+- they touch no real hit, so they add nothing to any real node's message passing
+  (anchoring them on a real hit instead would feed it as many spurious messages
+  as there are padding edges);
+- the edge building never produces a self loop, so they can be told apart from
+  real edges afterwards without bookkeeping;
+- a `PaddedEdgeRemoval` stage, appended to the classifier chain automatically,
+  drops every self loop once the classifiers are done.
+
+That last stage is not optional. A padding edge that passed the score cut would
+otherwise reach the track building pointing at a row index beyond the space point
+IDs, and Boost grows its graph to fit that index while the label vector stays at
+the number of space points — which overruns it.
+
+This needs `KeepEmbeddingPadding` (there has to be a padding node to anchor the
+self loops on) and only works with a **single** edge classifier: the padding
+happens once, in the graph construction, and each classifier cuts on the score,
+so from the second one on the edge count is whatever survived rather than the
+fixed length. Both are rejected in `initialize`, as is a segment with more real
+edges than the configured length.
+
+#### A warning about fixed-size exports
+
+Check that a model exported this way was exported with `model.eval()`. If its
+BatchNorm statistics are computed at runtime instead of frozen, the padding rows
+enter the normalisation and change the scores of the real edges — the padding is
+then not inert no matter how carefully it is chosen, and the same edge gets a
+different score depending on what else is in its segment.
 
 This is off by default (`0`) and only affects the node embedding stage. A segment
 with **more** hits than `EmbeddingFixedInputLength` is an error: either raise the
@@ -178,6 +239,39 @@ length, or raise `ThetaBins` / `PhiBins` so that fewer hits land in one segment.
 When the model itself declares a fixed input length, a mismatch between it and
 the padded input is reported with a message naming this property rather than as a
 bare onnxruntime shape error.
+
+#### Edge features
+
+An edge classifier that was exported with **three inputs** takes a per-edge
+feature tensor (`edge_attr`) alongside the node features and the edge index. The
+six features it expects are the ones Acts computes in `makeEdgeFeatures()` —
+`dr`, `dphi`, `dz`, `deta`, `phislope` and `rphislope` — but Acts only fills them
+in its CUDA module map stage, so this package computes them itself as part of the
+graph construction.
+
+Those six are always computed from `r`, `phi`, `z` and `eta`, so there is nothing
+to select — only whether to compute them at all, and with which scales. The
+scales go **in that order**, whatever order the models take their own inputs in.
+
+```python
+ComputeEdgeFeatures=True,
+EdgeFeatureScales="1000,3.14,1000,1",
+```
+
+`phislope` is `dphi / dr` clamped to `[-100, 100]` and `rphislope` is that times
+the mean radius of the two hits; edges between hits at the same radius get a flat
+zero for both. The `dphi` wrap-around assumes that `phi` is scaled by pi, as in
+the example above.
+
+The edge classifier scales its *node* input (`InputScalesEdgeClassifier`) but
+passes the edge input through as it is, so these have to be the scaling the
+classifier was trained with — it is what the edge features are computed from.
+
+Leaving `ComputeEdgeFeatures` off (the default) computes no edge features, which
+is what a two-input classifier expects. Configuring a three-input model without
+it fails with *"ONNX edge classifier model has three inputs, but no edge features
+provided!"* from Acts. Setting `EdgeFeatureScales` while the flag is off is
+rejected in `initialize` rather than silently ignored.
 
 ### Segmentation
 
@@ -204,6 +298,9 @@ found.
 
 | Property | Default | Description |
 | --- | --- | --- |
+| `TrackBuilding` | `"connected-components"` | Track building algorithm, see below |
+| `WalkAddScore` | `0.6` | `"cc-and-walk"` only: score above which a neighbour is always followed |
+| `WalkMinScore` | `0.1` | `"cc-and-walk"` only: score below which the walk stops |
 | `MinHitsPerTrack` | `3` | Minimum number of hits for a candidate to be fitted |
 | `PropagateBackward` | `false` | Extrapolate the fitted tracks towards the beamline |
 | `InitialTrackError_Pos` | `10 um` | Initial uncertainty of the local position |
@@ -211,6 +308,46 @@ found.
 | `InitialTrackError_Lambda` | `1 degree` | Initial uncertainty of lambda |
 | `InitialTrackError_RelP` | `0.25` | Initial relative momentum uncertainty |
 | `InitialTrackError_Time` | `100 ns` | Initial uncertainty of the time |
+
+#### Track building algorithms
+
+`"connected-components"` (the default) is Acts' `BoostTrackBuilding`: it emits
+every weakly connected component of the classified graph as one candidate. It is
+simple and fast, but it never looks at the edge scores, and it makes no attempt
+to separate tracks — two that share a single surviving edge come out as one
+candidate, and every hit that ended up with no edge becomes a candidate of its
+own.
+
+`"cc-and-walk"` is the algorithm the ExaTrkX / GNN4ITk pipeline uses:
+
+1. the connected components are found, as above;
+2. a component in which every hit has at most one incoming and one outgoing edge
+   is already a path and is accepted as it is, whatever its scores — the score
+   cut has already happened, in the edge classifier;
+3. any other component is *walked*: starting from its innermost unused hit the
+   graph is followed outwards, the longest path that can be reached is taken as
+   a candidate, its hits are retired, and the search restarts from the next
+   unused hit. Candidates shorter than `MinHitsPerTrack` are dropped rather than
+   emitted, which is also what removes the isolated hits.
+
+The walk is steered by two thresholds. Every neighbour scoring above
+`WalkAddScore` is followed — the walk branches if several do, and the longest
+branch wins. If none reaches it, only the single best neighbour is followed, and
+only if it scores above `WalkMinScore`.
+
+To make "incoming", "outgoing" and "outwards" mean something, the graph is
+directed by ordering the two hits of each edge by radius, with the node index
+breaking ties. That is a strict total order, so the directed graph is acyclic by
+construction and the walk cannot loop. `r` is added to the extracted hit features
+automatically when this algorithm is selected.
+
+Ties between two equally long paths go to the lower node index, so the same event
+always gives the same tracks.
+
+On the 10-event sample used during development, switching from
+`"connected-components"` to `"cc-and-walk"` took the candidate count from 114 to
+4 while the number of fitted tracks stayed the same (5 vs 4) — i.e. it removes
+almost only candidates that the fit was going to reject anyway.
 
 ### Monitoring and debugging
 
