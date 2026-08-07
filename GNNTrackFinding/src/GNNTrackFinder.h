@@ -88,6 +88,18 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
       "discarded before the edge building. A segment with more hits than this is an error. 0 (the default) "
       "disables the padding."};
 
+  Gaudi::Property<bool> m_computeEdgeFeatures{
+      this, "ComputeEdgeFeatures", false,
+      "If true, compute the six edge features (dr, dphi, dz, deta, phislope, rphislope) for every built edge, which "
+      "is what edge classifier models with three inputs take as their \"edge_attr\" input. False (the default) "
+      "computes none, which is what two-input models expect."};
+  Gaudi::Property<std::string> m_edgeFeatureScales{
+      this, "EdgeFeatureScales", "",
+      "Comma-separated list of the four scales the edge features are computed with. They are always computed from "
+      "r, phi, z and eta, so these are the scales of those four - in that order, whichever order the models take "
+      "their own inputs in. The edge features are handed to the classifiers unscaled, so these have to be the "
+      "scales the classifier was trained with. Empty applies no scaling. Only read if ComputeEdgeFeatures is true."};
+
   Gaudi::Property<std::vector<std::string>> m_edgeClassifierModelPath{
       this, "EdgeClassifierModelPath", {}, "List of paths to ONNX model files for edge classifier(s)."};
   Gaudi::Property<std::vector<std::string>> m_inputFeaturesEdgeClassifier{
@@ -132,7 +144,7 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
 private:
   /// Construct the pipeline stages from the (already validated) configuration.
   /// Loads the ONNX models and throws if that or the pipeline setup fails.
-  void buildPipeline(const std::vector<float>&              embeddingScales,
+  void buildPipeline(const std::vector<float>& embeddingScales, const std::vector<float>& edgeFeatureScales,
                      const std::vector<std::vector<float>>& edgeClassifierScales);
 
   std::vector<std::string>                   m_allHitFeatures{};
@@ -140,6 +152,7 @@ private:
   std::vector<std::pair<double, double>>     m_thetaBinEdges{};
   std::vector<std::pair<double, double>>     m_phiBinEdges{};
   std::vector<int>                           m_embeddingFeatureIndices{};
+  std::vector<int>                           m_edgeFeatureIndices{};
   std::vector<std::vector<int>>              m_edgeClassifierFeatureIndices{};
   std::unique_ptr<ActsPlugins::GnnPipeline>  m_pipeline{nullptr};
   std::unique_ptr<const Acts::Logger>        m_logger{nullptr};

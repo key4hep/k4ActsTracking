@@ -34,8 +34,12 @@ namespace ActsPlugins {
 }  // namespace ActsPlugins
 #endif
 
+#include <torch/torch.h>
+
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -44,10 +48,28 @@ namespace ActsPlugins {
 
 class OnnxMetricLearning final : public ActsPlugins::GraphConstructionBase {
 public:
+  /// Number of node features the (optional) edge feature computation reads,
+  /// see Config::edgeFeatureIndices
+  static constexpr std::size_t kNumEdgeFeatureInputs = 4;
+  /// Number of edge features it produces, see Config::edgeFeatureIndices
+  static constexpr std::size_t kNumEdgeFeatures = 6;
+
   struct Config {
     std::string        modelPath{};
     std::vector<int>   selectedFeatures{};  // If empty, use all features
     std::vector<float> featureScales{};     // Must be same size as selectedFeatures
+    /// Indices of the r, phi, z and eta node features (in that order) in the
+    /// full per-hit feature vector, from which the six edge features (dr, dphi,
+    /// dz, deta, phislope, rphislope) are computed for every built edge. Edge
+    /// classifier models with three inputs take these as their `edge_attr`
+    /// input. Empty (the default) computes no edge features, which is what
+    /// two-input models expect.
+    std::vector<int> edgeFeatureIndices{};
+    /// Scales for edgeFeatureIndices. The edge features are computed from the
+    /// scaled node values, so these have to be the scales the edge classifier
+    /// was trained with. Must be the same size as edgeFeatureIndices, or empty
+    /// for no scaling.
+    std::vector<float> edgeFeatureScales{};
     /// If > 0, the model input is padded with all-zero rows up to this many
     /// nodes, for models exported with a fixed-size input. The embedding of the
     /// padding rows is discarded before the edge building. 0 disables it.
@@ -81,6 +103,18 @@ public:
   int64_t inputLength() const { return m_inputLength; }
 
 private:
+  /// The six edge features (dr, dphi, dz, deta, phislope, rphislope) of every
+  /// edge in @p edgeList, computed from the scaled node values selected by
+  /// Config::edgeFeatureIndices. Returns std::nullopt if no edge feature inputs
+  /// are configured, i.e. if the pipeline is not supposed to produce any.
+  ///
+  /// @param inputValues the flat (numNodes x fullNumFeatures) hit feature buffer
+  /// @param edgeList the (2 x numEdges) edge index tensor, on the pipeline device
+  std::optional<ActsPlugins::Tensor<float>> buildEdgeFeatures(const std::vector<float>& inputValues,
+                                                              std::size_t numNodes, std::size_t fullNumFeatures,
+                                                              const torch::Tensor&                 edgeList,
+                                                              const ActsPlugins::ExecutionContext& execContext) const;
+
   mlutils::ONNXInferenceModel m_model;
 
   Config m_config;

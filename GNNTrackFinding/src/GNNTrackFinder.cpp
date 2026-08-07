@@ -59,6 +59,7 @@ namespace ActsPlugins {
 #include <fmt/ranges.h>
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cctype>
 #include <cmath>
@@ -74,6 +75,12 @@ namespace ActsPlugins {
 #include <vector>
 
 namespace {
+  /// The hit features the six edge features (dr, dphi, dz, deta, phislope,
+  /// rphislope) are computed from. Their meaning is fixed by the formulas, so
+  /// unlike the per-model input features these are not configurable - only
+  /// their scales are, see GNNTrackFinder::m_edgeFeatureScales.
+  const std::array<std::string, OnnxMetricLearning::kNumEdgeFeatureInputs> kEdgeFeatureInputs{"r", "phi", "z", "eta"};
+
   /// Lower-case an (ASCII) configuration string, so that the device
   /// specification can be given in any case.
   std::string toLower(std::string str) {
@@ -186,8 +193,18 @@ StatusCode GNNTrackFinder::initialize() {
 
   const auto embeddingFeatures          = mlutils::parseList<std::string>(m_inputFeaturesEmbedding.value());
   const auto embeddingScales            = mlutils::parseList<float>(m_inputScalesEmbedding.value());
+  const auto edgeFeatureScales          = mlutils::parseList<float>(m_edgeFeatureScales.value());
   const auto edgeClassifierFeaturesList = mlutils::parseMultiList<std::string>(m_inputFeaturesEdgeClassifier.value());
   const auto edgeClassifierScalesList   = mlutils::parseMultiList<float>(m_inputScalesEdgeClassifier.value());
+
+  // The six edge features are defined in terms of r, phi, z and eta, so unlike
+  // the model inputs there is nothing to select: all that is configurable is
+  // whether they are computed at all, and the scales of those four features.
+  const bool computeEdgeFeatures = m_computeEdgeFeatures.value();
+  if (!computeEdgeFeatures && !edgeFeatureScales.empty()) {
+    error() << "EdgeFeatureScales is set, but ComputeEdgeFeatures is false, so no edge features are computed" << endmsg;
+    return StatusCode::FAILURE;
+  }
 
   // The models divide each feature by its scale, so there has to be exactly one
   // scale per feature (or none at all, in which case no scaling is applied).
@@ -201,6 +218,11 @@ StatusCode GNNTrackFinder::initialize() {
     return false;
   };
   if (!checkScales("the node embedding model", embeddingFeatures.size(), embeddingScales.size())) {
+    return StatusCode::FAILURE;
+  }
+  if (computeEdgeFeatures &&
+      !checkScales(fmt::format("the edge feature computation ({}, in that order)", fmt::join(kEdgeFeatureInputs, ", ")),
+                   kEdgeFeatureInputs.size(), edgeFeatureScales.size())) {
     return StatusCode::FAILURE;
   }
   for (std::size_t i = 0; i < nEdgeClassifiers; ++i) {
@@ -230,7 +252,7 @@ StatusCode GNNTrackFinder::initialize() {
   // features it needs from it by index.
   m_allHitFeatures.clear();
   std::unordered_set<std::string> seenFeatures{};
-  const auto                      addFeatures = [&seenFeatures, this](const std::vector<std::string>& features) {
+  const auto                      addFeatures = [&seenFeatures, this](const auto& features) {
     for (const auto& feature : features) {
       if (seenFeatures.insert(feature).second) {
         m_allHitFeatures.push_back(feature);
@@ -238,6 +260,9 @@ StatusCode GNNTrackFinder::initialize() {
     }
   };
   addFeatures(embeddingFeatures);
+  if (computeEdgeFeatures) {
+    addFeatures(kEdgeFeatureInputs);
+  }
   for (const auto& edgeClassifierFeatures : edgeClassifierFeaturesList) {
     addFeatures(edgeClassifierFeatures);
   }
@@ -245,7 +270,7 @@ StatusCode GNNTrackFinder::initialize() {
 
   // Translate the lists of input features into lists of indices in the full
   // per-hit feature vector for each model.
-  const auto featureIndices = [this](const std::vector<std::string>& features) {
+  const auto featureIndices = [this](const auto& features) {
     std::vector<int> indices{};
     indices.reserve(features.size());
     for (const auto& f : features) {
@@ -255,6 +280,7 @@ StatusCode GNNTrackFinder::initialize() {
     return indices;
   };
   m_embeddingFeatureIndices = featureIndices(embeddingFeatures);
+  m_edgeFeatureIndices      = computeEdgeFeatures ? featureIndices(kEdgeFeatureInputs) : std::vector<int>{};
   m_edgeClassifierFeatureIndices.clear();
   m_edgeClassifierFeatureIndices.reserve(nEdgeClassifiers);
   for (const auto& edgeClassifierFeatures : edgeClassifierFeaturesList) {
@@ -274,7 +300,7 @@ StatusCode GNNTrackFinder::initialize() {
   // Building the stages loads the ONNX models, so anything from a missing model
   // file to an inconsistent pipeline shows up here.
   try {
-    buildPipeline(embeddingScales, edgeClassifierScalesList);
+    buildPipeline(embeddingScales, edgeFeatureScales, edgeClassifierScalesList);
   } catch (const std::exception& ex) {
     error() << "Failed to construct the GNN pipeline: " << ex.what() << endmsg;
     return StatusCode::FAILURE;
@@ -283,16 +309,18 @@ StatusCode GNNTrackFinder::initialize() {
   return StatusCode::SUCCESS;
 }
 
-void GNNTrackFinder::buildPipeline(const std::vector<float>&              embeddingScales,
+void GNNTrackFinder::buildPipeline(const std::vector<float>& embeddingScales, const std::vector<float>& edgeFeatureScales,
                                    const std::vector<std::vector<float>>& edgeClassifierScales) {
   auto graphConstructor = std::make_shared<OnnxMetricLearning>(
-      OnnxMetricLearning::Config{.modelPath        = m_nodeEmbeddingModelPath.value(),
-                                 .selectedFeatures = m_embeddingFeatureIndices,
-                                 .featureScales    = embeddingScales,
-                                 .fixedInputLength = m_embeddingFixedInputLength.value(),
-                                 .rVal             = m_edgeBuildingRadius.value(),
-                                 .knnVal           = m_edgeBuildingKnn.value(),
-                                 .device           = m_runDevice},
+      OnnxMetricLearning::Config{.modelPath          = m_nodeEmbeddingModelPath.value(),
+                                 .selectedFeatures   = m_embeddingFeatureIndices,
+                                 .featureScales      = embeddingScales,
+                                 .edgeFeatureIndices = m_edgeFeatureIndices,
+                                 .edgeFeatureScales  = edgeFeatureScales,
+                                 .fixedInputLength   = m_embeddingFixedInputLength.value(),
+                                 .rVal               = m_edgeBuildingRadius.value(),
+                                 .knnVal             = m_edgeBuildingKnn.value(),
+                                 .device             = m_runDevice},
       m_logger->clone(name() + ".MetricLearning"));
 
   std::vector<std::shared_ptr<ActsPlugins::EdgeClassificationBase>> edgeClassifiers{};

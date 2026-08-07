@@ -37,9 +37,11 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <vector>
@@ -142,6 +144,26 @@ OnnxMetricLearning::OnnxMetricLearning(const Config& cfg, std::unique_ptr<const 
   if (config().fixedInputLength > 0) {
     ACTS_INFO(fmt::format("Zero-padding the model input up to {} nodes", config().fixedInputLength));
   }
+
+  // The edge feature computation is optional, but if it is configured it has to
+  // be given exactly the four node features it is defined in terms of.
+  if (!config().edgeFeatureIndices.empty()) {
+    if (config().edgeFeatureIndices.size() != kNumEdgeFeatureInputs) {
+      throw std::invalid_argument(
+          fmt::format("The edge feature computation needs exactly {} node features (r, phi, z, eta), but {} are "
+                      "configured",
+                      kNumEdgeFeatureInputs, config().edgeFeatureIndices.size()));
+    }
+    if (!config().edgeFeatureScales.empty() && config().edgeFeatureScales.size() != kNumEdgeFeatureInputs) {
+      throw std::invalid_argument(
+          fmt::format("edgeFeatureScales has {} entries, but has to have one per edge feature input ({}) or none at all",
+                      config().edgeFeatureScales.size(), kNumEdgeFeatureInputs));
+    }
+    ACTS_INFO(fmt::format("Computing {} edge features (dr, dphi, dz, deta, phislope, rphislope) for every built edge",
+                          kNumEdgeFeatures));
+  } else {
+    ACTS_DEBUG("No edge features are computed, the edge classifiers have to be two-input models");
+  }
 }
 
 ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& inputValues, std::size_t numNodes,
@@ -185,6 +207,11 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
   for (const int idx : selectedFeatures) {
     if (idx < 0 || static_cast<std::size_t>(idx) >= fullNumFeatures) {
       throw std::runtime_error("Selected feature index out of range");
+    }
+  }
+  for (const int idx : config().edgeFeatureIndices) {
+    if (idx < 0 || static_cast<std::size_t>(idx) >= fullNumFeatures) {
+      throw std::runtime_error("Edge feature input index out of range");
     }
   }
   if (!featureScales.empty() && featureScales.size() != numFeatures) {
@@ -252,9 +279,73 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
   ACTS_VERBOSE(fmt::format("Shape of built edges: ({}, {})", edgeList.size(0), edgeList.size(1)));
   ACTS_VERBOSE(fmt::format("Slice of edgeList: {}", fmt::streamed(edgeList.slice(1, 0, 5))));
 
+  auto edgeFeatures = buildEdgeFeatures(inputValues, numNodes, fullNumFeatures, edgeList, execContext);
+
   return {ActsPlugins::detail::torchToActsTensor<float>(
               // Return the original full-feature node tensor to the pipeline
               // (do not reduce the node features returned to the pipeline).
               ActsPlugins::detail::vectorToTensor2D(inputValues, fullNumFeatures), execContext),
-          ActsPlugins::detail::torchToActsTensor<int64_t>(edgeList, execContext), std::nullopt, std::nullopt};
+          ActsPlugins::detail::torchToActsTensor<int64_t>(edgeList, execContext), std::move(edgeFeatures),
+          std::nullopt};
+}
+
+std::optional<ActsPlugins::Tensor<float>> OnnxMetricLearning::buildEdgeFeatures(
+    const std::vector<float>& inputValues, std::size_t numNodes, std::size_t fullNumFeatures,
+    const torch::Tensor& edgeList, const ActsPlugins::ExecutionContext& execContext) const {
+  if (config().edgeFeatureIndices.empty()) {
+    return std::nullopt;
+  }
+
+  // The six features are the ones Acts' makeEdgeFeatures() (ModuleMapUtils.cuh)
+  // produces, which is the only place Acts fills them - but that one is CUDA
+  // only, so the CPU pipeline has to compute them itself. Note that the edge
+  // classifier scales its node input but passes the edge input through as it
+  // is, so these are computed from the already scaled node values.
+  enum EdgeFeatureInput { eR = 0, ePhi, eZ, eEta };
+  constexpr float pi = static_cast<float>(M_PI);
+
+  const auto& indices = config().edgeFeatureIndices;
+  const auto& scales  = config().edgeFeatureScales;
+
+  // (numNodes x 4) buffer of the scaled r, phi, z and eta of every node
+  std::vector<float> nodeValues(numNodes * kNumEdgeFeatureInputs);
+  for (std::size_t n = 0; n < numNodes; ++n) {
+    for (std::size_t f = 0; f < kNumEdgeFeatureInputs; ++f) {
+      const float value = inputValues[n * fullNumFeatures + static_cast<std::size_t>(indices[f])];
+      nodeValues[n * kNumEdgeFeatureInputs + f] = scales.empty() ? value : value / scales[f];
+    }
+  }
+
+  // Gathering the node values per edge with torch ops keeps the computation on
+  // whichever device the edge building ran on.
+  const auto nodeTensor =
+      ActsPlugins::detail::vectorToTensor2D(nodeValues, kNumEdgeFeatureInputs).to(edgeList.device());
+  const auto srcValues = nodeTensor.index_select(0, edgeList.select(0, 0).contiguous());
+  const auto tgtValues = nodeTensor.index_select(0, edgeList.select(0, 1).contiguous());
+
+  const auto dr   = tgtValues.select(1, eR) - srcValues.select(1, eR);
+  const auto dz   = tgtValues.select(1, eZ) - srcValues.select(1, eZ);
+  const auto deta = tgtValues.select(1, eEta) - srcValues.select(1, eEta);
+
+  // phi is scaled by pi, so the difference is unscaled to wrap it back into
+  // [-pi, pi] and then scaled again. A single wrap is enough since the unscaled
+  // difference cannot leave [-2pi, 2pi].
+  auto dphi = pi * (tgtValues.select(1, ePhi) - srcValues.select(1, ePhi));
+  dphi      = torch::where(dphi > pi, dphi - 2.f * pi, dphi);
+  dphi      = torch::where(dphi < -pi, dphi + 2.f * pi, dphi);
+  dphi      = dphi / pi;
+
+  // Doublets on the same radius have no defined slope and get a flat zero. The
+  // substitute denominator only keeps the discarded branch from producing infs.
+  const auto hasDr     = dr != 0.f;
+  const auto phislope  = torch::where(hasDr, torch::clamp(dphi / torch::where(hasDr, dr, torch::ones_like(dr)),
+                                                          -100.f, 100.f),
+                                      torch::zeros_like(dr));
+  const auto rphislope = 0.5f * (tgtValues.select(1, eR) + srcValues.select(1, eR)) * phislope;
+
+  auto edgeFeatures = ActsPlugins::detail::torchToActsTensor<float>(
+      torch::stack({dr, dphi, dz, deta, phislope, rphislope}, 1).contiguous(), execContext);
+  ACTS_DEBUG(fmt::format("Edge feature tensor shape: [{}, {}]", edgeFeatures.shape()[0], edgeFeatures.shape()[1]));
+
+  return edgeFeatures;
 }

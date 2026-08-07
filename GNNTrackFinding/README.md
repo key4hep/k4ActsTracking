@@ -129,6 +129,8 @@ list lengths are rejected in `initialize`.
 | `EmbeddingFixedInputLength` | `0` | If `> 0`, pad the embedding model input with all-zero rows up to this many nodes. `0` disables the padding |
 | `InputFeaturesEdgeClassifier` | `["r,phi,z,t"]` | Per classifier list of comma separated features |
 | `InputScalesEdgeClassifier` | `["1,1,1,1"]` | Per classifier list of comma separated scales |
+| `ComputeEdgeFeatures` | `False` | Compute the six edge features a three-input classifier needs, see below |
+| `EdgeFeatureScales` | `""` | Scales of `r`, `phi`, `z`, `eta` used for that computation |
 
 The supported (case insensitive) feature names are
 
@@ -178,6 +180,39 @@ length, or raise `ThetaBins` / `PhiBins` so that fewer hits land in one segment.
 When the model itself declares a fixed input length, a mismatch between it and
 the padded input is reported with a message naming this property rather than as a
 bare onnxruntime shape error.
+
+#### Edge features
+
+An edge classifier that was exported with **three inputs** takes a per-edge
+feature tensor (`edge_attr`) alongside the node features and the edge index. The
+six features it expects are the ones Acts computes in `makeEdgeFeatures()` —
+`dr`, `dphi`, `dz`, `deta`, `phislope` and `rphislope` — but Acts only fills them
+in its CUDA module map stage, so this package computes them itself as part of the
+graph construction.
+
+Those six are always computed from `r`, `phi`, `z` and `eta`, so there is nothing
+to select — only whether to compute them at all, and with which scales. The
+scales go **in that order**, whatever order the models take their own inputs in.
+
+```python
+ComputeEdgeFeatures=True,
+EdgeFeatureScales="1000,3.14,1000,1",
+```
+
+`phislope` is `dphi / dr` clamped to `[-100, 100]` and `rphislope` is that times
+the mean radius of the two hits; edges between hits at the same radius get a flat
+zero for both. The `dphi` wrap-around assumes that `phi` is scaled by pi, as in
+the example above.
+
+The edge classifier scales its *node* input (`InputScalesEdgeClassifier`) but
+passes the edge input through as it is, so these have to be the scaling the
+classifier was trained with — it is what the edge features are computed from.
+
+Leaving `ComputeEdgeFeatures` off (the default) computes no edge features, which
+is what a two-input classifier expects. Configuring a three-input model without
+it fails with *"ONNX edge classifier model has three inputs, but no edge features
+provided!"* from Acts. Setting `EdgeFeatureScales` while the flag is off is
+rejected in `initialize` rather than silently ignored.
 
 ### Segmentation
 
