@@ -63,16 +63,16 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
   Gaudi::Property<std::size_t> m_thetaBins{this, "ThetaBins", 1, "Number of theta bins for segmentation."};
   Gaudi::Property<std::size_t> m_phiBins{this, "PhiBins", 1, "Number of phi bins for segmentation."};
   Gaudi::Property<double>      m_thetaOverlap{this, "ThetaOverlap", 0.0,
-                                              "Fractional theta overlap for segmentation (fraction of bin width)."};
+                                         "Fractional theta overlap for segmentation (fraction of bin width)."};
   Gaudi::Property<double>      m_phiOverlap{this, "PhiOverlap", 0.0,
-                                            "Fractional phi overlap for segmentation (fraction of bin width)."};
+                                       "Fractional phi overlap for segmentation (fraction of bin width)."};
 
   Gaudi::Property<std::string> m_nodeEmbeddingModelPath{
       this, "NodeEmbeddingModelPath", "",
       "Path to the ONNX model file for the node embedding / graph construction metric model"};
-  Gaudi::Property<float> m_edgeBuildingRadius{this, "EdgeBuildingRadius", 0.1f,
+  Gaudi::Property<float>       m_edgeBuildingRadius{this, "EdgeBuildingRadius", 0.1f,
                                               "The radius parameter for the KD-Tree that is used in edge building"};
-  Gaudi::Property<float> m_edgeBuildingKnn{this, "EdgeBuildingKnn", 100.f,
+  Gaudi::Property<float>       m_edgeBuildingKnn{this, "EdgeBuildingKnn", 100.f,
                                            "The KNN parameter for the KD-Tree that is used in edge building"};
   Gaudi::Property<std::string> m_inputFeaturesEmbedding{
       this, "InputFeaturesEmbedding", "r,phi,z,t",
