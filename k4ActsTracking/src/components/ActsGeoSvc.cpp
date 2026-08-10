@@ -72,6 +72,7 @@
 #include <cmath>
 #include <filesystem>
 #include <numbers>
+#include <string>
 #include <unordered_set>
 
 template <> struct fmt::formatter<Acts::GeometryIdentifier> : fmt::ostream_formatter {};
@@ -241,13 +242,50 @@ StatusCode ActsGeoSvc::initialize() {
                 "{} of {} surfaces in the tracking geometry carry material, {} of them a proto-material placeholder.",
                 materialVisitor.nWithMaterial(), materialVisitor.nSurfaces(), materialVisitor.nProto())
          << endmsg;
+  // Passing MaterialMapFile is an explicit request for the geometry to carry
+  // material. If it ends up carrying none, the job would silently reconstruct
+  // without the material the user asked for, so that is a failure rather than a
+  // warning. Without the property the same states are legitimate: the mapping
+  // job itself runs on a geometry that carries only the proto placeholders.
+  const bool mapRequested = !m_materialMapFile.value().empty();
+
   if (materialVisitor.nWithMaterial() == 0) {
-    warning() << "No surface in the tracking geometry carries material: the blueprint for this detector designates no "
-                 "material receivers. Tracking will not account for scattering or energy loss in passive material."
+    const std::string reason =
+        "No surface in the tracking geometry carries material: the blueprint for this detector designates no "
+        "material receivers.";
+    if (mapRequested) {
+      error() << fmt::format(
+                     "{} The map '{}' therefore has nothing to decorate. Material designation has to be added "
+                     "for this detector before a map can be applied to it.",
+                     reason, m_materialMapFile.value())
+              << endmsg;
+      return StatusCode::FAILURE;
+    }
+    warning() << fmt::format("{} Tracking will not account for scattering or energy loss in passive material.", reason)
               << endmsg;
   } else if (materialVisitor.nProto() == materialVisitor.nWithMaterial()) {
+    if (mapRequested) {
+      error() << fmt::format(
+                     "None of the entries in the material map '{}' matched a surface of this geometry: all {} "
+                     "receivers still carry a proto-material placeholder, which contributes no actual material. The "
+                     "map is keyed by geometry identifier, which for a Gen3 geometry comes from the blueprint "
+                     "traversal order, so this is what a map built against a different geometry looks like.",
+                     m_materialMapFile.value(), materialVisitor.nProto())
+              << endmsg;
+      return StatusCode::FAILURE;
+    }
     warning() << "Every material surface still carries a proto-material placeholder, which contributes no actual "
                  "material. Run the material mapping and point the MaterialMapFile property at the resulting map."
+              << endmsg;
+  } else if (mapRequested && materialVisitor.nProto() > 0) {
+    // Partial match. Not fatal -- a receiver the scan never crossed is a thin
+    // scan rather than a wrong map -- but it does mean part of the detector is
+    // left without material.
+    warning() << fmt::format(
+                     "{} of {} material receivers were not filled by the map '{}' and still carry a "
+                     "proto-material placeholder. Those surfaces contribute no material; the scan behind the "
+                     "map may be too thin, or may never cross them.",
+                     materialVisitor.nProto(), materialVisitor.nWithMaterial(), m_materialMapFile.value())
               << endmsg;
   }
 
