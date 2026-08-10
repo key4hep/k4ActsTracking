@@ -282,6 +282,22 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
   ACTS_VERBOSE(fmt::format("Shape of built edges: ({}, {})", edgeList.size(0), edgeList.size(1)));
   ACTS_VERBOSE(fmt::format("Slice of edgeList: {}", fmt::streamed(edgeList.slice(1, 0, 5))));
 
+  // A graph this small has no tracks in it, and handing it to the edge
+  // classifier would not end well either: Acts builds the score tensor for a
+  // rank-1 model output by dropping every axis of size <= 1, so both an empty
+  // graph and a single edge collapse to a scalar, and onnxruntime rejects that
+  // with "not enough space: expected 4, got 0" and "Invalid rank for output"
+  // respectively. Report it the way the pipeline already handles a graph that
+  // its cuts emptied out, which turns the segment into zero track candidates.
+  //
+  // Note that this does discard the two-hit candidate a single edge could have
+  // made. That only matters if MinHitsPerTrack is set below 3.
+  constexpr int64_t minUsableEdges = 2;
+  if (edgeList.size(1) < minUsableEdges) {
+    ACTS_DEBUG(fmt::format("Built {} edges from {} nodes, too few for a track candidate", edgeList.size(1), numNodes));
+    throw ActsPlugins::NoEdgesError{};
+  }
+
   auto edgeFeatures = buildEdgeFeatures(inputValues, numNodes, fullNumFeatures, edgeList);
 
   // Optionally pad the graph up to a fixed number of edges, for classifier
