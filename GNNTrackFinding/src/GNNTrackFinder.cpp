@@ -536,10 +536,15 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
   std::vector<std::vector<int>> trackCandIdcs;
   for (std::size_t segmentIdx = 0; segmentIdx < nSegments; ++segmentIdx) {
     const auto& segmentHits = thetaPhiHits[segmentIdx];
-    if (segmentHits.empty()) {
+    // A candidate only ever contains hits of its own segment, so a segment with
+    // fewer hits than a track needs cannot contribute one and is not worth an
+    // inference. With a fine segmentation most segments are in this case.
+    if (segmentHits.size() < m_minHitsPerTrk.value()) {
       const std::size_t thetaBin = segmentIdx / nPhiBins;
       const std::size_t phiBin   = segmentIdx % nPhiBins;
-      debug() << fmt::format("Segment (thetaBin={}, phiBin={}) has no hits, skipping", thetaBin, phiBin) << endmsg;
+      debug() << fmt::format("Segment (thetaBin={}, phiBin={}) has {} hits, fewer than MinHitsPerTrack ({}), skipping",
+                             thetaBin, phiBin, segmentHits.size(), m_minHitsPerTrk.value())
+              << endmsg;
       continue;
     }
     auto& segmentHitIdcs  = hitIdcs[segmentIdx];
