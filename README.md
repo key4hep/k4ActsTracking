@@ -72,9 +72,14 @@ The Gaudi plugin module `k4ActsTrackingPlugins` provides, among others:
   helix seeder (default, for collider/barrel geometries) or a straight-line
   telescope seeder for field-free planar detectors (`SeedingMode`). Fitted tracks
   can optionally be extrapolated to the calorimeter face to add an
-  `AtCalorimeter` track state (`ExtrapolateToCalo`). Tracks that cross the
-  barrel face near the barrel/endcap corner are extrapolated further to the
-  endcap disc and get a second `AtCalorimeter` state there.
+  `AtCalorimeter` track state (`ExtrapolateToCalo`), placed at the first calo
+  face the track reaches. A track entering the barrel face near the
+  barrel/endcap corner goes on to enter the endcap too; `AddEndcapCaloState`
+  (off by default) gives such a track one `AtCalorimeter` state per section,
+  ordered as the track crosses them — barrel first, then endcap. Leave it off
+  unless the consumer is prepared to see more than one state with that
+  location, since looking the state up by location alone yields only the
+  barrel one.
 * **`CKFTrackingFromSeedsAlg`** — runs the same CKF, but seeded from an existing
   input track collection (e.g. candidates from an upstream pattern-recognition
   stage) instead of the internal seed finder.

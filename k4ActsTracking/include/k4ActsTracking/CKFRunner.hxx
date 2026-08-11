@@ -95,11 +95,13 @@ namespace ACTSTracking {
    * algorithm reports summary() in finalize().
    */
   struct CaloExtrapMonitor {
-    mutable std::atomic<std::size_t> attempts{0};        ///< tracks with a usable start state
-    mutable std::atomic<std::size_t> noStartState{0};    ///< tracks without a measured smoothed state
-    mutable std::atomic<std::size_t> notReached{0};      ///< propagation did not reach a calo face
-    mutable std::atomic<std::size_t> propFailed{0};      ///< propagation itself failed
-    mutable std::atomic<std::size_t> ok{0};              ///< reached a calo face
+    mutable std::atomic<std::size_t> attempts{0};      ///< tracks with a usable start state
+    mutable std::atomic<std::size_t> noStartState{0};  ///< tracks without a measured smoothed state
+    mutable std::atomic<std::size_t> notReached{0};    ///< propagation did not reach a calo face
+    mutable std::atomic<std::size_t> propFailed{0};    ///< propagation itself failed
+    mutable std::atomic<std::size_t> ok{0};            ///< reached a calo face
+    /// The next two are only filled when per-section calo states are enabled
+    /// (CKFRunner::Config::addEndcapCaloState); the summary then reports them.
     mutable std::atomic<std::size_t> barrel{0};          ///< the face reached first was a barrel face
     mutable std::atomic<std::size_t> barrelToEndcap{0};  ///< barrel tracks that also crossed an endcap disc
 
@@ -113,11 +115,16 @@ namespace ACTSTracking {
       const std::size_t b2e      = barrelToEndcap.load();
       const std::size_t failed   = nr + pf;
       const double      failRate = a > 0 ? static_cast<double>(failed) / static_cast<double>(a) : 0.0;
-      return fmt::format(
+      std::string       text     = fmt::format(
           "Calorimeter-face extrapolation summary: {} attempts, {} reached the face, {} failed "
-          "({:.2f}%: {} not reached, {} propagation errors); {} tracks had no measured smoothed start state. "
-          "{} reached the barrel face, of which {} also reached an endcap disc (second AtCalorimeter state).",
-          a, o, failed, 100.0 * failRate, nr, pf, ns, b, b2e);
+                    "({:.2f}%: {} not reached, {} propagation errors); {} tracks had no measured smoothed start state.",
+          a, o, failed, 100.0 * failRate, nr, pf, ns);
+      if (b > 0) {
+        text += fmt::format(
+            " {} reached the barrel face, of which {} also reached an endcap disc (second AtCalorimeter state).", b,
+            b2e);
+      }
+      return text;
     }
   };
 
@@ -190,6 +197,12 @@ namespace ACTSTracking {
       bool         extrapolateToCalo     = false;
       std::size_t  maxSteps              = kDefaultMaxPropagationSteps;
 
+      /// Whether a track that crosses both calorimeter sections gets an
+      /// AtCalorimeter state for each of them. False (the default) keeps one
+      /// state per track, at the first calo face the track reaches. See
+      /// CKFRunner::addEndcapStateAfterBarrel.
+      bool addEndcapCaloState = false;
+
       // Branch stopper: optionally terminate CKF branches early on too many
       // holes/outliers or low pT. Disabled by default (useBranchStopper = false).
       bool   useBranchStopper    = false;
@@ -230,6 +243,7 @@ namespace ACTSTracking {
           m_bsMinMeasurements(cfg.bsMinMeasurements),
           m_bsPtMin(cfg.bsPtMin),
           m_bsPtMinMeasurements(cfg.bsPtMinMeasurements),
+          m_addEndcapCaloState(cfg.addEndcapCaloState),
           m_measSelConfig(makeSelectorConfig(cfg)),
           m_trackFinder(std::make_unique<CombKalmanFilter>(makePropagator(geo, false))),
           m_referenceSurface(cfg.referenceSurface
@@ -390,14 +404,10 @@ namespace ACTSTracking {
     /// extrapolation is disabled. Starts from the outermost smoothed state that
     /// carries a real measurement (closest to the calorimeter).
     ///
-    /// The barrel face and the endcap discs meet at the hermetic corner, so a
-    /// track crossing the barrel face at large |z| goes on to cross the endcap
-    /// disc as well (the disc radius extends past the barrel corner). Whenever
-    /// the first face reached is a barrel face, the extrapolation is therefore
-    /// continued from there towards the endcap discs and, if one is reached, a
-    /// *second* AtCalorimeter track state is appended. Tracks whose first face
-    /// is an endcap disc, and barrel tracks that never come back to the endcap
-    /// z, keep the single state.
+    /// With Config::addEndcapCaloState set, a track that crosses both
+    /// calorimeter sections gets one AtCalorimeter state per section; see
+    /// addEndcapStateAfterBarrel. Otherwise every track keeps exactly one
+    /// AtCalorimeter state, at the first calo face it reaches.
     template <class Alg, class TrackProxy>
     void addCaloState(const Alg& alg, const TrackProxy& trackTip, edm4hep::MutableTrack& track,
                       Acts::MagneticFieldProvider::Cache& magCache, const CaloExtrapMonitor* caloMonitor) const {
@@ -438,7 +448,9 @@ namespace ACTSTracking {
             ++caloMonitor->ok;
           }
           appendCaloState(track, *caloResult.params, magCache);
-          addEndcapStateAfterBarrel(alg, track, *caloResult.params, magCache, caloMonitor);
+          if (m_addEndcapCaloState){
+            addEndcapStateAfterBarrel(alg, track, *caloResult.params, magCache, caloMonitor);
+          }
           break;
         }
         case CaloExtrapolationStatus::NotReached:
@@ -477,14 +489,28 @@ namespace ACTSTracking {
 
     /// Continue the calorimeter extrapolation from a barrel-face crossing out to
     /// the endcap discs and, when one is reached, append a second AtCalorimeter
-    /// state. Does nothing when @p barrelParams are not on a barrel face (the
-    /// track already ended on an endcap disc or on the telescope planar face) or
-    /// when the geometry has no endcap discs.
+    /// state.
+    ///
+    /// The barrel face and the endcap discs meet at the hermetic corner, so a
+    /// track crossing the barrel face at large |z| goes on to cross the endcap
+    /// disc as well (the disc radius extends past the barrel corner). Such a
+    /// track really does enter both calorimeter sections, and a downstream
+    /// client may need the entry point into each; the two states are appended
+    /// in the order the track crosses them, barrel first.
+    ///
+    /// Opt-in via Config::addEndcapCaloState, because a track carrying two
+    /// states with the same edm4hep location is not what a client reading "the"
+    /// AtCalorimeter state expects. Disabled (the default), every track keeps a
+    /// single state at the first face it reaches. Also does nothing when
+    /// @p barrelParams are not on a barrel face (the track ended on an endcap
+    /// disc or on the telescope planar face) or when the geometry has no
+    /// endcap discs.
     template <class Alg>
     void addEndcapStateAfterBarrel(const Alg& alg, edm4hep::MutableTrack& track,
                                    const Acts::BoundTrackParameters&   barrelParams,
                                    Acts::MagneticFieldProvider::Cache& magCache,
                                    const CaloExtrapMonitor*            caloMonitor) const {
+
       const auto& barrelIds = m_geo.caloBarrelSurfaceGeoIds();
       const auto& endcapIds = m_geo.caloEndcapSurfaceGeoIds();
       const auto  reachedId = barrelParams.referenceSurface().geometryId();
@@ -528,6 +554,7 @@ namespace ACTSTracking {
     int                               m_bsMinMeasurements   = 6;
     double                            m_bsPtMin             = 0.0;
     int                               m_bsPtMinMeasurements = 3;
+    bool                              m_addEndcapCaloState  = false;
     Acts::MeasurementSelector::Config m_measSelConfig;
 
     std::unique_ptr<CombKalmanFilter>                 m_trackFinder;
