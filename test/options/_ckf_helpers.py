@@ -20,6 +20,7 @@
 
 import os
 import sys
+from pathlib import Path
 
 from Gaudi.Configuration import INFO
 from Gaudi.Configurables import (
@@ -32,6 +33,61 @@ from Gaudi.Configurables import (
 from k4FWCore.parseArgs import parser
 
 
+def expand_scan_inputs(entries):
+    """Resolve a geantino-scan --inputFiles list to a flat list of files.
+
+    Shared by the mapping and the validation options files, which both chain a
+    scan that batch jobs may have split across many files (see
+    examples/material_recording_chunk.py).
+
+    Directories contribute every ``*.root`` file directly inside them, sorted so
+    a given directory always yields the same order. The search does not recurse,
+    so a scan directory can hold logs and notes without confusing it. Anything
+    that is not a directory is taken as a file path, and files and directories
+    can be mixed.
+
+    Duplicates are dropped, since chaining the same scan file twice would double
+    count its geantinos rather than fail visibly -- easy to do by passing both a
+    directory and one of its own members.
+
+    Bad paths are reported here rather than left to TChain::Add, which otherwise
+    fails deep inside the algorithm with much less context.
+    """
+    files = []
+    seen = set()
+    expanded_any = False
+
+    for entry in entries:
+        path = Path(entry)
+        if path.is_dir():
+            found = sorted(p for p in path.glob("*.root") if p.is_file())
+            if not found:
+                raise SystemExit(
+                    f"--inputFiles: directory '{entry}' contains no .root files. "
+                    "Note the search is not recursive."
+                )
+            expanded_any = True
+            candidates = found
+        elif path.exists():
+            candidates = [path]
+        else:
+            raise SystemExit(f"--inputFiles: '{entry}' does not exist.")
+
+        for candidate in candidates:
+            key = candidate.resolve()
+            if key in seen:
+                continue
+            seen.add(key)
+            files.append(str(candidate))
+
+    if expanded_any:
+        print(f"--inputFiles: chaining {len(files)} scan file(s):")
+        for f in files:
+            print(f"    {f}")
+
+    return files
+
+
 def _get_compact_file():
     parser.add_argument(
         "--compactFile",
@@ -40,6 +96,20 @@ def _get_compact_file():
     )
     args = parser.parse_known_args()[0]
     return args.compactFile
+
+
+def _get_material_map_file():
+    parser.add_argument(
+        "--materialMapFile",
+        help="ACTS material map (.json/.cbor/.root) to decorate the tracking "
+        "geometry with. Without it the geometry carries only the proto-material "
+        "placeholders that the material mapping projects onto, i.e. tracking "
+        "sees no passive material.",
+        type=str,
+        default="",
+    )
+    args = parser.parse_known_args()[0]
+    return args.materialMapFile
 
 
 def make_services(use_dd4hep_field=False):
@@ -53,7 +123,11 @@ def make_services(use_dd4hep_field=False):
     compact_file = _get_compact_file()
     return [
         GeoSvc("GeoSvc", detectors=[compact_file], EnableGeant4Geo=False),
-        ActsGeoSvc("ActsGeoSvc", UseDD4hepBField=use_dd4hep_field),
+        ActsGeoSvc(
+            "ActsGeoSvc",
+            UseDD4hepBField=use_dd4hep_field,
+            MaterialMapFile=_get_material_map_file(),
+        ),
         EventDataSvc("EventDataSvc"),
     ]
 

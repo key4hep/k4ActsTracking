@@ -65,7 +65,8 @@ The Gaudi plugin module `k4ActsTrackingPlugins` provides, among others:
 
 * **`ActsGeoSvc`** — builds an ACTS tracking geometry from a DD4hep compact
   file (consumed via `GeoSvc`). Can optionally dump the converted geometry to an
-  `.obj` file for visualization.
+  `.obj` file for visualization, and load a material map (`MaterialMapFile`, see
+  [doc/material_mapping.md](doc/material_mapping.md)).
 * **`CKFTrackingAlg`** — seeding plus combinatorial Kalman filter (CKF) track
   finding on EDM4hep tracker hits. Seeds are built either with the cylindrical
   helix seeder (default, for collider/barrel geometries) or a straight-line
@@ -77,6 +78,10 @@ The Gaudi plugin module `k4ActsTrackingPlugins` provides, among others:
   stage) instead of the internal seed finder.
 * **`ACTSSeededCKFTrackingAlg`** — legacy seeded CKF tracking algorithm,
   superseded by `CKFTrackingAlg` and slated for removal.
+* **`MaterialMappingAlg`** — projects a recorded Geant4 geantino scan onto the
+  material surfaces designated by the blueprint and writes the resulting
+  material map. Runs alongside `ActsGeoSvc` so the map matches the geometry it
+  was built from; see [doc/material_mapping.md](doc/material_mapping.md).
 * **`ACTSDuplicateRemoval`** — removes duplicate tracks produced by the CKF.
 * **`FilterTracksAlg`** — applies quality cuts to a track collection.
 * **`TrackTruthAlg`** — associates reconstructed tracks with truth particles.

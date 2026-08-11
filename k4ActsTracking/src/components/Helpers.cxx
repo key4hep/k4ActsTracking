@@ -234,10 +234,16 @@ namespace ACTSTracking {
 
     auto trcov = (jac * cov * jac.transpose());
 
+    // edm4hep packs a 6x6 covariance as the 21-element lower triangle, row by
+    // row *including* the diagonal (index(i, j) = i * (i + 1) / 2 + j for
+    // j <= i). The inner loop must therefore run to j <= i: stopping at j < i
+    // writes only the 15 strictly off-diagonal elements, leaves the last six
+    // slots at zero, and shifts every value it does write into the wrong slot,
+    // so the variances read back as other elements' covariances.
     int count = 0;
     for (int i = 0; i < 6; ++i) {
-      for (int j = 0; j < i; ++j) {
-        trackState.covMatrix[count] = trcov(j, i);
+      for (int j = 0; j <= i; ++j) {
+        trackState.covMatrix[count] = trcov(i, j);
         count++;
       }
     }

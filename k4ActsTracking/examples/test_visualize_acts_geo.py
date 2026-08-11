@@ -33,6 +33,15 @@ parser.add_argument(
     action="store_true",
     default=False,
 )
+parser.add_argument(
+    "--materialMapFile",
+    help="ACTS material map (.json/.cbor/.root) to decorate the geometry with. "
+    "Useful to check that a freshly mapped file lines up with the designated "
+    "material surfaces: the service reports how many surfaces still carry a "
+    "proto-material placeholder afterwards.",
+    type=str,
+    default="",
+)
 
 args = parser.parse_known_args()[0]
 
@@ -44,6 +53,7 @@ geoSvc = GeoSvc()
 geoSvc.detectors = [args.compactFile]
 
 actsGeoSvc = ActsGeoSvc("ActsGeoSvc")
+actsGeoSvc.MaterialMapFile = args.materialMapFile
 actsGeoSvc.DumpVisualization = True
 actsGeoSvc.ObjVisFileName = f"{pathlib.Path(args.compactFile).stem}-acts-geo.obj"
 actsGeoSvc.OutputLevel = VERBOSE

@@ -44,5 +44,5 @@ INSTALL(FILES MuColl_v1.json MuSIC_v1.json MuSIC_v2.json MAIA_v0.json
   DESTINATION ${CMAKE_INSTALL_DATADIR}/k4ActsTracking/data)
 
 # Material map
-INSTALL(FILES material-maps.json MAIA_v0_material.json
+INSTALL(FILES material-maps.json MAIA_v0_material.json MAIA_v0_gen3_material_map.json
   DESTINATION ${CMAKE_INSTALL_DATADIR}/k4ActsTracking/data)
