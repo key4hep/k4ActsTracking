@@ -335,19 +335,31 @@ StatusCode ActsGeoSvc::initialize() {
   // after construction they carry their assigned geometry identifiers. Collect
   // them for the extrapolation aborter to recognise the calo face.
   m_caloSurfaceGeoIds.clear();
+  m_caloBarrelSurfaceGeoIds.clear();
+  m_caloEndcapSurfaceGeoIds.clear();
   if (m_buildCaloSurfaces.value()) {
-    auto collect = [&](const std::shared_ptr<Acts::Surface>& surface) {
+    // Every face goes into the combined list; the barrel/endcap lists in
+    // addition keep the sections apart, so that a client can tell which section
+    // an extrapolation reached (see IActsGeoSvc::caloBarrelSurfaceGeoIds).
+    auto collect = [&](const std::shared_ptr<Acts::Surface>&  surface,
+                       std::vector<Acts::GeometryIdentifier>* section = nullptr) {
       if (surface) {
         m_caloSurfaceGeoIds.push_back(surface->geometryId());
+        if (section != nullptr) {
+          section->push_back(surface->geometryId());
+        }
       }
     };
     for (const auto& face : m_caloFaceSurfaces.barrelFaces) {
-      collect(face);
+      collect(face, &m_caloBarrelSurfaceGeoIds);
     }
-    collect(m_caloFaceSurfaces.endcapPos);
-    collect(m_caloFaceSurfaces.endcapNeg);
+    collect(m_caloFaceSurfaces.endcapPos, &m_caloEndcapSurfaceGeoIds);
+    collect(m_caloFaceSurfaces.endcapNeg, &m_caloEndcapSurfaceGeoIds);
     collect(m_caloFaceSurfaces.planarFace);
-    info() << fmt::format("Collected {} calorimeter-face surface geometry ids.", m_caloSurfaceGeoIds.size()) << endmsg;
+    info() << fmt::format("Collected {} calorimeter-face surface geometry ids ({} barrel, {} endcap).",
+                          m_caloSurfaceGeoIds.size(), m_caloBarrelSurfaceGeoIds.size(),
+                          m_caloEndcapSurfaceGeoIds.size())
+           << endmsg;
   }
 
   return StatusCode::SUCCESS;
