@@ -125,7 +125,10 @@ Additionally, the optional `GNNTrackingTrackFinding` plugin module (enabled with
   embeds the hits, edges are built in embedding space, one or more ONNX edge
   classifiers score them, and the resulting track candidates are fitted with the
   ACTS Kalman fitter. Hits can be segmented in theta/phi to keep the graphs
-  small. See [`GNNTrackFinding/README.md`](GNNTrackFinding/README.md) for the
+  small. The fitted tracks get their `AtCalorimeter` track state(s) from the
+  same extrapolation the CKF algorithms use, through the same
+  `ExtrapolateToCalo` / `AddEndcapCaloState` properties. See
+  [`GNNTrackFinding/README.md`](GNNTrackFinding/README.md) for the
   dependencies, the full list of properties and an example configuration.
 
 ## Usage
