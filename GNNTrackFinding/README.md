@@ -45,7 +45,11 @@ produces an `edm4hep::TrackCollection` of fitted track candidates. Per event it
 7. **fits** every candidate with at least `MinHitsPerTrack` hits: the innermost,
    middle and outermost hit (ordered by transverse radius) give the initial
    parameters, which are then handed to the ACTS Kalman fitter
-   (`ACTSTracking::KFRunner`) together with all hits of the candidate.
+   (`ACTSTracking::KFRunner`) together with all hits of the candidate,
+8. **extrapolates** every fitted track to the calorimeter face to add its
+   `AtCalorimeter` track state (`ExtrapolateToCalo`). This is the same
+   extrapolation the CKF algorithms run, so a track carries the same calo state
+   however it was reconstructed.
 
 Candidates whose parameter estimation or fit fails are dropped, so the output
 contains only successfully fitted tracks.
@@ -303,6 +307,8 @@ found.
 | `WalkMinScore` | `0.1` | `"cc-and-walk"` only: score below which the walk stops |
 | `MinHitsPerTrack` | `3` | Minimum number of hits for a candidate to be fitted |
 | `PropagateBackward` | `false` | Extrapolate the fitted tracks towards the beamline |
+| `ExtrapolateToCalo` | `true` | Extrapolate the fitted tracks to the calorimeter face and add an `AtCalorimeter` track state |
+| `AddEndcapCaloState` | `false` | Give a track that crosses both calorimeter sections one `AtCalorimeter` state per section (barrel first, then endcap) instead of a single one |
 | `InitialTrackError_Pos` | `10 um` | Initial uncertainty of the local position |
 | `InitialTrackError_Phi` | `1 degree` | Initial uncertainty of phi |
 | `InitialTrackError_Lambda` | `1 degree` | Initial uncertainty of lambda |

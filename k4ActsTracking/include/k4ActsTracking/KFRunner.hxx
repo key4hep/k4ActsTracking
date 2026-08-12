@@ -72,6 +72,9 @@ namespace ACTSTracking {
    * produced by an upstream pattern-recognition stage). For each candidate it
    * runs the ACTS KalmanFitter over the candidate's source links and converts
    * the smoothed result into an edm4hep::Track (via ACTS2edm4hep_track).
+   * Optionally the fitted track is then extrapolated to the calorimeter face to
+   * gain its AtCalorimeter track state(s), through the same CaloStateAppender
+   * the CKF uses, so a track carries the same calo states however it was found.
    *
    * Non-copyable and non-movable: the fitter extensions hold stable pointers to
    * the member calibrator/updater/smoother/surface-accessor. A single instance
@@ -82,6 +85,15 @@ namespace ACTSTracking {
     struct Config {
       bool        propagateBackward = false;
       std::size_t maxSteps          = kDefaultMaxPropagationSteps;
+
+      /// Extrapolate fitted tracks to the calorimeter face and add an
+      /// AtCalorimeter track state.
+      bool extrapolateToCalo = false;
+      /// Whether a track that crosses both calorimeter sections gets an
+      /// AtCalorimeter state for each of them. False (the default) keeps one
+      /// state per track, at the first calo face the track reaches. See
+      /// CaloStateAppender::addEndcapStateAfterBarrel.
+      bool addEndcapCaloState = false;
     };
 
     /// @param measurements Event-local measurement container; must outlive the runner.
@@ -94,7 +106,10 @@ namespace ACTSTracking {
           m_trackingGeometry(geo.trackingGeometry()),
           m_perigee(Acts::Surface::makeShared<Acts::PerigeeSurface>(Acts::Vector3::Zero())),
           m_measCal(measurements),
-          m_hits(hits) {
+          m_hits(hits),
+          m_caloAppender(
+              geo, geoCtx, magCtx,
+              {.enabled = cfg.extrapolateToCalo, .addEndcapState = cfg.addEndcapCaloState, .maxSteps = cfg.maxSteps}) {
       m_fitter = std::make_unique<KalmanFitter>(makePropagator(geo, false));
 
       m_surfaceAccessor.trackingGeometry = m_trackingGeometry.get();
@@ -119,11 +134,13 @@ namespace ACTSTracking {
     KFRunner& operator=(KFRunner&&)      = delete;
 
     /// Fit a single candidate from its (uncalibrated) source links and initial parameters.
+    /// @param caloMonitor Optional counters for the calorimeter-face extrapolation.
     /// @return The fitted edm4hep track, or std::nullopt if the fit failed.
     template <class Alg>
     std::optional<edm4hep::MutableTrack> fit(const Alg& alg, const std::vector<Acts::SourceLink>& sourceLinks,
                                              const Acts::BoundTrackParameters&   initialParameters,
-                                             Acts::MagneticFieldProvider::Cache& magCache) const {
+                                             Acts::MagneticFieldProvider::Cache& magCache,
+                                             const CaloExtrapMonitor*            caloMonitor = nullptr) const {
       auto              trackContainer      = std::make_shared<Acts::VectorTrackContainer>();
       auto              trackStateContainer = std::make_shared<Acts::VectorMultiTrajectory>();
       CKFTrackContainer tracks(trackContainer, trackStateContainer);
@@ -134,7 +151,11 @@ namespace ACTSTracking {
         return std::nullopt;
       }
 
-      return ACTSTracking::ACTS2edm4hep_track(m_geoCtx, result.value(), m_hits, m_geo.magneticField(), magCache);
+      // The fit already targets the perigee (m_kfOptions' reference surface), so
+      // the AtIP state is well defined; the calo states are appended on top.
+      auto track = ACTSTracking::ACTS2edm4hep_track(m_geoCtx, result.value(), m_hits, m_geo.magneticField(), magCache);
+      m_caloAppender.addCaloState(alg, result.value(), track, magCache, caloMonitor);
+      return track;
     }
 
   private:
@@ -153,6 +174,8 @@ namespace ACTSTracking {
 
     std::unique_ptr<KalmanFitter>                                           m_fitter;
     std::unique_ptr<Acts::KalmanFitterOptions<Acts::VectorMultiTrajectory>> m_kfOptions;
+
+    CaloStateAppender m_caloAppender;
   };
 
 }  // namespace ACTSTracking

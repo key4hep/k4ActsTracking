@@ -88,35 +88,6 @@ namespace ACTSTracking {
   using CombKalmanFilter      = Acts::CombinatorialKalmanFilter<CKFPropagator, CKFTrackContainer>;
 
   /**
-   * @brief Thread-safe counters for the calorimeter-face extrapolation.
-   *
-   * Shared by the CKF tracking algorithms: CKFRunner::findTracks updates the
-   * counters (through a const pointer, hence the mutable atomics) and each
-   * algorithm reports summary() in finalize().
-   */
-  struct CaloExtrapMonitor {
-    mutable std::atomic<std::size_t> attempts{0};      ///< tracks with a usable start state
-    mutable std::atomic<std::size_t> noStartState{0};  ///< tracks without a measured smoothed state
-    mutable std::atomic<std::size_t> notReached{0};    ///< propagation did not reach a calo face
-    mutable std::atomic<std::size_t> propFailed{0};    ///< propagation itself failed
-    mutable std::atomic<std::size_t> ok{0};            ///< reached a calo face
-
-    std::string summary() const {
-      const std::size_t a        = attempts.load();
-      const std::size_t o        = ok.load();
-      const std::size_t nr       = notReached.load();
-      const std::size_t pf       = propFailed.load();
-      const std::size_t ns       = noStartState.load();
-      const std::size_t failed   = nr + pf;
-      const double      failRate = a > 0 ? static_cast<double>(failed) / static_cast<double>(a) : 0.0;
-      return fmt::format(
-          "Calorimeter-face extrapolation summary: {} attempts, {} reached the face, {} failed "
-          "({:.2f}%: {} not reached, {} propagation errors); {} tracks had no measured smoothed start state.",
-          a, o, failed, 100.0 * failRate, nr, pf, ns);
-    }
-  };
-
-  /**
    * @brief Convert estimated seed parameters into an edm4hep seed TrackState.
    */
   template <class Alg>
@@ -185,6 +156,12 @@ namespace ACTSTracking {
       bool         extrapolateToCalo     = false;
       std::size_t  maxSteps              = kDefaultMaxPropagationSteps;
 
+      /// Whether a track that crosses both calorimeter sections gets an
+      /// AtCalorimeter state for each of them. False (the default) keeps one
+      /// state per track, at the first calo face the track reaches. See
+      /// CaloStateAppender::addEndcapStateAfterBarrel.
+      bool addEndcapCaloState = false;
+
       // Branch stopper: optionally terminate CKF branches early on too many
       // holes/outliers or low pT. Disabled by default (useBranchStopper = false).
       bool   useBranchStopper    = false;
@@ -230,14 +207,10 @@ namespace ACTSTracking {
           m_referenceSurface(cfg.referenceSurface
                                  ? cfg.referenceSurface
                                  : Acts::Surface::makeShared<Acts::PerigeeSurface>(Acts::Vector3::Zero())),
-          m_extrapolator(std::make_unique<CKFPropagator>(makePropagator(geo, false))) {
-      // The calorimeter inner-face surfaces are passive surfaces of the tracking
-      // geometry, so the calo propagator's navigator must resolve passive
-      // surfaces. Only built when requested and when the geometry provides them.
-      if (cfg.extrapolateToCalo && !geo.caloSurfaceGeoIds().empty()) {
-        m_caloPropagator = std::make_unique<ACTSTracking::CaloFacePropagator>(makePropagator(geo, true));
-      }
-    }
+          m_extrapolator(std::make_unique<CKFPropagator>(makePropagator(geo, false))),
+          m_caloAppender(
+              geo, m_geoCtx, m_magCtx,
+              {.enabled = cfg.extrapolateToCalo, .addEndcapState = cfg.addEndcapCaloState, .maxSteps = cfg.maxSteps}) {}
 
     CKFRunner(const CKFRunner&)            = delete;
     CKFRunner(CKFRunner&&)                 = delete;
@@ -325,7 +298,7 @@ namespace ACTSTracking {
 
             auto track = ACTSTracking::ACTS2edm4hep_track(m_geoCtx, trackTip, hits, m_geo.magneticField(), magCache);
 
-            addCaloState(alg, trackTip, track, magCache, caloMonitor);
+            m_caloAppender.addCaloState(alg, trackTip, track, magCache, caloMonitor);
 
             {
               std::lock_guard lock{trackMutex};
@@ -380,80 +353,6 @@ namespace ACTSTracking {
       return (nMeas >= m_bsMinMeasurements) ? Result::StopAndKeep : Result::StopAndDrop;
     }
 
-    /// Extrapolate the smoothed track to the calorimeter face and, on success,
-    /// append an AtCalorimeter track state to @p track. No-op when calo
-    /// extrapolation is disabled. Starts from the outermost smoothed state that
-    /// carries a real measurement (closest to the calorimeter).
-    template <class Alg, class TrackProxy>
-    void addCaloState(const Alg& alg, const TrackProxy& trackTip, edm4hep::MutableTrack& track,
-                      Acts::MagneticFieldProvider::Cache& magCache, const CaloExtrapMonitor* caloMonitor) const {
-      if (!m_caloPropagator) {
-        return;
-      }
-
-      std::optional<Acts::BoundTrackParameters> startParams;
-      for (const auto& state : trackTip.trackStatesReversed()) {
-        const auto flags = state.typeFlags();
-        if (state.hasSmoothed() && flags.test(Acts::TrackStateFlag::HasMeasurement) &&
-            !flags.test(Acts::TrackStateFlag::IsOutlier)) {
-          startParams.emplace(state.referenceSurface().getSharedPtr(), state.smoothed(), state.smoothedCovariance(),
-                              trackTip.particleHypothesis());
-          break;
-        }
-      }
-
-      if (!startParams) {
-        if (caloMonitor) {
-          ++caloMonitor->noStartState;
-        }
-        alg.debug() << "No measured smoothed state available; no AtCalorimeter state added for this track." << endmsg;
-        return;
-      }
-
-      if (caloMonitor) {
-        ++caloMonitor->attempts;
-      }
-      const ACTSTracking::CaloFacePropagator& caloPropagator = *m_caloPropagator;
-      const auto                              caloResult     = ACTSTracking::extrapolateToCaloFace(
-          caloPropagator, *startParams, m_geo.caloSurfaceGeoIds(), m_geoCtx, m_magCtx, m_maxSteps);
-
-      using ACTSTracking::CaloExtrapolationStatus;
-      switch (caloResult.status) {
-        case CaloExtrapolationStatus::Ok: {
-          if (caloMonitor) {
-            ++caloMonitor->ok;
-          }
-          const Acts::Vector3 caloPos  = caloResult.params->position(m_geoCtx);
-          auto                fieldRes = m_geo.magneticField()->getField(caloPos, magCache);
-          const double        Bz       = fieldRes.ok() ? (*fieldRes)[2] / Acts::UnitConstants::T : 0.0;
-          // The calo-face parameters are local to the target surface;
-          // ACTS2edm4hep_trackState re-expresses them at an ad-hoc perigee at the
-          // calo-face position and sets the referencePoint accordingly.
-          auto caloState = ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtCalorimeter, m_geoCtx,
-                                                                 *caloResult.params, Bz);
-          track.addToTrackStates(caloState);
-          break;
-        }
-        case CaloExtrapolationStatus::NotReached:
-        case CaloExtrapolationStatus::NoSurfaces:
-          if (caloMonitor) {
-            ++caloMonitor->notReached;
-          }
-          alg.debug() << "Extrapolation to the calorimeter face did not reach a surface; "
-                         "no AtCalorimeter state added for this track."
-                      << endmsg;
-          break;
-        case CaloExtrapolationStatus::PropagationError:
-          if (caloMonitor) {
-            ++caloMonitor->propFailed;
-          }
-          alg.debug() << "Extrapolation to the calorimeter face failed during propagation; "
-                         "no AtCalorimeter state added for this track."
-                      << endmsg;
-          break;
-      }
-    }
-
     const IActsGeoSvc&                m_geo;
     Acts::GeometryContext             m_geoCtx;
     Acts::MagneticFieldContext        m_magCtx{};
@@ -468,10 +367,10 @@ namespace ACTSTracking {
     int                               m_bsPtMinMeasurements = 3;
     Acts::MeasurementSelector::Config m_measSelConfig;
 
-    std::unique_ptr<CombKalmanFilter>                 m_trackFinder;
-    std::shared_ptr<const Acts::Surface>              m_referenceSurface;
-    std::unique_ptr<CKFPropagator>                    m_extrapolator;
-    std::unique_ptr<ACTSTracking::CaloFacePropagator> m_caloPropagator;
+    std::unique_ptr<CombKalmanFilter>    m_trackFinder;
+    std::shared_ptr<const Acts::Surface> m_referenceSurface;
+    std::unique_ptr<CKFPropagator>       m_extrapolator;
+    CaloStateAppender                    m_caloAppender;
   };
 
 }  // namespace ACTSTracking

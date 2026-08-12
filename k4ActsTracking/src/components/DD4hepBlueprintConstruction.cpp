@@ -832,6 +832,21 @@ namespace Blueprints {
         Acts::NavigationPolicyFactory{}.add<Acts::TryAllNavigationPolicy>(Acts::TryAllNavigationPolicy::Config{}));
   }
 
+  /// Outer radius shared by the calo barrel and endcap volumes.
+  ///
+  /// The endcap disc usually reaches further out than the barrel corners, so
+  /// sizing the volumes on the barrel alone would cut the disc off at the barrel
+  /// circumradius. That truncation matters for tracks crossing the barrel face
+  /// close to the barrel/endcap corner: they go on to cross the endcap face at
+  /// a radius beyond the barrel corners, and would otherwise leave the world
+  /// before the navigator ever sees the disc. Both volumes therefore share the
+  /// larger of the two radii, which also keeps the top-level z-stack radially
+  /// aligned without gap shells.
+  double caloVolumeRMax(const IActsGeoSvc::CaloFaceSurfaces& calo) {
+    constexpr double pad = 1_mm;
+    return std::max(calo.barrelRMax, calo.endcapRMax) + pad;
+  }
+
   /// Add the calorimeter barrel as a passive static volume to @p parent (the
   /// radial container around the tracker). The volume is a cylinder enclosing
   /// the regular-polygon inner face, with one planar surface per polygon side.
@@ -845,7 +860,7 @@ namespace Blueprints {
   void addCaloBarrel(BlueprintNode& parent, const IActsGeoSvc::CaloFaceSurfaces& calo) {
     constexpr double pad    = 1_mm;
     auto             bounds = std::make_shared<Acts::CylinderVolumeBounds>(std::max(0.0, calo.barrelRMin - pad),
-                                                                           calo.barrelRMax + pad, calo.barrelHalfZ + pad);
+                                                                           caloVolumeRMax(calo), calo.barrelHalfZ + pad);
     auto vol = std::make_unique<Acts::TrackingVolume>(Acts::Transform3::Identity(), std::move(bounds), "CaloBarrel");
     for (const auto& face : calo.barrelFaces) {
       vol->addSurface(face);
@@ -873,9 +888,10 @@ namespace Blueprints {
     const double halfZ  = std::max(5_mm, (zOuter - zInner) / 2.0);
     const double zc     = (zInner + zOuter) / 2.0;
 
-    // Span the full radius (0 .. barrel circumradius) so the volume shares the
-    // central radial extent and the z-stack does not need radial gap shells.
-    auto bounds = std::make_shared<Acts::CylinderVolumeBounds>(0.0, calo.barrelRMax + pad, halfZ);
+    // Span the full radius (0 .. caloVolumeRMax) so the volume shares the
+    // central radial extent and the z-stack does not need radial gap shells,
+    // and so the disc itself fits inside its volume.
+    auto bounds = std::make_shared<Acts::CylinderVolumeBounds>(0.0, caloVolumeRMax(calo), halfZ);
 
     Acts::Transform3 transform = Acts::Transform3::Identity();
     transform.translation()    = Acts::Vector3{0, 0, positive ? zc : -zc};

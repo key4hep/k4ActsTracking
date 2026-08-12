@@ -72,7 +72,14 @@ The Gaudi plugin module `k4ActsTrackingPlugins` provides, among others:
   helix seeder (default, for collider/barrel geometries) or a straight-line
   telescope seeder for field-free planar detectors (`SeedingMode`). Fitted tracks
   can optionally be extrapolated to the calorimeter face to add an
-  `AtCalorimeter` track state (`ExtrapolateToCalo`).
+  `AtCalorimeter` track state (`ExtrapolateToCalo`), placed at the first calo
+  face the track reaches. A track entering the barrel face near the
+  barrel/endcap corner goes on to enter the endcap too; `AddEndcapCaloState`
+  (off by default) gives such a track one `AtCalorimeter` state per section,
+  ordered as the track crosses them — barrel first, then endcap. Leave it off
+  unless the consumer is prepared to see more than one state with that
+  location, since looking the state up by location alone yields only the
+  barrel one.
 * **`CKFTrackingFromSeedsAlg`** — runs the same CKF, but seeded from an existing
   input track collection (e.g. candidates from an upstream pattern-recognition
   stage) instead of the internal seed finder.
@@ -118,7 +125,10 @@ Additionally, the optional `GNNTrackingTrackFinding` plugin module (enabled with
   embeds the hits, edges are built in embedding space, one or more ONNX edge
   classifiers score them, and the resulting track candidates are fitted with the
   ACTS Kalman fitter. Hits can be segmented in theta/phi to keep the graphs
-  small. See [`GNNTrackFinding/README.md`](GNNTrackFinding/README.md) for the
+  small. The fitted tracks get their `AtCalorimeter` track state(s) from the
+  same extrapolation the CKF algorithms use, through the same
+  `ExtrapolateToCalo` / `AddEndcapCaloState` properties. See
+  [`GNNTrackFinding/README.md`](GNNTrackFinding/README.md) for the
   dependencies, the full list of properties and an example configuration.
 
 ## Usage

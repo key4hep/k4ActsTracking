@@ -57,6 +57,14 @@ public:
 
   const std::vector<Acts::GeometryIdentifier>& caloSurfaceGeoIds() const override { return m_caloSurfaceGeoIds; }
 
+  const std::vector<Acts::GeometryIdentifier>& caloBarrelSurfaceGeoIds() const override {
+    return m_caloBarrelSurfaceGeoIds;
+  }
+
+  const std::vector<Acts::GeometryIdentifier>& caloEndcapSurfaceGeoIds() const override {
+    return m_caloEndcapSurfaceGeoIds;
+  }
+
   ActsGeoSvc(const std::string& name, ISvcLocator* svcLoc);
 
   ~ActsGeoSvc() = default;
@@ -124,6 +132,8 @@ private:
   std::string                                               m_cellIDEncodingString{};
   CaloFaceSurfaces                                          m_caloFaceSurfaces{};
   std::vector<Acts::GeometryIdentifier>                     m_caloSurfaceGeoIds{};
+  std::vector<Acts::GeometryIdentifier>                     m_caloBarrelSurfaceGeoIds{};
+  std::vector<Acts::GeometryIdentifier>                     m_caloEndcapSurfaceGeoIds{};
 };
 
 inline std::shared_ptr<const Acts::TrackingGeometry> ActsGeoSvc::trackingGeometry() const { return m_trackingGeo; }

@@ -96,6 +96,17 @@ public:
   /// recognise when the propagation has reached the calo face.
   virtual const std::vector<Acts::GeometryIdentifier>& caloSurfaceGeoIds() const = 0;
 
+  /// Geometry identifiers of the barrel calo-face surfaces only (a subset of
+  /// caloSurfaceGeoIds()). Lets a client tell which section of the calorimeter
+  /// an extrapolation landed on: a track crossing the barrel face close to the
+  /// barrel/endcap corner also crosses the endcap disc, so it can be
+  /// extrapolated further to obtain a second calo-face state.
+  virtual const std::vector<Acts::GeometryIdentifier>& caloBarrelSurfaceGeoIds() const = 0;
+
+  /// Geometry identifiers of the endcap calo-face discs only (a subset of
+  /// caloSurfaceGeoIds()).
+  virtual const std::vector<Acts::GeometryIdentifier>& caloEndcapSurfaceGeoIds() const = 0;
+
   virtual ~IActsGeoSvc() = default;
 };
 

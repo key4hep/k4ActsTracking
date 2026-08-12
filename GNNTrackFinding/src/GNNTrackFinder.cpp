@@ -218,6 +218,22 @@ StatusCode GNNTrackFinder::initialize() {
   m_actsGeoSvc = svcLoc()->service<IActsGeoSvc>("ActsGeoSvc");
   K4_GAUDI_CHECK(m_actsGeoSvc);
 
+  if (m_extrapolateToCalo && m_actsGeoSvc->caloSurfaceGeoIds().empty()) {
+    warning() << "ExtrapolateToCalo requested but ActsGeoSvc provides no calorimeter-face surfaces; "
+                 "no AtCalorimeter track states will be produced."
+              << endmsg;
+  }
+  if (m_addEndcapCaloState && !m_extrapolateToCalo) {
+    error() << "AddEndcapCaloState requested but ExtrapolateToCalo is off; no AtCalorimeter track states "
+               "are produced at all, so the setting has no effect."
+            << endmsg;
+    return StatusCode::FAILURE;
+  } else if (m_addEndcapCaloState && m_actsGeoSvc->caloEndcapSurfaceGeoIds().empty()) {
+    warning() << "AddEndcapCaloState requested but ActsGeoSvc provides no calorimeter endcap surfaces; "
+                 "every track will keep a single AtCalorimeter state."
+              << endmsg;
+  }
+
   // All edge classifier properties are parallel lists with one entry per model
   const std::size_t nEdgeClassifiers = m_edgeClassifierModelPath.size();
   if (nEdgeClassifiers == 0) {
@@ -599,7 +615,9 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
   Acts::MagneticFieldProvider::Cache magCache = m_actsGeoSvc->magneticField()->makeCache(magCtx);
 
   const ACTSTracking::KFRunner kfRunner(*m_actsGeoSvc, geoCtx, magCtx, calCtx, measurements, hitContainer,
-                                        {.propagateBackward = m_propagateBackward});
+                                        {.propagateBackward  = m_propagateBackward,
+                                         .extrapolateToCalo  = m_extrapolateToCalo,
+                                         .addEndcapCaloState = m_addEndcapCaloState});
 
   edm4hep::TrackCollection trackCands{};
   auto                     histBuffer = m_monitoringHist.buffer();
@@ -635,7 +653,8 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
       candSourceLinks.emplace_back(h.sl);
     }
 
-    std::optional<edm4hep::MutableTrack> track = kfRunner.fit(*this, candSourceLinks, *startParams, magCache);
+    std::optional<edm4hep::MutableTrack> track =
+        kfRunner.fit(*this, candSourceLinks, *startParams, magCache, &m_caloMonitor);
     if (!track) {
       continue;
     }
@@ -644,6 +663,13 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
   debug() << fmt::format("Produced {} fitted tracks from {} candidates", trackCands.size(), trackCandIdcs.size())
           << endmsg;
   return trackCands;
+}
+
+StatusCode GNNTrackFinder::finalize() {
+  if (m_extrapolateToCalo) {
+    info() << m_caloMonitor.summary() << endmsg;
+  }
+  return StatusCode::SUCCESS;
 }
 
 DECLARE_COMPONENT(GNNTrackFinder)

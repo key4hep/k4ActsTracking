@@ -23,11 +23,14 @@
 
 // k4ActsTracking
 #include "k4ActsTracking/CKFTracking.hxx"
+#include "k4ActsTracking/Helpers.hxx"
 #include "k4ActsTracking/IActsGeoSvc.h"
 #include "k4ActsTracking/Measurement.hxx"
 #include "k4ActsTracking/SourceLink.hxx"
 
 // edm4hep
+#include <edm4hep/MutableTrack.h>
+#include <edm4hep/TrackState.h>
 #include <edm4hep/TrackerHit.h>
 #include <edm4hep/TrackerHitPlaneCollection.h>
 
@@ -40,11 +43,13 @@
 #include <Acts/EventData/ParticleHypothesis.hpp>
 #include <Acts/EventData/SourceLink.hpp>
 #include <Acts/EventData/TrackContainer.hpp>
+#include <Acts/EventData/TrackStateType.hpp>
 #include <Acts/EventData/VectorMultiTrajectory.hpp>
 #include <Acts/EventData/VectorTrackContainer.hpp>
 #include <Acts/Geometry/GeometryContext.hpp>
 #include <Acts/Geometry/GeometryIdentifier.hpp>
 #include <Acts/Geometry/TrackingGeometry.hpp>
+#include <Acts/MagneticField/MagneticFieldContext.hpp>
 #include <Acts/MagneticField/MagneticFieldProvider.hpp>
 #include <Acts/Propagator/EigenStepper.hpp>
 #include <Acts/Propagator/Navigator.hpp>
@@ -58,8 +63,11 @@
 #include <tbb/parallel_sort.h>
 #include <tbb/task_arena.h>
 
+#include <fmt/format.h>
+
 // Standard
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -122,6 +130,295 @@ namespace ACTSTracking {
     navigatorCfg.resolveSensitive = true;
     return GeantinoPropagator(Acts::StraightLineStepper(), CKFNavigator(navigatorCfg));
   }
+
+  /**
+   * @brief Thread-safe counters for the calorimeter-face extrapolation.
+   *
+   * Shared by the tracking algorithms: CaloStateAppender updates the counters
+   * (through a const pointer, hence the mutable atomics) and each algorithm
+   * reports summary() in finalize().
+   */
+  struct CaloExtrapMonitor {
+    mutable std::atomic<std::size_t> attempts{0};      ///< tracks with a usable start state
+    mutable std::atomic<std::size_t> noStartState{0};  ///< tracks without a measured smoothed state
+    mutable std::atomic<std::size_t> notReached{0};    ///< propagation did not reach a calo face
+    mutable std::atomic<std::size_t> propFailed{0};    ///< propagation itself failed
+    mutable std::atomic<std::size_t> ok{0};            ///< reached a calo face
+    /// The next two are only filled when per-section calo states are enabled
+    /// (CaloStateAppender::Config::addEndcapState); the summary then reports them.
+    mutable std::atomic<std::size_t> barrel{0};          ///< the face reached first was a barrel face
+    mutable std::atomic<std::size_t> barrelToEndcap{0};  ///< barrel tracks that also crossed an endcap disc
+
+    std::string summary() const {
+      const std::size_t a        = attempts.load();
+      const std::size_t o        = ok.load();
+      const std::size_t nr       = notReached.load();
+      const std::size_t pf       = propFailed.load();
+      const std::size_t ns       = noStartState.load();
+      const std::size_t b        = barrel.load();
+      const std::size_t b2e      = barrelToEndcap.load();
+      const std::size_t failed   = nr + pf;
+      const double      failRate = a > 0 ? static_cast<double>(failed) / static_cast<double>(a) : 0.0;
+      std::string       text     = fmt::format(
+          "Calorimeter-face extrapolation summary: {} attempts, {} reached the face, {} failed "
+                    "({:.2f}%: {} not reached, {} propagation errors); {} tracks had no measured smoothed start state.",
+          a, o, failed, 100.0 * failRate, nr, pf, ns);
+      if (b > 0) {
+        text += fmt::format(
+            " {} reached the barrel face, of which {} also reached an endcap disc (second AtCalorimeter state).", b,
+            b2e);
+      }
+      return text;
+    }
+  };
+
+  /**
+   * @brief Adds AtCalorimeter track states to a fitted track.
+   *
+   * Owns the geometry-aware calorimeter-face propagator and turns the
+   * extrapolation result into edm4hep track states. Both track runners hold one
+   * (CKFRunner after the combinatorial find, KFRunner after a standalone fit),
+   * so a track gets the same AtCalorimeter states however it was reconstructed.
+   *
+   * Build one instance per algorithm and reuse it: the propagator depends only
+   * on the tracking geometry and field, so it is read-only and safe to share
+   * across concurrent fits. Non-copyable and non-movable (it holds the
+   * propagator by unique_ptr).
+   */
+  class CaloStateAppender {
+  public:
+    struct Config {
+      /// Extrapolate fitted tracks to the calorimeter face at all. When false
+      /// (the default) the appender is inert and adds nothing.
+      bool enabled = false;
+      /// Give a track that crosses both calorimeter sections one AtCalorimeter
+      /// state per section instead of a single one; see addEndcapStateAfterBarrel.
+      bool        addEndcapState = false;
+      std::size_t maxSteps       = kDefaultMaxPropagationSteps;
+    };
+
+    CaloStateAppender(const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx,
+                      const Acts::MagneticFieldContext& magCtx, const Config& cfg)
+        : m_geo(geo),
+          m_geoCtx(geoCtx),
+          m_magCtx(magCtx),
+          m_maxSteps(cfg.maxSteps),
+          m_addEndcapState(cfg.addEndcapState) {
+      // The calorimeter inner-face surfaces are passive surfaces of the tracking
+      // geometry, so the calo propagator's navigator must resolve passive
+      // surfaces. Only built when requested and when the geometry provides them.
+      if (cfg.enabled && !geo.caloSurfaceGeoIds().empty()) {
+        m_propagator = std::make_unique<ACTSTracking::CaloFacePropagator>(makePropagator(geo, true));
+      }
+    }
+
+    CaloStateAppender(const CaloStateAppender&)            = delete;
+    CaloStateAppender(CaloStateAppender&&)                 = delete;
+    CaloStateAppender& operator=(const CaloStateAppender&) = delete;
+    CaloStateAppender& operator=(CaloStateAppender&&)      = delete;
+
+    /// Whether this appender will actually produce track states.
+    bool active() const { return m_propagator != nullptr; }
+
+    /// Extrapolate the smoothed track to the calorimeter face and, on success,
+    /// append an AtCalorimeter track state to @p track. No-op when calo
+    /// extrapolation is disabled. Starts from the measured smoothed state the
+    /// particle reaches last, i.e. the one facing the calorimeter; see
+    /// findStartState.
+    ///
+    /// With Config::addEndcapState set, a track that crosses both calorimeter
+    /// sections gets one AtCalorimeter state per section; see
+    /// addEndcapStateAfterBarrel. Otherwise every track keeps exactly one
+    /// AtCalorimeter state, at the first calo face it reaches.
+    ///
+    /// @param trackTip     Fitted ACTS track (CKF result or standalone KF result).
+    /// @param track        edm4hep track the state(s) are appended to.
+    /// @param caloMonitor  Optional counters; may be null.
+    template <class Alg, class TrackProxy>
+    void addCaloState(const Alg& alg, const TrackProxy& trackTip, edm4hep::MutableTrack& track,
+                      Acts::MagneticFieldProvider::Cache& magCache, const CaloExtrapMonitor* caloMonitor) const {
+      if (!m_propagator) {
+        return;
+      }
+
+      const auto startParams = findStartParams(trackTip);
+
+      if (!startParams) {
+        if (caloMonitor) {
+          ++caloMonitor->noStartState;
+        }
+        alg.debug() << "No measured smoothed state available; no AtCalorimeter state added for this track." << endmsg;
+        return;
+      }
+
+      if (caloMonitor) {
+        ++caloMonitor->attempts;
+      }
+      const ACTSTracking::CaloFacePropagator& caloPropagator = *m_propagator;
+      const auto                              caloResult     = ACTSTracking::extrapolateToCaloFace(
+          caloPropagator, *startParams, m_geo.caloSurfaceGeoIds(), m_geoCtx, m_magCtx, m_maxSteps);
+
+      using ACTSTracking::CaloExtrapolationStatus;
+      switch (caloResult.status) {
+        case CaloExtrapolationStatus::Ok: {
+          if (caloMonitor) {
+            ++caloMonitor->ok;
+          }
+          appendCaloState(track, *caloResult.params, magCache);
+          addEndcapStateAfterBarrel(alg, track, *caloResult.params, magCache, caloMonitor);
+          break;
+        }
+        case CaloExtrapolationStatus::NotReached:
+        case CaloExtrapolationStatus::NoSurfaces:
+          if (caloMonitor) {
+            ++caloMonitor->notReached;
+          }
+          alg.debug() << "Extrapolation to the calorimeter face did not reach a surface; "
+                         "no AtCalorimeter state added for this track."
+                      << endmsg;
+          break;
+        case CaloExtrapolationStatus::PropagationError:
+          if (caloMonitor) {
+            ++caloMonitor->propFailed;
+          }
+          alg.debug() << "Extrapolation to the calorimeter face failed during propagation; "
+                         "no AtCalorimeter state added for this track."
+                      << endmsg;
+          break;
+      }
+    }
+
+  private:
+    /// Pick the measured, smoothed state to extrapolate to the calorimeter from:
+    /// the end of the trajectory the particle reaches last.
+    ///
+    /// The obvious "take the first state of trackStatesReversed()" does not work,
+    /// because that iterates from whichever end the fit finished on. For an
+    /// outward fit (the default) that is the outermost hit, but with
+    /// PropagateBackward the fit runs towards the beamline and the very same
+    /// expression yields the *innermost* hit, so the extrapolation would set off
+    /// from the hit closest to the beam and cross the whole tracker blind.
+    ///
+    /// Both ends of the measured trajectory are therefore collected and compared
+    /// geometrically: the downstream end is the one whose momentum points away
+    /// from the other end. That makes the choice independent of the fit
+    /// direction, and of the detector shape - it selects the outermost hit of an
+    /// outward collider track and the most downstream hit of a beam-parallel
+    /// telescope track alike.
+    ///
+    /// @return The chosen parameters, or std::nullopt if the track carries no
+    ///         measured smoothed state at all.
+    template <class TrackProxy>
+    std::optional<Acts::BoundTrackParameters> findStartParams(const TrackProxy& trackTip) const {
+      std::optional<Acts::BoundTrackParameters> firstEnd;  ///< first in iteration order
+      std::optional<Acts::BoundTrackParameters> lastEnd;   ///< last in iteration order
+
+      for (const auto& state : trackTip.trackStatesReversed()) {
+        const auto flags = state.typeFlags();
+        if (!state.hasSmoothed() || !flags.test(Acts::TrackStateFlag::HasMeasurement) ||
+            flags.test(Acts::TrackStateFlag::IsOutlier)) {
+          continue;
+        }
+        Acts::BoundTrackParameters params(state.referenceSurface().getSharedPtr(), state.smoothed(),
+                                          state.smoothedCovariance(), trackTip.particleHypothesis());
+        if (!firstEnd) {
+          firstEnd = params;
+        }
+        lastEnd = std::move(params);
+      }
+
+      if (!firstEnd) {
+        return std::nullopt;
+      }
+
+      // Momentum at firstEnd projected on the vector pointing from lastEnd to
+      // firstEnd: positive means moving forward from firstEnd leads away from
+      // lastEnd, so firstEnd is the downstream end. A single measured state
+      // makes the two identical and the projection zero, which picks it either
+      // way.
+      const Acts::Vector3 lastToFirst = firstEnd->position(m_geoCtx) - lastEnd->position(m_geoCtx);
+      return lastToFirst.dot(firstEnd->direction()) >= 0 ? firstEnd : lastEnd;
+    }
+
+    /// Convert on-surface calorimeter-face parameters into an edm4hep
+    /// AtCalorimeter track state and append it to @p track.
+    void appendCaloState(edm4hep::MutableTrack& track, const Acts::BoundTrackParameters& params,
+                         Acts::MagneticFieldProvider::Cache& magCache) const {
+      const Acts::Vector3 caloPos  = params.position(m_geoCtx);
+      auto                fieldRes = m_geo.magneticField()->getField(caloPos, magCache);
+      const double        Bz       = fieldRes.ok() ? (*fieldRes)[2] / Acts::UnitConstants::T : 0.0;
+      // The calo-face parameters are local to the target surface;
+      // ACTS2edm4hep_trackState re-expresses them at an ad-hoc perigee at the
+      // calo-face position and sets the referencePoint accordingly.
+      track.addToTrackStates(
+          ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtCalorimeter, m_geoCtx, params, Bz));
+    }
+
+    /// Continue the calorimeter extrapolation from a barrel-face crossing out to
+    /// the endcap discs and, when one is reached, append a second AtCalorimeter
+    /// state.
+    ///
+    /// The barrel face and the endcap discs meet at the hermetic corner, so a
+    /// track crossing the barrel face at large |z| goes on to cross the endcap
+    /// disc as well (the disc radius extends past the barrel corner). Such a
+    /// track really does enter both calorimeter sections, and a downstream
+    /// client may need the entry point into each; the two states are appended
+    /// in the order the track crosses them, barrel first.
+    ///
+    /// Opt-in via Config::addEndcapState, because a track carrying two states
+    /// with the same edm4hep location is not what a client reading "the"
+    /// AtCalorimeter state expects. Disabled (the default), every track keeps a
+    /// single state at the first face it reaches. Also does nothing when
+    /// @p barrelParams are not on a barrel face (the track ended on an endcap
+    /// disc or on the telescope planar face) or when the geometry has no endcap
+    /// discs.
+    template <class Alg>
+    void addEndcapStateAfterBarrel(const Alg& alg, edm4hep::MutableTrack& track,
+                                   const Acts::BoundTrackParameters&   barrelParams,
+                                   Acts::MagneticFieldProvider::Cache& magCache,
+                                   const CaloExtrapMonitor*            caloMonitor) const {
+      if (!m_addEndcapState) {
+        return;
+      }
+
+      const auto& barrelIds = m_geo.caloBarrelSurfaceGeoIds();
+      const auto& endcapIds = m_geo.caloEndcapSurfaceGeoIds();
+      const auto  reachedId = barrelParams.referenceSurface().geometryId();
+      if (endcapIds.empty() || std::find(barrelIds.begin(), barrelIds.end(), reachedId) == barrelIds.end()) {
+        return;
+      }
+
+      if (caloMonitor) {
+        ++caloMonitor->barrel;
+      }
+
+      // Restart the propagation from the barrel face, this time aborting only on
+      // the endcap discs. Most barrel tracks leave through the outer boundary
+      // without ever reaching the endcap z, which is not an error: only the ones
+      // crossing the barrel/endcap corner region get the extra state.
+      const ACTSTracking::CaloFacePropagator& caloPropagator = *m_propagator;
+      const auto                              endcapResult =
+          ACTSTracking::extrapolateToCaloFace(caloPropagator, barrelParams, endcapIds, m_geoCtx, m_magCtx, m_maxSteps);
+
+      if (endcapResult.status != ACTSTracking::CaloExtrapolationStatus::Ok) {
+        alg.verbose() << "Barrel calo-face track did not reach an endcap disc; keeping a single AtCalorimeter state."
+                      << endmsg;
+        return;
+      }
+
+      if (caloMonitor) {
+        ++caloMonitor->barrelToEndcap;
+      }
+      appendCaloState(track, *endcapResult.params, magCache);
+    }
+
+    const IActsGeoSvc&                                m_geo;
+    Acts::GeometryContext                             m_geoCtx;
+    Acts::MagneticFieldContext                        m_magCtx;
+    std::size_t                                       m_maxSteps       = kDefaultMaxPropagationSteps;
+    bool                                              m_addEndcapState = false;
+    std::unique_ptr<ACTSTracking::CaloFacePropagator> m_propagator;
+  };
 
   /// Stable key for matching an edm4hep tracker hit across collections.
   inline std::uint64_t trackerHitKey(const edm4hep::TrackerHit& hit) {

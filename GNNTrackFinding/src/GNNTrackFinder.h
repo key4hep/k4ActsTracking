@@ -22,6 +22,7 @@
 
 #include <k4ActsTracking/IActsGeoSvc.h>
 #include <k4ActsTracking/HitFeatures.hxx>
+#include <k4ActsTracking/RunnerCommon.hxx>
 
 #include <Acts/Definitions/Units.hpp>
 #include <Acts/Utilities/Logger.hpp>
@@ -58,6 +59,8 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
   GNNTrackFinder(const std::string& name, ISvcLocator* svcLoc);
 
   StatusCode initialize() override;
+
+  StatusCode finalize() override;
 
   edm4hep::TrackCollection     operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*> const&) const override;
   Gaudi::Property<std::size_t> m_thetaBins{this, "ThetaBins", 1, "Number of theta bins for segmentation."};
@@ -151,6 +154,16 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
   /// @name Kalman-fit configuration
   ///@{
   Gaudi::Property<bool> m_propagateBackward{this, "PropagateBackward", false, "Extrapolates tracks towards beamline."};
+  Gaudi::Property<bool> m_extrapolateToCalo{
+      this, "ExtrapolateToCalo", true,
+      "Extrapolate fitted tracks to the calorimeter face and add an AtCalorimeter track state."};
+  Gaudi::Property<bool> m_addEndcapCaloState{
+      this, "AddEndcapCaloState", false,
+      "Give a track that crosses both calorimeter sections one AtCalorimeter track state per section instead of a "
+      "single one. A track entering the barrel face close to the barrel/endcap corner goes on to enter the endcap "
+      "too; with this enabled it gets a second AtCalorimeter state there, appended after the barrel one (the states "
+      "are ordered as the track crosses them). Off by default, since a consumer looking up 'the' AtCalorimeter state "
+      "by location would silently see only the barrel one. Ignored unless ExtrapolateToCalo is set."};
   Gaudi::Property<double> m_initialTrackError_pos{this, "InitialTrackError_Pos", 10 * Acts::UnitConstants::um,
                                                   "Initial track error for local position."};
   Gaudi::Property<double> m_initialTrackError_phi{this, "InitialTrackError_Phi", 1 * Acts::UnitConstants::degree,
@@ -191,6 +204,10 @@ private:
   std::optional<dd4hep::DDSegmentation::BitFieldCoder> m_cellIDDecoder{};
 
   SmartIF<IActsGeoSvc> m_actsGeoSvc{nullptr};
+
+  /// Calorimeter-face extrapolation monitoring, updated by the per-event
+  /// KFRunner and summarised in finalize().
+  ACTSTracking::CaloExtrapMonitor m_caloMonitor{};
 
 public:
   void registerCallBack(Gaudi::StateMachine::Transition, std::function<void()>) {}

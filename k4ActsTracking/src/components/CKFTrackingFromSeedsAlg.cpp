@@ -99,6 +99,13 @@ private:
   Gaudi::Property<bool> m_extrapolateToCalo{
       this, "ExtrapolateToCalo", true,
       "Extrapolate fitted tracks to the calorimeter face and add an AtCalorimeter track state."};
+  Gaudi::Property<bool> m_addEndcapCaloState{
+      this, "AddEndcapCaloState", false,
+      "Give a track that crosses both calorimeter sections one AtCalorimeter track state per section instead of a "
+      "single one. A track entering the barrel face close to the barrel/endcap corner goes on to enter the endcap "
+      "too; with this enabled it gets a second AtCalorimeter state there, appended after the barrel one (the states "
+      "are ordered as the track crosses them). Off by default, since a consumer looking up 'the' AtCalorimeter state "
+      "by location would silently see only the barrel one. Ignored unless ExtrapolateToCalo is set."};
   Gaudi::Property<unsigned int> m_minSeedHits{this, "MinSeedHits", 3,
                                               "Minimum number of hits an input track must have to seed the CKF."};
   ///@}
@@ -164,13 +171,24 @@ StatusCode CKFTrackingFromSeedsAlg::initialize() {
                  "no AtCalorimeter track states will be produced."
               << endmsg;
   }
+  if (m_addEndcapCaloState && !m_extrapolateToCalo) {
+    error() << "AddEndcapCaloState requested but ExtrapolateToCalo is off; no AtCalorimeter track states "
+               "are produced at all, so the setting has no effect."
+            << endmsg;
+    return StatusCode::FAILURE;
+  } else if (m_addEndcapCaloState && m_actsGeoSvc->caloEndcapSurfaceGeoIds().empty()) {
+    warning() << "AddEndcapCaloState requested but ActsGeoSvc provides no calorimeter endcap surfaces; "
+                 "every track will keep a single AtCalorimeter state."
+              << endmsg;
+  }
 
   m_ckfRunner.emplace(*m_actsGeoSvc,
                       ACTSTracking::CKFRunner::Config{.chi2CutOff            = m_CKF_chi2CutOff,
                                                       .numMeasurementsCutOff = m_CKF_numMeasurementsCutOff,
                                                       .propagateBackward     = m_propagateBackward,
                                                       .extrapolateToCalo     = m_extrapolateToCalo,
-                                                      .maxSteps              = m_maxPropagationSteps});
+                                                      .maxSteps              = m_maxPropagationSteps,
+                                                      .addEndcapCaloState    = m_addEndcapCaloState});
 
   return StatusCode::SUCCESS;
 }
