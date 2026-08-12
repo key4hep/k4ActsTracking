@@ -222,8 +222,9 @@ namespace ACTSTracking {
 
     /// Extrapolate the smoothed track to the calorimeter face and, on success,
     /// append an AtCalorimeter track state to @p track. No-op when calo
-    /// extrapolation is disabled. Starts from the outermost smoothed state that
-    /// carries a real measurement (closest to the calorimeter).
+    /// extrapolation is disabled. Starts from the measured smoothed state the
+    /// particle reaches last, i.e. the one facing the calorimeter; see
+    /// findStartState.
     ///
     /// With Config::addEndcapState set, a track that crosses both calorimeter
     /// sections gets one AtCalorimeter state per section; see
@@ -240,16 +241,7 @@ namespace ACTSTracking {
         return;
       }
 
-      std::optional<Acts::BoundTrackParameters> startParams;
-      for (const auto& state : trackTip.trackStatesReversed()) {
-        const auto flags = state.typeFlags();
-        if (state.hasSmoothed() && flags.test(Acts::TrackStateFlag::HasMeasurement) &&
-            !flags.test(Acts::TrackStateFlag::IsOutlier)) {
-          startParams.emplace(state.referenceSurface().getSharedPtr(), state.smoothed(), state.smoothedCovariance(),
-                              trackTip.particleHypothesis());
-          break;
-        }
-      }
+      const std::optional<Acts::BoundTrackParameters> startParams = findStartState(trackTip);
 
       if (!startParams) {
         if (caloMonitor) {
@@ -297,6 +289,57 @@ namespace ACTSTracking {
     }
 
   private:
+    /// Pick the measured, smoothed state to extrapolate to the calorimeter from:
+    /// the end of the trajectory the particle reaches last.
+    ///
+    /// The obvious "take the first state of trackStatesReversed()" does not work,
+    /// because that iterates from whichever end the fit finished on. For an
+    /// outward fit (the default) that is the outermost hit, but with
+    /// PropagateBackward the fit runs towards the beamline and the very same
+    /// expression yields the *innermost* hit, so the extrapolation would set off
+    /// from the hit closest to the beam and cross the whole tracker blind.
+    ///
+    /// Both ends of the measured trajectory are therefore collected and compared
+    /// geometrically: the downstream end is the one whose momentum points away
+    /// from the other end. That makes the choice independent of the fit
+    /// direction, and of the detector shape - it selects the outermost hit of an
+    /// outward collider track and the most downstream hit of a beam-parallel
+    /// telescope track alike.
+    ///
+    /// @return The chosen parameters, or std::nullopt if the track carries no
+    ///         measured smoothed state at all.
+    template <class TrackProxy>
+    std::optional<Acts::BoundTrackParameters> findStartState(const TrackProxy& trackTip) const {
+      std::optional<Acts::BoundTrackParameters> firstEnd;  ///< first in iteration order
+      std::optional<Acts::BoundTrackParameters> lastEnd;   ///< last in iteration order
+
+      for (const auto& state : trackTip.trackStatesReversed()) {
+        const auto flags = state.typeFlags();
+        if (!state.hasSmoothed() || !flags.test(Acts::TrackStateFlag::HasMeasurement) ||
+            flags.test(Acts::TrackStateFlag::IsOutlier)) {
+          continue;
+        }
+        Acts::BoundTrackParameters params(state.referenceSurface().getSharedPtr(), state.smoothed(),
+                                          state.smoothedCovariance(), trackTip.particleHypothesis());
+        if (!firstEnd) {
+          firstEnd = params;
+        }
+        lastEnd = std::move(params);
+      }
+
+      if (!firstEnd) {
+        return std::nullopt;
+      }
+
+      // Momentum at firstEnd projected on the vector pointing from lastEnd to
+      // firstEnd: positive means moving forward from firstEnd leads away from
+      // lastEnd, so firstEnd is the downstream end. A single measured state
+      // makes the two identical and the projection zero, which picks it either
+      // way.
+      const Acts::Vector3 lastToFirst = firstEnd->position(m_geoCtx) - lastEnd->position(m_geoCtx);
+      return lastToFirst.dot(firstEnd->direction()) >= 0 ? firstEnd : lastEnd;
+    }
+
     /// Convert on-surface calorimeter-face parameters into an edm4hep
     /// AtCalorimeter track state and append it to @p track.
     void appendCaloState(edm4hep::MutableTrack& track, const Acts::BoundTrackParameters& params,
