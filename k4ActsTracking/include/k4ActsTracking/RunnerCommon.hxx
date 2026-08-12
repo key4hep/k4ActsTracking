@@ -358,7 +358,7 @@ namespace ACTSTracking {
           ACTSTracking::extrapolateToCaloFace(caloPropagator, barrelParams, endcapIds, m_geoCtx, m_magCtx, m_maxSteps);
 
       if (endcapResult.status != ACTSTracking::CaloExtrapolationStatus::Ok) {
-        alg.debug() << "Barrel calo-face track did not reach an endcap disc; keeping a single AtCalorimeter state."
+        alg.verbose() << "Barrel calo-face track did not reach an endcap disc; keeping a single AtCalorimeter state."
                     << endmsg;
         return;
       }

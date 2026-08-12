@@ -172,9 +172,10 @@ StatusCode CKFTrackingFromSeedsAlg::initialize() {
               << endmsg;
   }
   if (m_addEndcapCaloState && !m_extrapolateToCalo) {
-    warning() << "AddEndcapCaloState requested but ExtrapolateToCalo is off; no AtCalorimeter track states "
+    error() << "AddEndcapCaloState requested but ExtrapolateToCalo is off; no AtCalorimeter track states "
                  "are produced at all, so the setting has no effect."
               << endmsg;
+    return StatusCode::FAILURE;
   } else if (m_addEndcapCaloState && m_actsGeoSvc->caloEndcapSurfaceGeoIds().empty()) {
     warning() << "AddEndcapCaloState requested but ActsGeoSvc provides no calorimeter endcap surfaces; "
                  "every track will keep a single AtCalorimeter state."

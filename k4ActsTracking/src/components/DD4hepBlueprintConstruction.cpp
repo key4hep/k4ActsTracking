@@ -834,9 +834,8 @@ namespace Blueprints {
 
   /// Outer radius shared by the calo barrel and endcap volumes.
   ///
-  /// The endcap disc usually reaches further out than the barrel corners (for
-  /// MAIA_v0: 2124.5 mm against a circumradius of 1922.5 mm), so sizing the
-  /// volumes on the barrel alone would cut the disc off at the barrel
+  /// The endcap disc usually reaches further out than the barrel corners, so
+  /// sizing the volumes on the barrel alone would cut the disc off at the barrel
   /// circumradius. That truncation matters for tracks crossing the barrel face
   /// close to the barrel/endcap corner: they go on to cross the endcap face at
   /// a radius beyond the barrel corners, and would otherwise leave the world
