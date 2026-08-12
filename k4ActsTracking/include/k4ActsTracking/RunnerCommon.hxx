@@ -241,7 +241,7 @@ namespace ACTSTracking {
         return;
       }
 
-      const std::optional<Acts::BoundTrackParameters> startParams = findStartState(trackTip);
+      const auto startParams = findStartParams(trackTip);
 
       if (!startParams) {
         if (caloMonitor) {
@@ -309,7 +309,7 @@ namespace ACTSTracking {
     /// @return The chosen parameters, or std::nullopt if the track carries no
     ///         measured smoothed state at all.
     template <class TrackProxy>
-    std::optional<Acts::BoundTrackParameters> findStartState(const TrackProxy& trackTip) const {
+    std::optional<Acts::BoundTrackParameters> findStartParams(const TrackProxy& trackTip) const {
       std::optional<Acts::BoundTrackParameters> firstEnd;  ///< first in iteration order
       std::optional<Acts::BoundTrackParameters> lastEnd;   ///< last in iteration order
 
