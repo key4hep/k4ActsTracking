@@ -359,7 +359,7 @@ namespace ACTSTracking {
 
       if (endcapResult.status != ACTSTracking::CaloExtrapolationStatus::Ok) {
         alg.verbose() << "Barrel calo-face track did not reach an endcap disc; keeping a single AtCalorimeter state."
-                    << endmsg;
+                      << endmsg;
         return;
       }
 
