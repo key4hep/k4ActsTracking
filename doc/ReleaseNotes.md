@@ -1,3 +1,106 @@
+# v00-05
+
+* 2026-08-12 Federico Meloni ([PR#93](https://github.com/key4hep/k4ActsTracking/pull/93))
+  - Added further extrapolation of tracks to calorimeter endcaps  to satisfy downstream k4GaudiPandora logic (gated behind the AddEndcapCaloState algorithm property)
+  - Share the calo extrapolation code so that KFRunner (used to fit the GNN track candidates) can run it too
+
+* 2026-08-11 Federico Meloni ([PR#88](https://github.com/key4hep/k4ActsTracking/pull/88))
+  - Add material mapping and validation for the Gen3 (blueprint) tracking geometry, so
+    that reconstruction sees the passive material the DD4hep-to-ACTS conversion
+    discards. The full workflow is documented in
+    [doc/material_mapping.md](doc/material_mapping.md).
+
+* 2026-08-07 Federico Meloni ([PR#91](https://github.com/key4hep/k4ActsTracking/pull/91))
+  - Added support for InteractionGNN2 , which requires computing edge features in the pipeline.
+  - Added support for fixed-size-input edge classifiers
+  - Added connected-component and walk track building algorithm
+
+* 2026-08-07 Federico Meloni ([PR#90](https://github.com/key4hep/k4ActsTracking/pull/90))
+  - Turn on GNN build in MuColl CI test.
+  - Removed embedding dimension check to allow for general models with N_embedding dimesions != N_features. The embedding target dimension is now taken from the serialised model file directly.
+  - Moved hit features to separate files and into k4actstracking sub-package
+  - Added option to 0-pad up to a fixed length the model inputs.
+  - Added a hit sorting algorithm to pre-process inputs for the models that need it.
+
+* 2026-08-06 Federico Meloni ([PR#59](https://github.com/key4hep/k4ActsTracking/pull/59))
+  - Add a GNN-based track finding pipeline (`GNNTrackFinder`). It runs metric-learning graph construction and edge classification via ONNX Runtime and the ACTS `PluginGnn` to build track candidates from EDM4hep tracker hits.
+  - Guard the GNN code behind the new `K4ACTSTRACKING_BUILD_GNN` CMake option (default `OFF`). When enabled it pulls in the required `Torch`, `onnxruntime` and ACTS `PluginGnn` dependencies, so builds without ML dependencies are unaffected.
+  - Support configurable per-stage input features and scales (`x`, `y`, `z`, `r`,`phi`, `t`, and module/layer/system IDs) and a list of edge classifiers, each with its own feature selection.
+  - Add `ONNXInferenceModel` and `OnnxMetricLearning` helpers, plus the `mlutils::parseList`/`parseMultiList` utilities for parsing comma-separated configuration.
+  - Add an example Gaudi options file (`GNNTrackFinding/options/runGNNTrackFinding.py`) and unit tests for the ONNX inference model.
+
+* 2026-07-28 Juan Miguel Carceller ([PR#86](https://github.com/key4hep/k4ActsTracking/pull/86))
+  - Fix the build with recent ACTS releases by using `Acts::Blueprint` instead of `Acts::Experimental::Blueprint`.
+
+* 2026-07-17 Juan Miguel Carceller ([PR#84](https://github.com/key4hep/k4ActsTracking/pull/84))
+  - Include `fmt/format.h` instead of `fmt/core.h`. It seems in fmt 12.2.0 `fmt::format` is not available in `core.h` anymore.
+
+* 2026-07-16 Juan Miguel Carceller ([PR#83](https://github.com/key4hep/k4ActsTracking/pull/83))
+  - Use Key4hep@LCG stacks in the acts-master-ci.yml workflow
+
+* 2026-07-16 Federico Meloni ([PR#79](https://github.com/key4hep/k4ActsTracking/pull/79))
+  - Fix track state lookup in `FilterTracksAlg` and `ACTSDuplicateRemoval`: these  used `Track::getTrackStates(edm4hep::TrackState::AtIP)`, but the getter is positional (not keyed by location), so it returned the first-hit state instead of the AtIP one. The `FilterTracksAlg` pT cut was therefore computed from the wrong track state.
+      - Add an `ACTSTracking::trackStateAt(track, location)` helper that resolves a
+        track state by its `location` field, returning `std::optional`.
+      - `FilterTracksAlg` now skips (with a warning) tracks that have no AtIP state.
+  - Remove the triplicated "create seed track under lock" block in the seeding algorithms by extracting an `ACTSTracking::appendSeedTrack` helper (shared by the cylindrical and telescope seeders in `CKFTrackingAlg` and by `CKFTrackingFromSeedsAlg`).
+  - Make the maximum number of propagation steps configurable and consistent: add a `MaxPropagationSteps` property to `CKFTrackingAlg` and `CKFTrackingFromSeedsAlg`, thread it through the calorimeter-face extrapolation (previously hard-coded), and drive all defaults from a single shared `ACTSTracking::kDefaultMaxPropagationSteps` constant (also used by `KFRunner`).
+  - Add unit tests for `trackStateAt`, including a regression guard against the  positional-getter bug. Move `Helpers` into the `k4ActsTracking` library so the shared utilities are linkable from the unit tests.
+  - Add a runtime deprecation warning to `ACTSSeededCKFTrackingAlg`: it is a legacy algorithm and will be removed once material effects are added to `CKFTrackingAlg`.
+
+* 2026-07-14 Juan Miguel Carceller ([PR#81](https://github.com/key4hep/k4ActsTracking/pull/81))
+  - Follow rename from Seeding2 to Seeding in ACTS (https://github.com/acts-project/acts/pull/5643)
+
+* 2026-07-14 Juan Miguel Carceller ([PR#80](https://github.com/key4hep/k4ActsTracking/pull/80))
+  - Add a workflow to build k4ActsTracking on top of ACTS master
+
+* 2026-07-11 Federico Meloni ([PR#78](https://github.com/key4hep/k4ActsTracking/pull/78))
+  - Fix trackstates at measurement points creating perigees and adding reference points
+
+* 2026-07-11 Federico Meloni ([PR#75](https://github.com/key4hep/k4ActsTracking/pull/75))
+  - Add support for straight-line ("telescope") tracking of field-free planar geometries, and end-to-end test + CI coverage for the LUXE_v0 geometry.
+  - `CKFTrackingAlg`: new `SeedingMode` property (default `"Cylindrical"`). `"Telescope"` selects a straight-line, layer-based seeder that groups the seed-selected space points into layers along z and forms collinear triplets, replacing the collider helix seeder (which produces no seeds in a field-free tracker). Configurable via `Telescope_LayerZTolerance`, `Telescope_CollinearityCut` and `Telescope_NominalMomentum`. The cylindrical/barrel code path is unchanged, so existing clients see no behaviour change.
+  - `CKFRunner`: the fitted-track reference surface is now configurable (`Config::referenceSurface`). It defaults to the origin `PerigeeSurface` (unchanged collider d0/z0 parameterisation); `CKFTrackingAlg` supplies a beam-perpendicular `PlaneSurface` at `Telescope_ReferenceZ` in telescope mode, so beam-parallel tracks — which never reach the beamline perigee - get a reachable, well-defined AtIP reference (D0/Z0 read as the track position on that plane, omega = 0).
+  - `ActsGeoSvc`: new `UseDD4hepBField` property (default `false`). When set, ACTS uses the real, position-dependent DD4hep field via ACTS' `DD4hepFieldAdapter` for all propagation/extrapolation, instead of a uniform `Acts::ConstantBField` sampled at the origin. This lets the IP back-extrapolation account for localized fields such as the LUXE dipole (the tracker itself is field-free). The default preserves the current constant-field behaviour.
+  - Added a self-contained `LUXE_v0` chain (particle-gun sim → `DDPlanarDigi` → CKF) with `test/options/LUXE_CKFTracking.py`, a `make_telescope_ckf_tracking` helper in `_ckf_helpers.py`, a geometry-load test, and a dedicated `luxe-ci.yml` workflow running against `ghcr.io/luxesoftware/luxe-sw`. The LUXE tests are only registered when `luxegeo` is available.
+  - Extend the track extrapolation to the ECAL face to telescope geometries (LUXE). The LUXE ECALp is modelled as one planar surface (derived from the DD4hep box shape and world placement) enclosed in a cuboid calo volume stacked behind the tracker layers along the beam axis. Requires the ECALp to be flagged as an electromagnetic calorimeter (`CALORIMETER | ELECTROMAGNETIC`, neither `BARREL` nor `ENDCAP`) in the luxegeo geometry.
+
+* 2026-07-10 Jackson Burzynski ([PR#76](https://github.com/key4hep/k4ActsTracking/pull/76))
+  - Add CKF branch stopper, outlier chi2 cut, and FilterTracksAlg fixes
+
+* 2026-07-10 Federico Meloni ([PR#73](https://github.com/key4hep/k4ActsTracking/pull/73))
+  - SourceLink shrunk to two 8-byte members (geometry identifier + index) so it fits inside the ACTS SourceLink small-buffer (ACTS_SOURCELINK_SBO_SIZE, default 16 bytes) and is stored in place rather than heap-allocated on every wrap.
+
+* 2026-07-08 Paul Gessinger ([PR#67](https://github.com/key4hep/k4ActsTracking/pull/67))
+  - Add cmake helper to build ACTS integrated with the k4ActsTracking build
+
+* 2026-07-02 Federico Meloni ([PR#69](https://github.com/key4hep/k4ActsTracking/pull/69))
+  - Introduced standalone Kalman Fitter
+  - Added an algorithm to allow running CKF on a externally-provided collection of seeds
+  - Refactored CKFTrackingAlg to use common CKFRunner 
+  - Add track state at IP for final output tracks
+
+* 2026-07-02 Federico Meloni ([PR#64](https://github.com/key4hep/k4ActsTracking/pull/64))
+  - Implemented track extrapolation to calorimeter surface from dd4hep geometry
+  - Saved track state AtCaloSurface
+  - Save track state at IP (porting over from @samf25's https://github.com/tmadlener/k4ActsTracking/pull/1)
+
+* 2026-06-23 Federico Meloni ([PR#71](https://github.com/key4hep/k4ActsTracking/pull/71))
+  - Fixed gcc15 warnings (treated as failures) in ubuntu26 CI build tests
+
+* 2026-06-21 Federico Meloni ([PR#70](https://github.com/key4hep/k4ActsTracking/pull/70))
+  - Migrated ACTSSeededCKFTrackingAlg to spacepointcontainer2
+
+* 2026-06-20 Federico Meloni ([PR#63](https://github.com/key4hep/k4ActsTracking/pull/63))
+  - Migrated CKFTrackingAlg seeding to SpacePointContainer2/Seeding2 API
+  - Exposed configuration properties for seeding and seed filtering/weighting
+
+* 2026-06-12 Federico Meloni ([PR#68](https://github.com/key4hep/k4ActsTracking/pull/68))
+  - Updating the headers not to use deprecated APIs (https://github.com/acts-project/acts/commit/0045fb428dee8bf1246c5152a5e49972d3e25232)
+
+* 2026-06-08 Juan Miguel Carceller ([PR#66](https://github.com/key4hep/k4ActsTracking/pull/66))
+  - Link to k4FWCore::k4Interface, used in a few files in the plugins
+
 # Unreleased
 
 * 2026-08-05 Thomas Madlener, Lukas Bauckhage, Federico Meloni ([PR#59](https://github.com/key4hep/k4ActsTracking/pull/59))
