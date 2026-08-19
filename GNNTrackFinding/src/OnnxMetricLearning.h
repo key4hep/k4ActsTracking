@@ -53,6 +53,9 @@ public:
   static constexpr std::size_t kNumEdgeFeatureInputs = 4;
   /// Number of edge features it produces, see Config::edgeFeatureIndices
   static constexpr std::size_t kNumEdgeFeatures = 6;
+  /// How many edges the DEBUG dump of the computed edge features shows,
+  /// unless Config::printAllEdgeFeatures asks for all of them
+  static constexpr std::size_t kNumEdgesShown = 5;
 
   struct Config {
     std::string modelPath{};
@@ -74,6 +77,10 @@ public:
     /// full per-hit feature vector, by which every built edge is oriented (see
     /// EdgeDirection.h). Empty leaves the edges as the edge building left them.
     std::vector<std::size_t> distanceFeatureIndices{};
+    /// Whether the DEBUG dump of the computed edge features covers every edge
+    /// instead of the first kNumEdgesShown ones. Only has an effect if edge
+    /// features are computed at all and the logger prints DEBUG.
+    bool printAllEdgeFeatures{false};
     /// If > 0, the model input is padded with all-zero rows up to this many
     /// nodes, for models exported with a fixed-size input. The embedding of the
     /// padding rows is discarded before the edge building. 0 disables it.

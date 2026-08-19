@@ -19,6 +19,7 @@
 #include "GNNTrackFinder.h"
 
 #include "CCAndWalkTrackBuilding.h"
+#include "ClassifiedEdgePrinting.h"
 #include "EdgeDirection.h"
 #include "OnnxMetricLearning.h"
 #include "PaddedEdgeRemoval.h"
@@ -442,6 +443,8 @@ void GNNTrackFinder::buildPipeline(const std::vector<float>& embeddingScales,
                                  // vector is what tells OnnxMetricLearning not to order the edges
                                  .distanceFeatureIndices =
                                      m_sortEdges.value() ? m_distanceFeatureIndices : std::vector<std::size_t>{},
+                                 // The edge features are a pipeline output, so the full dump covers them too
+                                 .printAllEdgeFeatures = m_detailedDebugOut.value(),
                                  .fixedInputLength = m_embeddingFixedInputLength.value(),
                                  .keepPadding = m_keepEmbeddingPadding.value(),
                                  .fixedEdgeLength = m_edgeClassifierFixedInputLength.value(),
@@ -463,6 +466,17 @@ void GNNTrackFinder::buildPipeline(const std::vector<float>& embeddingScales,
                                                 // CUDA execution provider.
                                                 .device = m_runDevice},
         m_logger->clone(name() + fmt::format(".EdgeClassifier{}", i))));
+
+    // The score is the one thing the graph construction cannot log, so a
+    // pass-through stage prints the classified edges with it. Only added when
+    // the output would be printed at all, so that a production run keeps the
+    // pipeline it always had.
+    if (m_logger->level() <= Acts::Logging::DEBUG) {
+      edgeClassifiers.push_back(std::make_shared<ClassifiedEdgePrinting>(
+          ClassifiedEdgePrinting::Config{.numEdgesShown = OnnxMetricLearning::kNumEdgesShown,
+                                         .printAll = m_detailedDebugOut.value()},
+          m_logger->clone(name() + fmt::format(".EdgeClassifier{}Edges", i))));
+    }
   }
 
   // The padding edges have to be gone before the track building, so this runs
