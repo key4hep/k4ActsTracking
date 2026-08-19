@@ -53,6 +53,12 @@ public:
   static constexpr std::size_t kNumEdgeFeatureInputs = 4;
   /// Number of edge features it produces, see Config::edgeFeatureIndices
   static constexpr std::size_t kNumEdgeFeatures = 6;
+  /// Number of node features the edge ordering reads (r and z),
+  /// see Config::radiusFeatureIndices
+  static constexpr std::size_t kNumRadiusFeatures = 2;
+  /// How many edges the DEBUG dump of the computed edge features shows,
+  /// unless Config::printAllEdgeFeatures asks for all of them
+  static constexpr std::size_t kNumEdgesShown = 5;
 
   struct Config {
     std::string        modelPath{};
@@ -70,6 +76,18 @@ public:
     /// was trained with. Must be the same size as edgeFeatureIndices, or empty
     /// for no scaling.
     std::vector<float> edgeFeatureScales{};
+    /// Indices of the (unscaled) r and z node features, in that order, in the
+    /// full per-hit feature vector. Every built edge is oriented from the hit
+    /// closer to the interaction point (r^2 + z^2, node index as the tiebreak)
+    /// to the one further out, which is the convention the models are trained
+    /// with - the six edge features are signed differences, so the orientation
+    /// decides their sign. Empty leaves the edges oriented the way the edge
+    /// building produced them.
+    std::vector<int> radiusFeatureIndices{};
+    /// Whether the DEBUG dump of the computed edge features covers every edge
+    /// instead of the first kNumEdgesShown ones. Only has an effect if edge
+    /// features are computed at all and the logger prints DEBUG.
+    bool printAllEdgeFeatures{false};
     /// If > 0, the model input is padded with all-zero rows up to this many
     /// nodes, for models exported with a fixed-size input. The embedding of the
     /// padding rows is discarded before the edge building. 0 disables it.
@@ -115,6 +133,17 @@ public:
   int64_t inputLength() const { return m_inputLength; }
 
 private:
+  /// @p edgeList with every edge oriented from the hit closer to the
+  /// interaction point to the one further out, and with the columns
+  /// deduplicated. The distance is r^2 + z^2 of the unscaled node values
+  /// selected by Config::radiusFeatureIndices, with the node index breaking
+  /// ties. Returns @p edgeList unchanged if no radius features are configured.
+  ///
+  /// @param inputValues the flat (numNodes x fullNumFeatures) hit feature buffer
+  /// @param edgeList the (2 x numEdges) edge index tensor, on the pipeline device
+  torch::Tensor orderEdgesByRadius(const std::vector<float>& inputValues, std::size_t numNodes,
+                                   std::size_t fullNumFeatures, torch::Tensor edgeList) const;
+
   /// The six edge features (dr, dphi, dz, deta, phislope, rphislope) of every
   /// edge in @p edgeList, computed from the scaled node values selected by
   /// Config::edgeFeatureIndices, as a (numEdges x 6) tensor on the same device

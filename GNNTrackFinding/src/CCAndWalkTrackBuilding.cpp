@@ -157,21 +157,31 @@ std::vector<std::vector<int>> CCAndWalkTrackBuilding::operator()(PipelineTensors
   const float*        nodeData  = hostNodeFeatures ? hostNodeFeatures->data() : tensors.nodeFeatures.data();
 
   const std::size_t numNodeFeatures = tensors.nodeFeatures.shape()[1];
-  if (m_cfg.rFeatureIndex < 0 || static_cast<std::size_t>(m_cfg.rFeatureIndex) >= numNodeFeatures) {
-    throw std::runtime_error(fmt::format("Radius feature index {} is out of range for {} node features",
-                                         m_cfg.rFeatureIndex, numNodeFeatures));
+  for (const auto& [what, index] : {std::pair{"Radius", m_cfg.rFeatureIndex}, std::pair{"z", m_cfg.zFeatureIndex}}) {
+    if (index < 0 || static_cast<std::size_t>(index) >= numNodeFeatures) {
+      throw std::runtime_error(
+          fmt::format("{} feature index {} is out of range for {} node features", what, index, numNodeFeatures));
+    }
   }
-  const auto radiusOf = [&](int node) {
-    return nodeData[static_cast<std::size_t>(node) * numNodeFeatures + static_cast<std::size_t>(m_cfg.rFeatureIndex)];
+  const auto featureOf = [&](int node, int feature) {
+    return nodeData[static_cast<std::size_t>(node) * numNodeFeatures + static_cast<std::size_t>(feature)];
+  };
+  // Squared distance from the interaction point. Squaring keeps the ordering
+  // and it is only ever compared, so the square root would be wasted.
+  const auto distanceSqOf = [&](int node) {
+    const float r = featureOf(node, m_cfg.rFeatureIndex);
+    const float z = featureOf(node, m_cfg.zFeatureIndex);
+    return r * r + z * z;
   };
 
-  // Direct every edge from the hit at the smaller radius to the one at the
-  // larger. (radius, index) is a strict total order, so this cannot produce a
-  // cycle and sorting the nodes by it gives a topological order for free.
+  // Direct every edge from the hit closer to the interaction point to the one
+  // further out. (distance, index) is a strict total order, so this cannot
+  // produce a cycle and sorting the nodes by it gives a topological order for
+  // free.
   const auto pointsOutward = [&](int a, int b) {
-    const float ra = radiusOf(a);
-    const float rb = radiusOf(b);
-    return ra != rb ? ra < rb : a < b;
+    const float da = distanceSqOf(a);
+    const float db = distanceSqOf(b);
+    return da != db ? da < db : a < b;
   };
 
   std::vector<std::pair<std::pair<int, int>, float>> directed{};
@@ -227,13 +237,13 @@ std::vector<std::vector<int>> CCAndWalkTrackBuilding::operator()(PipelineTensors
   }
 
   // Group the nodes by component, each already in topological order because the
-  // node indices are visited in increasing radius.
-  std::vector<int> byRadius(numNodes);
-  std::iota(byRadius.begin(), byRadius.end(), 0);
-  std::ranges::sort(byRadius, pointsOutward);
+  // node indices are visited in increasing distance from the interaction point.
+  std::vector<int> byDistance(numNodes);
+  std::iota(byDistance.begin(), byDistance.end(), 0);
+  std::ranges::sort(byDistance, pointsOutward);
 
   std::vector<std::vector<int>> componentNodes(numNodes);
-  for (const int node : byRadius) {
+  for (const int node : byDistance) {
     componentNodes[components.find(node)].push_back(node);
   }
 

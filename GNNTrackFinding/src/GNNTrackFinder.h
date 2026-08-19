@@ -103,6 +103,12 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
       "real hit, and they are removed again after the classification. A segment with more edges than this is an "
       "error. Needs KeepEmbeddingPadding, and only one edge classifier. 0 (the default) disables the padding."};
 
+  Gaudi::Property<bool> m_sortEdges{
+      this, "SortEdges", true,
+      "If true, orient every built edge from the hit closer to the interaction point (by r^2 + z^2) to the one "
+      "further out, before the edge features are computed. This is what the ACORN pipeline does, and the edge "
+      "features are signed differences along the edge, so the models expect that convention. False leaves the "
+      "edges oriented the way the edge building produced them."};
   Gaudi::Property<bool> m_computeEdgeFeatures{
       this, "ComputeEdgeFeatures", false,
       "If true, compute the six edge features (dr, dphi, dz, deta, phislope, rphislope) for every built edge, which "
@@ -193,7 +199,7 @@ private:
   std::vector<std::pair<double, double>>     m_phiBinEdges{};
   std::vector<int>                           m_embeddingFeatureIndices{};
   std::vector<int>                           m_edgeFeatureIndices{};
-  int                                        m_radiusFeatureIndex{-1};
+  std::vector<int>                           m_radiusFeatureIndices{};
   std::vector<std::vector<int>>              m_edgeClassifierFeatureIndices{};
   std::unique_ptr<ActsPlugins::GnnPipeline>  m_pipeline{nullptr};
   std::unique_ptr<const Acts::Logger>        m_logger{nullptr};

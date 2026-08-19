@@ -93,6 +93,9 @@ TrackFinder = GNNTrackFinder(
     EmbeddingFixedInputLength=0,
     EdgeBuildingRadius=0.1,
     EdgeBuildingKnn=100.0,
+    # Orient every built edge from the hit closer to the interaction point to
+    # the one further out, as the ACORN pipeline does.
+    SortEdges=True,
     # --- Edge classification -------------------------------------------------
     # All four properties below are parallel lists with one entry per model, so
     # that several edge classifiers can be chained.

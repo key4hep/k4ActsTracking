@@ -165,6 +165,19 @@ OnnxMetricLearning::OnnxMetricLearning(const Config& cfg, std::unique_ptr<const 
   } else {
     ACTS_DEBUG("No edge features are computed, the edge classifiers have to be two-input models");
   }
+
+  // The edge ordering needs exactly the two node features its metric is defined
+  // in terms of, or none at all if it is switched off.
+  if (!config().radiusFeatureIndices.empty()) {
+    if (config().radiusFeatureIndices.size() != kNumRadiusFeatures) {
+      throw std::invalid_argument(
+          fmt::format("The edge ordering needs exactly {} node features (r, z), but {} are configured",
+                      kNumRadiusFeatures, config().radiusFeatureIndices.size()));
+    }
+    ACTS_INFO("Orienting every built edge from the hit closer to the interaction point to the one further out");
+  } else {
+    ACTS_DEBUG("Edges keep the orientation the edge building gave them");
+  }
 }
 
 ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& inputValues, std::size_t numNodes,
@@ -213,6 +226,11 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
   for (const int idx : config().edgeFeatureIndices) {
     if (idx < 0 || static_cast<std::size_t>(idx) >= fullNumFeatures) {
       throw std::runtime_error("Edge feature input index out of range");
+    }
+  }
+  for (const int idx : config().radiusFeatureIndices) {
+    if (idx < 0 || static_cast<std::size_t>(idx) >= fullNumFeatures) {
+      throw std::runtime_error("Edge ordering feature index out of range");
     }
   }
   if (!featureScales.empty() && featureScales.size() != numFeatures) {
@@ -281,6 +299,11 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
 
   ACTS_VERBOSE(fmt::format("Shape of built edges: ({}, {})", edgeList.size(0), edgeList.size(1)));
   ACTS_VERBOSE(fmt::format("Slice of edgeList: {}", fmt::streamed(edgeList.slice(1, 0, 5))));
+
+  // Point every edge away from the interaction point. This runs before the
+  // guard below because it can only ever remove edges, and before the edge
+  // features because those are signed differences along the edge.
+  edgeList = orderEdgesByRadius(inputValues, numNodes, fullNumFeatures, std::move(edgeList));
 
   // A graph this small has no tracks in it, and handing it to the edge
   // classifier would not end well either: Acts builds the score tensor for a
@@ -364,6 +387,72 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
           std::nullopt};
 }
 
+torch::Tensor OnnxMetricLearning::orderEdgesByRadius(const std::vector<float>& inputValues, std::size_t numNodes,
+                                                     std::size_t fullNumFeatures, torch::Tensor edgeList) const {
+  if (config().radiusFeatureIndices.empty()) {
+    return edgeList;
+  }
+
+  // The metric is the squared distance from the interaction point, computed
+  // from the unscaled node values (this is what ACORN orders the edges by).
+  // Squaring keeps the ordering and saves the square roots, and it is only ever
+  // compared, never handed to a model. Note that this makes
+  // Config::shuffleDirections moot: whatever direction the edge building left,
+  // the edges end up pointing outwards.
+  enum RadiusFeatureInput { eR = 0, eZ };
+  const auto& indices = config().radiusFeatureIndices;
+
+  std::vector<float> distances(numNodes);
+  for (std::size_t n = 0; n < numNodes; ++n) {
+    const float r = inputValues[n * fullNumFeatures + static_cast<std::size_t>(indices[eR])];
+    const float z = inputValues[n * fullNumFeatures + static_cast<std::size_t>(indices[eZ])];
+    distances[n]  = r * r + z * z;
+  }
+
+  // Gathering with torch ops keeps this on whichever device the edge building
+  // ran on.
+  const auto nodeDistances = ActsPlugins::detail::vectorToTensor2D(distances, 1).squeeze(1).to(edgeList.device());
+  const auto src           = edgeList.select(0, 0).contiguous();
+  const auto dst           = edgeList.select(0, 1).contiguous();
+  const auto srcDistance   = nodeDistances.index_select(0, src);
+  const auto dstDistance   = nodeDistances.index_select(0, dst);
+
+  // The node index breaks ties, so that the two hits of an edge are ordered
+  // even if they sit at the same distance and the orientation stays a strict
+  // total order.
+  const auto flipMask   = (srcDistance > dstDistance).logical_or((srcDistance == dstDistance).logical_and(src > dst));
+  const auto numFlipped = flipMask.sum().item<int64_t>();
+
+  // Zero flipped edges is a perfectly normal outcome - it just means the edge
+  // building already numbered the hits outwards - but it is also what a
+  // degenerate metric looks like, so report what the metric actually saw: the
+  // range it spans over the nodes, and how many edges connect two hits it
+  // cannot tell apart.
+  if (logger().doPrint(Acts::Logging::DEBUG) && !distances.empty()) {
+    const auto [minDistance, maxDistance] = std::minmax_element(distances.begin(), distances.end());
+    ACTS_DEBUG(fmt::format(
+        "Distance from the interaction point over {} nodes (features {} and {} of {}): {} to {} mm, {} of {} edges "
+        "connect two hits at the same distance",
+        numNodes, indices[eR], indices[eZ], fullNumFeatures, std::sqrt(*minDistance), std::sqrt(*maxDistance),
+        (srcDistance == dstDistance).sum().item<int64_t>(), edgeList.size(1)));
+  }
+
+  using torch::indexing::Slice;
+  edgeList.index_put_({Slice(), flipMask}, edgeList.index({Slice(), flipMask}).flip(0));
+
+  // Collapse a pair of hits that ended up in the graph in both directions, as
+  // Acts' postprocessEdgeTensor() does after its own orientation. That one
+  // already deduplicated, so this normally only gives the columns a canonical
+  // order, which keeps the graph reproducible from run to run.
+  const int64_t numEdges = edgeList.size(1);
+  edgeList               = std::get<0>(torch::unique_dim(edgeList, -1, false));
+
+  ACTS_DEBUG(fmt::format("Oriented {} of {} edges outwards, {} duplicate(s) collapsed", numFlipped, numEdges,
+                         numEdges - edgeList.size(1)));
+
+  return edgeList;
+}
+
 std::optional<torch::Tensor> OnnxMetricLearning::buildEdgeFeatures(const std::vector<float>& inputValues,
                                                                    std::size_t numNodes, std::size_t fullNumFeatures,
                                                                    const torch::Tensor& edgeList) const {
@@ -419,5 +508,28 @@ std::optional<torch::Tensor> OnnxMetricLearning::buildEdgeFeatures(const std::ve
 
   // Left as a torch tensor so that the caller can still pad it before it is
   // handed over to the pipeline.
-  return torch::stack({dr, dphi, dz, deta, phislope, rphislope}, 1).contiguous();
+  auto edgeFeatures = torch::stack({dr, dphi, dz, deta, phislope, rphislope}, 1).contiguous();
+
+  // The features go to the classifier unscaled, so this is what the model
+  // actually sees. Printing a handful of them (all of them with
+  // Config::printAllEdgeFeatures) is the way to spot a mismatch with the scales
+  // the model was trained with.
+  if (logger().doPrint(Acts::Logging::DEBUG)) {
+    const int64_t numEdges = edgeFeatures.size(0);
+    const int64_t numShown = config().printAllEdgeFeatures ? numEdges : std::min<int64_t>(kNumEdgesShown, numEdges);
+    // Pulling the shown rows over in one go, so that a CUDA run does not
+    // synchronise once per printed value.
+    const auto shownFeatures = edgeFeatures.slice(0, 0, numShown).to(torch::kCPU).contiguous();
+    const auto shownEdges    = edgeList.slice(1, 0, numShown).to(torch::kCPU).contiguous();
+
+    ACTS_DEBUG(fmt::format("Edge features (dr, dphi, dz, deta, phislope, rphislope) of {} of {} built edges:", numShown,
+                           numEdges));
+    for (int64_t e = 0; e < numShown; ++e) {
+      const float* values = shownFeatures[e].data_ptr<float>();
+      ACTS_DEBUG(fmt::format("  edge {} ({} -> {}): {}", e, shownEdges[0][e].item<int64_t>(),
+                             shownEdges[1][e].item<int64_t>(), fmt::join(std::span(values, kNumEdgeFeatures), ", ")));
+    }
+  }
+
+  return edgeFeatures;
 }

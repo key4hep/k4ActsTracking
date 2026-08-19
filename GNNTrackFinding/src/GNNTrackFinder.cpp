@@ -19,6 +19,7 @@
 #include "GNNTrackFinder.h"
 
 #include "CCAndWalkTrackBuilding.h"
+#include "ClassifiedEdgePrinting.h"
 #include "OnnxMetricLearning.h"
 #include "PaddedEdgeRemoval.h"
 
@@ -89,10 +90,11 @@ namespace {
   /// Track building that additionally walks the components that are not paths
   constexpr const char* kTrackBuildingCCAndWalk = "cc-and-walk";
 
-  /// The hit feature the "cc-and-walk" track building orders the two hits of an
-  /// edge by, to give the graph a direction. Not configurable: any other choice
-  /// would not be a radius.
-  const std::array<std::string, 1> kRadiusFeature{"r"};
+  /// The hit features the distance from the interaction point (r^2 + z^2) is
+  /// computed from. Both the edge ordering of the graph construction and the
+  /// "cc-and-walk" track building direct their edges by it. Not configurable:
+  /// any other choice would not be that distance.
+  const std::array<std::string, OnnxMetricLearning::kNumRadiusFeatures> kRadiusFeatures{"r", "z"};
 
   /// Lower-case an (ASCII) configuration string, so that the device
   /// specification can be given in any case.
@@ -371,8 +373,8 @@ StatusCode GNNTrackFinder::initialize() {
   if (computeEdgeFeatures) {
     addFeatures(kEdgeFeatureInputs);
   }
-  if (ccAndWalk) {
-    addFeatures(kRadiusFeature);
+  if (m_sortEdges.value() || ccAndWalk) {
+    addFeatures(kRadiusFeatures);
   }
   for (const auto& edgeClassifierFeatures : edgeClassifierFeaturesList) {
     addFeatures(edgeClassifierFeatures);
@@ -392,7 +394,7 @@ StatusCode GNNTrackFinder::initialize() {
   };
   m_embeddingFeatureIndices = featureIndices(embeddingFeatures);
   m_edgeFeatureIndices      = computeEdgeFeatures ? featureIndices(kEdgeFeatureInputs) : std::vector<int>{};
-  m_radiusFeatureIndex      = ccAndWalk ? featureIndices(kRadiusFeature).front() : -1;
+  m_radiusFeatureIndices    = (m_sortEdges.value() || ccAndWalk) ? featureIndices(kRadiusFeatures) : std::vector<int>{};
   m_edgeClassifierFeatureIndices.clear();
   m_edgeClassifierFeatureIndices.reserve(nEdgeClassifiers);
   for (const auto& edgeClassifierFeatures : edgeClassifierFeaturesList) {
@@ -425,17 +427,23 @@ void GNNTrackFinder::buildPipeline(const std::vector<float>&              embedd
                                    const std::vector<float>&              edgeFeatureScales,
                                    const std::vector<std::vector<float>>& edgeClassifierScales) {
   auto graphConstructor = std::make_shared<OnnxMetricLearning>(
-      OnnxMetricLearning::Config{.modelPath          = m_nodeEmbeddingModelPath.value(),
-                                 .selectedFeatures   = m_embeddingFeatureIndices,
-                                 .featureScales      = embeddingScales,
-                                 .edgeFeatureIndices = m_edgeFeatureIndices,
-                                 .edgeFeatureScales  = edgeFeatureScales,
-                                 .fixedInputLength   = m_embeddingFixedInputLength.value(),
-                                 .keepPadding        = m_keepEmbeddingPadding.value(),
-                                 .fixedEdgeLength    = m_edgeClassifierFixedInputLength.value(),
-                                 .rVal               = m_edgeBuildingRadius.value(),
-                                 .knnVal             = m_edgeBuildingKnn.value(),
-                                 .device             = m_runDevice},
+      OnnxMetricLearning::Config{
+          .modelPath          = m_nodeEmbeddingModelPath.value(),
+          .selectedFeatures   = m_embeddingFeatureIndices,
+          .featureScales      = embeddingScales,
+          .edgeFeatureIndices = m_edgeFeatureIndices,
+          .edgeFeatureScales  = edgeFeatureScales,
+          // Empty unless the ordering is switched on, which is what
+          // OnnxMetricLearning takes as "leave the edges as they are"
+          .radiusFeatureIndices = m_sortEdges.value() ? m_radiusFeatureIndices : std::vector<int>{},
+          // The edge features are a pipeline output, so the full dump covers them too
+          .printAllEdgeFeatures = m_detailedDebugOut.value(),
+          .fixedInputLength     = m_embeddingFixedInputLength.value(),
+          .keepPadding          = m_keepEmbeddingPadding.value(),
+          .fixedEdgeLength      = m_edgeClassifierFixedInputLength.value(),
+          .rVal                 = m_edgeBuildingRadius.value(),
+          .knnVal               = m_edgeBuildingKnn.value(),
+          .device               = m_runDevice},
       m_logger->clone(name() + ".MetricLearning"));
 
   std::vector<std::shared_ptr<ActsPlugins::EdgeClassificationBase>> edgeClassifiers{};
@@ -451,6 +459,17 @@ void GNNTrackFinder::buildPipeline(const std::vector<float>&              embedd
                                                 // CUDA execution provider.
                                                 .device = m_runDevice},
         m_logger->clone(name() + fmt::format(".EdgeClassifier{}", i))));
+
+    // The score is the one thing the graph construction cannot log, so a
+    // pass-through stage prints the classified edges with it. Only added when
+    // the output would be printed at all, so that a production run keeps the
+    // pipeline it always had.
+    if (m_logger->level() <= Acts::Logging::DEBUG) {
+      edgeClassifiers.push_back(std::make_shared<ClassifiedEdgePrinting>(
+          ClassifiedEdgePrinting::Config{.numEdgesShown = OnnxMetricLearning::kNumEdgesShown,
+                                         .printAll      = m_detailedDebugOut.value()},
+          m_logger->clone(name() + fmt::format(".EdgeClassifier{}Edges", i))));
+    }
   }
 
   // The padding edges have to be gone before the track building, so this runs
@@ -462,7 +481,8 @@ void GNNTrackFinder::buildPipeline(const std::vector<float>&              embedd
   std::shared_ptr<ActsPlugins::TrackBuildingBase> trackBuilder{};
   if (m_trackBuilding.value() == kTrackBuildingCCAndWalk) {
     trackBuilder = std::make_shared<CCAndWalkTrackBuilding>(
-        CCAndWalkTrackBuilding::Config{.rFeatureIndex    = m_radiusFeatureIndex,
+        CCAndWalkTrackBuilding::Config{.rFeatureIndex    = m_radiusFeatureIndices.at(0),
+                                       .zFeatureIndex    = m_radiusFeatureIndices.at(1),
                                        .addScore         = m_walkAddScore.value(),
                                        .minScore         = m_walkMinScore.value(),
                                        .minCandidateSize = m_minHitsPerTrk.value()},

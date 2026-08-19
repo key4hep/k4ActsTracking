@@ -37,7 +37,9 @@ produces an `edm4hep::TrackCollection` of fitted track candidates. Per event it
    fields) into the flat `(nHits x nFeatures)` input tensor,
 4. runs the **graph construction**: a metric learning ONNX model embeds every
    hit into a space in which a KD-tree (CPU) / FRNN (CUDA) radius + KNN search
-   builds the candidate edges (`OnnxMetricLearning`),
+   builds the candidate edges (`OnnxMetricLearning`). Every edge is then
+   oriented from the hit closer to the interaction point to the one further out
+   (`SortEdges`, see [Edge ordering](#edge-ordering)),
 5. runs one or more **edge classifiers** (ACTS `OnnxEdgeClassifier`) that score
    the edges and drop everything below the configured cut,
 6. **builds track candidates** from the remaining edges via the ACTS
@@ -115,6 +117,7 @@ k4run GNNTrackFinding/options/runGNNTrackFinding.py \
 | `NodeEmbeddingModelPath` | `""` | Path to the ONNX model of the metric learning / graph construction stage |
 | `EdgeBuildingRadius` | `0.1` | Radius parameter of the edge building in embedding space |
 | `EdgeBuildingKnn` | `100` | KNN parameter of the edge building in embedding space |
+| `SortEdges` | `True` | Orient every built edge from the hit closer to the interaction point to the one further out, see [Edge ordering](#edge-ordering) |
 | `EdgeClassifierModelPath` | `[]` | Paths to the ONNX models of the edge classifiers |
 | `EdgeClassifierCut` | `[0.5]` | Score cut of each edge classifier |
 | `Device` | `"cpu"` | Device the pipeline runs on: `cpu`, `cuda` or `cuda:<index>`. `cuda` needs a CUDA enabled onnxruntime / torch build |
@@ -244,6 +247,23 @@ When the model itself declares a fixed input length, a mismatch between it and
 the padded input is reported with a message naming this property rather than as a
 bare onnxruntime shape error.
 
+#### Edge ordering
+
+The edge building leaves every edge oriented from the lower to the higher node
+index, which says nothing about the geometry. With `SortEdges` (the default) the
+graph construction re-orients each one from the hit closer to the interaction
+point to the one further out, measured by `r^2 + z^2` of the **unscaled** hit
+features, with the node index breaking ties, and then collapses a pair of hits
+that ended up in the graph in both directions. This is what the ACORN pipeline
+does after its own graph construction, and it is the convention the models are
+trained with: the six [edge features](#edge-features) are signed differences
+along the edge, so without it `dr`, `dz`, ... come out with the wrong sign for
+about half of the edges.
+
+`r` and `z` are added to the extracted hit features automatically when this is
+enabled. Setting `SortEdges=False` leaves the edges as the edge building
+produced them, which is mainly useful for measuring what the ordering is worth.
+
 #### Edge features
 
 An edge classifier that was exported with **three inputs** takes a per-edge
@@ -270,6 +290,25 @@ the example above.
 The edge classifier scales its *node* input (`InputScalesEdgeClassifier`) but
 passes the edge input through as it is, so these have to be the scaling the
 classifier was trained with — it is what the edge features are computed from.
+
+With `OutputLevel=DEBUG` the computed features are printed per edge, together
+with the two hits the edge connects, which is how a mismatch with the training
+scales shows up. They are printed twice: once for the graph as it was built,
+and once per edge classifier for the edges that survived its cut — that second
+one also carries the score the classifier gave the edge.
+
+```
+GNNTrackFinder.MetricLearning        DEBUG Edge features (dr, dphi, dz, deta, phislope, rphislope) of 5 of 3412 built edges:
+GNNTrackFinder.MetricLearning        DEBUG   edge 0 (0 -> 7): 0.0123, -0.0007, 0.0041, 0.0032, -0.0569, 0.0021
+GNNTrackFinder.EdgeClassifier0Edges  DEBUG 5 of 268 classified edges (dr, dphi, dz, deta, phislope, rphislope):
+GNNTrackFinder.EdgeClassifier0Edges  DEBUG   edge 0 (0 -> 7): score 0.982, features 0.0123, -0.0007, 0.0041, 0.0032, -0.0569, 0.0021
+```
+
+Both show the first five edges; `DetailedDebugOut=True` prints all of them,
+which for a real event is a *lot* of output. The classified-edge printing is a
+pass-through stage (`ClassifiedEdgePrinting`) that is only added to the pipeline
+when the algorithm runs at `DEBUG` or below, and it prints the score alone if no
+edge features are computed.
 
 Leaving `ComputeEdgeFeatures` off (the default) computes no edge features, which
 is what a two-input classifier expects. Configuring a three-input model without
@@ -342,10 +381,12 @@ branch wins. If none reaches it, only the single best neighbour is followed, and
 only if it scores above `WalkMinScore`.
 
 To make "incoming", "outgoing" and "outwards" mean something, the graph is
-directed by ordering the two hits of each edge by radius, with the node index
-breaking ties. That is a strict total order, so the directed graph is acyclic by
-construction and the walk cannot loop. `r` is added to the extracted hit features
-automatically when this algorithm is selected.
+directed by ordering the two hits of each edge by their distance from the
+interaction point — the same `r^2 + z^2` the [edge ordering](#edge-ordering)
+uses — with the node index breaking ties. That is a strict total order, so the
+directed graph is acyclic by construction and the walk cannot loop. `r` and `z`
+are added to the extracted hit features automatically when this algorithm is
+selected.
 
 Ties between two equally long paths go to the lower node index, so the same event
 always gives the same tracks.
