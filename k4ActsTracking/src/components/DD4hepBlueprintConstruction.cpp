@@ -28,6 +28,7 @@
 #include <Acts/Geometry/CylinderVolumeBounds.hpp>
 #include <Acts/Geometry/Extent.hpp>
 #include <Acts/Geometry/LayerBlueprintNode.hpp>
+#include <Acts/Geometry/MaterialDesignatorBlueprintNode.hpp>
 #include <Acts/Geometry/NavigationPolicyFactory.hpp>
 #include <Acts/Geometry/StaticBlueprintNode.hpp>
 #include <Acts/Geometry/TrackingVolume.hpp>
@@ -35,23 +36,33 @@
 #include <Acts/Navigation/TryAllNavigationPolicy.hpp>
 #include <Acts/Surfaces/Surface.hpp>
 #include <Acts/Utilities/AxisDefinitions.hpp>
+#include <Acts/Utilities/ProtoAxis.hpp>
 #include <ActsPlugins/DD4hep/BlueprintBuilder.hpp>
 #include <ActsPlugins/Root/TGeoAxes.hpp>
+
+#include <DD4hep/DD4hepUnits.h>
+#include <DD4hep/Shapes.h>
+#include <DD4hep/Volumes.h>
+
+#include <TGeoTube.h>
 
 #include <fmt/format.h>
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <regex>
 #include <stdexcept>
+#include <utility>
 
 using Acts::BlueprintNode;
 using Acts::ContainerBlueprintNode;
 using Acts::CylinderContainerBlueprintNode;
 using Acts::LayerBlueprintNode;
 
-using AxisDefinition = ActsPlugins::DD4hep::BlueprintBuilder::AxisDefinition;
-using LayerGrouper   = Acts::SensorLayerAssembler<ActsPlugins::DD4hep::DD4hepBackend>::LayerGrouper;
+using AxisDefinition  = ActsPlugins::DD4hep::BlueprintBuilder::AxisDefinition;
+using LayerGrouper    = Acts::SensorLayerAssembler<ActsPlugins::DD4hep::DD4hepBackend>::LayerGrouper;
+using LayerCustomizer = Acts::ElementLayerAssembler<ActsPlugins::DD4hep::DD4hepBackend>::LayerCustomizer;
 
 using namespace Acts::UnitLiterals;
 using enum Acts::AxisDirection;
@@ -220,6 +231,118 @@ namespace Blueprints {
       .layout               = Layout::Ungrouped,
   };
 
+  /// @name Material designation
+  ///
+  /// Acts projects the material of the full simulation geometry onto surfaces
+  /// that are explicitly marked up while the blueprint tree is built, using
+  /// @c Acts::MaterialDesignatorBlueprintNode. This replaces the markup JSON of
+  /// the Gen1 (TGeo) workflow: the receiving surfaces are designated here, in
+  /// code, instead of being addressed by geometry identifier.
+  ///
+  /// Two Acts rules constrain which faces may be designated:
+  /// - a portal *shared* by two adjacent volumes (fused while stacking) may
+  ///   carry material from only one of the two sides, and
+  /// - a face that a container has to *merge* while stacking its children may
+  ///   not carry material at all; construction aborts if it does.
+  ///
+  /// In a container stacked along r the children's cylinder faces are fused and
+  /// their disc faces are merged; in a container stacked along z it is the
+  /// other way around. The scheme below therefore designates, on every layer
+  /// volume, only the face pointing *towards* the interaction point: the inner
+  /// cylinder of a barrel layer, and the disc facing the IP for an endcap
+  /// layer. That face is the portal the layer shares with its inward
+  /// neighbour, so exactly one side of it is designated. The exception is a
+  /// layer whose IP-facing face is the *extreme* face of its container rather
+  /// than an interior one: that face becomes the container's own face and is
+  /// merged higher up the tree -- see @c LayerMaterial::skipInnermost.
+  /// @{
+
+  /// Binning of the material projected onto a cylindrical face. The proto axes
+  /// use auto-range equidistant binning, so only the bin counts matter here.
+  const auto kCylinderMaterialBinning = std::pair{Acts::DirectedProtoAxis{AxisRPhi, Acts::AxisBoundaryType::Closed, 20},
+                                                  Acts::DirectedProtoAxis{AxisZ, Acts::AxisBoundaryType::Bound, 200}};
+
+  /// Binning of the material projected onto a disc face
+  const auto kDiscMaterialBinning = std::pair{Acts::DirectedProtoAxis{AxisR, Acts::AxisBoundaryType::Bound, 50},
+                                              Acts::DirectedProtoAxis{AxisPhi, Acts::AxisBoundaryType::Closed, 20}};
+
+  /// Wrap @p child in a material designator marking @p face of the child's
+  /// volume as a receiver for the projected material.
+  ///
+  /// The binning follows from the face: cylindrical faces are binned in
+  /// (rphi, z), disc faces in (r, phi).
+  ///
+  /// @param child The node whose volume face should receive material
+  /// @param name  Name of the designator node (used for debugging only)
+  /// @param face  The face to designate
+  ///
+  /// @returns The designator node, to be added in place of @p child
+  std::shared_ptr<BlueprintNode> withMaterial(std::shared_ptr<BlueprintNode> child, const std::string& name,
+                                              Acts::CylinderVolumeBounds::Face face) {
+    using enum Acts::CylinderVolumeBounds::Face;
+    const auto& [loc0, loc1] =
+        (face == InnerCylinder || face == OuterCylinder) ? kCylinderMaterialBinning : kDiscMaterialBinning;
+
+    auto designator = std::make_shared<Acts::MaterialDesignatorBlueprintNode>(name);
+    designator->configureFace(face, loc0, loc1);
+    designator->addChild(std::move(child));
+    return designator;
+  }
+
+  /// Material designation for the layer volumes of a (sub)detector
+  struct LayerMaterial {
+    /// Layers whose name matches this regex are left without material. Use it
+    /// for a layer whose IP-facing face is the *extreme* face of its container
+    /// rather than a portal shared with an inward neighbour, because that face
+    /// is merged higher up the tree and would abort the construction.
+    ///
+    /// Note this is not simply "layer 0": whether the innermost layer's inner
+    /// cylinder is the container extreme depends on what else sits in the same
+    /// radial stack. In MAIA the outer-tracker and vertex barrels are plain
+    /// layer stacks and do skip their innermost layer, while the inner-tracker
+    /// barrel encloses the whole vertex detector, which makes its layer0 inner
+    /// cylinder an interior (fused) portal that is safe to designate.
+    ///
+    /// The default (an empty regex) matches no layer name, so every layer is
+    /// designated.
+    std::regex skipInnermost{};
+  };
+
+  /// Build an `onLayer` customizer that designates @p face of every layer
+  /// volume as a material receiver, on top of whatever @p customize does.
+  ///
+  /// Layers are matched against @c LayerMaterial::skipInnermost by their
+  /// DD4hep DetElement name where one exists (the Grouped layouts), and by the
+  /// blueprint node name otherwise (the Ungrouped layouts, where the layers are
+  /// assembled from sensors and carry the group label from @c makeLayerGrouper).
+  ///
+  /// @param material  The designation config; if unset the returned customizer
+  ///                  only forwards to @p customize
+  /// @param face      The (IP-facing) face to designate
+  /// @param label     Prefix for the designator node names
+  /// @param customize Layer customization to apply first (e.g. @c unsetXYCoG)
+  LayerCustomizer designateLayers(const std::optional<LayerMaterial>& material, Acts::CylinderVolumeBounds::Face face,
+                                  const std::string& label, LayerCustomizer customize = {}) {
+    return [=, customize = std::move(customize)](const std::optional<dd4hep::DetElement>& elem,
+                                                 std::shared_ptr<LayerBlueprintNode>      layer) {
+      const std::string layerName = elem.has_value() ? std::string{elem->name()} : layer->name();
+
+      std::shared_ptr<BlueprintNode> node;
+      if (customize) {
+        node = customize(elem, std::move(layer));
+      } else {
+        node = std::move(layer);
+      }
+
+      if (!material.has_value() || std::regex_match(layerName, material->skipInnermost)) {
+        return node;
+      }
+      return withMaterial(std::move(node), fmt::format("{}_{}_Material", label, layerName), face);
+    };
+  }
+
+  /// @}
+
   /// Add a cylindrical beampipe to the passed node using the measures passed as arguments.
   ///
   /// We use this to enclose our actual beampipe because that is not a sipmle
@@ -227,15 +350,91 @@ namespace Blueprints {
   /// material of the beampipe, for which we use this cylindrical volume here.
   ///
   /// @param node The Blueprint container to which the beampipe should be added
+  /// @param designateMaterial Whether the outer cylinder of the beampipe volume
+  ///                          should receive material. This is the innermost
+  ///                          portal of the whole tracker, shared all the way
+  ///                          down to the innermost barrel layer, so it must be
+  ///                          designated here and nowhere else.
   /// @param rMax The (initial) max radius of the cylinder
   /// @param halfZ the half-length in z of this cylinder
-  void addCylindricalBeampipe(ContainerBlueprintNode& node, double rMax = 10_mm, double halfZ = 1000_mm) {
-    node.addStaticVolume(Acts::Transform3::Identity(), std::make_unique<Acts::CylinderVolumeBounds>(0_mm, rMax, halfZ),
-                         "Beampipe");
+  void addCylindricalBeampipe(ContainerBlueprintNode& node, bool designateMaterial = false, double rMax = 10_mm,
+                              double halfZ = 1000_mm) {
+    std::shared_ptr<BlueprintNode> beampipe =
+        std::make_shared<Acts::StaticBlueprintNode>(std::make_unique<Acts::TrackingVolume>(
+            Acts::Transform3::Identity(), std::make_shared<Acts::CylinderVolumeBounds>(0_mm, rMax, halfZ), "Beampipe"));
+    if (designateMaterial) {
+      beampipe =
+          withMaterial(std::move(beampipe), "Beampipe_Material", Acts::CylinderVolumeBounds::Face::OuterCylinder);
+    }
+    node.addChild(std::move(beampipe));
+
     // We want to pull the next volume in towards the beampipe to map material to
     // the correct places in the end. We need to ensure that the enclosing
     // cylinder contains the beampipe entirely.
     node.setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First);
+  }
+
+  /// Look up the inner radius of the solenoid coil, in Acts units.
+  ///
+  /// Read from the envelope shape of the @c Solenoid DetElement rather than
+  /// hard-coded, because detectors sharing a blueprint can place their coil very
+  /// differently (MAIA_v0 has it at 1500 mm, inside the calorimeter, while
+  /// MuSIC_v2 has it at 2055 mm, outside).
+  ///
+  /// @param builder Blueprint builder driving the construction
+  ///
+  /// @returns The inner radius, or nothing if the detector has no @c Solenoid
+  ///          DetElement or its envelope is not a tube
+  std::optional<double> findSolenoidInnerRadius(ActsPlugins::DD4hep::BlueprintBuilder& builder) {
+    const auto detElem = builder.findDetElementByName("Solenoid");
+    if (!detElem.has_value() || !detElem->placement().isValid()) {
+      return std::nullopt;
+    }
+    const auto* tube = dynamic_cast<const TGeoTube*>(detElem->volume().solid().ptr());
+    if (tube == nullptr) {
+      return std::nullopt;
+    }
+    // DD4hep native lengths are cm, Acts works in mm
+    return tube->GetRmin() * (Acts::UnitConstants::cm / dd4hep::cm);
+  }
+
+  /// Add a cylindrical volume covering the solenoid to the passed (radial)
+  /// container node.
+  ///
+  /// Where the solenoid sits between the tracker and the calorimeter, every
+  /// extrapolation to the calorimeter face crosses its coil -- several hundred
+  /// mm of vacuum tank and conductor. Without a volume of its own that material
+  /// has nowhere sensible to go: the radial stack stretches the outer tracker
+  /// volume all the way out to the calorimeter, so the outer tracker's own outer
+  /// cylinder ends up hard against the calorimeter face and the coil is left
+  /// straddling a single volume with no boundary anywhere inside it.
+  ///
+  /// Inserting this volume splits that region in two, so that the outer
+  /// tracker's outer cylinder lands where the tracker actually ends (at the
+  /// coil's inner face) and this volume's outer cylinder marks the coil's outer
+  /// face. Designating one of them on each side brackets the coil, which lets
+  /// the mapping distribute the coil material across its thickness instead of
+  /// lumping all of it at one edge.
+  ///
+  /// Only @p rMin is physical: the volume is created with a nominal thickness
+  /// and half-length, and the enclosing radial stack expands it to meet whatever
+  /// comes next (the calorimeter barrel), the same way the beampipe volume above
+  /// is handled.
+  ///
+  /// @param node The Blueprint container to which the solenoid should be added
+  /// @param rMin Inner radius of the solenoid coil
+  /// @param designateMaterial Whether the outer cylinder of this volume should
+  ///                          receive material
+  void addCylindricalSolenoid(ContainerBlueprintNode& node, double rMin, bool designateMaterial = false) {
+    std::shared_ptr<BlueprintNode> solenoid =
+        std::make_shared<Acts::StaticBlueprintNode>(std::make_unique<Acts::TrackingVolume>(
+            Acts::Transform3::Identity(), std::make_shared<Acts::CylinderVolumeBounds>(rMin, rMin + 1_mm, 1000_mm),
+            "Solenoid"));
+    if (designateMaterial) {
+      solenoid =
+          withMaterial(std::move(solenoid), "Solenoid_Material", Acts::CylinderVolumeBounds::Face::OuterCylinder);
+    }
+    node.addChild(std::move(solenoid));
   }
 
   /// Layer customizer function to force the Barrel onto the z-axis by not using
@@ -296,9 +495,10 @@ namespace Blueprints {
   /// @param filter    Regex selecting the relevant layer DetElements
   /// @param axes      Sensor coordinate axes for this endcap side
   /// @param envelope  Extent envelope applied to the resulting volume
+  /// @param onLayer   Optional per-layer customization, e.g. from @c designateLayers
   void addGroupedEndcapSide(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::BlueprintNode& parent,
                             const std::string& container, const std::regex& filter, AxisDefinition axes,
-                            const Acts::ExtentEnvelope& envelope) {
+                            const Acts::ExtentEnvelope& envelope, LayerCustomizer onLayer = {}) {
     builder.layers()
         .endcap()
         .setSensorAxes(std::move(axes))
@@ -306,6 +506,7 @@ namespace Blueprints {
         .setLayerFilter(filter)
         .setEnvelope(envelope)
         .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+        .onLayer(std::move(onLayer))
         .addTo(parent);
   }
 
@@ -326,11 +527,13 @@ namespace Blueprints {
   /// @param envelope    Extent envelope applied to the resulting volume
   /// @param keyXform    Transform applied to capture group 1 to derive the
   ///                    group key (default: identity)
+  /// @param onLayer     Optional per-layer customization, e.g. from @c designateLayers
   void addUngroupedEndcapSide(
       ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::BlueprintNode& parent, const std::string& container,
       const std::regex& filter, AxisDefinition axes, const std::string& labelPrefix,
       const Acts::ExtentEnvelope&                    envelope,
-      std::function<std::string(const std::string&)> keyXform = [](const std::string& m) { return m; }) {
+      std::function<std::string(const std::string&)> keyXform = [](const std::string& m) { return m; },
+      LayerCustomizer                                onLayer  = {}) {
     const auto detElem = builder.findDetElementByName(container);
     auto       sensors = builder.findDetElementByNamePattern(detElem.value(), filter);
     auto       grouper = makeLayerGrouper(filter, labelPrefix, std::move(keyXform));
@@ -342,6 +545,7 @@ namespace Blueprints {
         .groupBy(std::move(grouper))
         .setEnvelope(envelope)
         .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+        .onLayer(std::move(onLayer))
         .addTo(parent);
   }
 
@@ -358,18 +562,28 @@ namespace Blueprints {
   /// @param posLabel  Label prefix for the positive side (Ungrouped path only)
   /// @param negLabel  Label prefix for the negative side (Ungrouped path only)
   /// @param keyXform  Transform applied to capture group 1 (Ungrouped path only)
+  /// @param material  If set, designate the IP-facing disc of every endcap
+  ///                  layer as a material receiver. That is the negative disc
+  ///                  on the positive side and vice versa.
   template <typename MatchTransformF = decltype(identityKey)>
   void addBothEndcapSides(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::BlueprintNode& parent,
                           const std::string& container, const std::regex& posFilter, const std::regex& negFilter,
                           AxisDefinition axes, Layout layout, const Acts::ExtentEnvelope& envelope,
                           const std::string& posLabel = "", const std::string& negLabel = "",
-                          MatchTransformF keyXform = identityKey) {
+                          MatchTransformF                     keyXform = identityKey,
+                          const std::optional<LayerMaterial>& material = std::nullopt) {
+    using enum Acts::CylinderVolumeBounds::Face;
+    auto onPos = designateLayers(material, NegativeDisc, container);
+    auto onNeg = designateLayers(material, PositiveDisc, container);
+
     if (layout == Layout::Grouped) {
-      addGroupedEndcapSide(builder, parent, container, posFilter, axes, envelope);
-      addGroupedEndcapSide(builder, parent, container, negFilter, axes, envelope);
+      addGroupedEndcapSide(builder, parent, container, posFilter, axes, envelope, std::move(onPos));
+      addGroupedEndcapSide(builder, parent, container, negFilter, axes, envelope, std::move(onNeg));
     } else {
-      addUngroupedEndcapSide(builder, parent, container, posFilter, axes, posLabel, envelope, keyXform);
-      addUngroupedEndcapSide(builder, parent, container, negFilter, axes, negLabel, envelope, keyXform);
+      addUngroupedEndcapSide(builder, parent, container, posFilter, axes, posLabel, envelope, keyXform,
+                             std::move(onPos));
+      addUngroupedEndcapSide(builder, parent, container, negFilter, axes, negLabel, envelope, keyXform,
+                             std::move(onNeg));
     }
   }
 
@@ -383,11 +597,14 @@ namespace Blueprints {
   /// @param filter    Regex selecting the layer DetElements
   /// @param axes      Sensor coordinate axes for the barrel
   /// @param envelope  Extent envelope applied to the resulting volume
+  /// @param material  If set, designate the inner cylinder of every barrel
+  ///                  layer as a material receiver
   ///
   /// @returns The barrel blueprint node
-  std::shared_ptr<ContainerBlueprintNode> makeGroupedBarrel(ActsPlugins::DD4hep::BlueprintBuilder& builder,
-                                                            const std::string& container, const std::regex& filter,
-                                                            AxisDefinition axes, const Acts::ExtentEnvelope& envelope) {
+  std::shared_ptr<ContainerBlueprintNode> makeGroupedBarrel(
+      ActsPlugins::DD4hep::BlueprintBuilder& builder, const std::string& container, const std::regex& filter,
+      AxisDefinition axes, const Acts::ExtentEnvelope& envelope,
+      const std::optional<LayerMaterial>& material = std::nullopt) {
     return builder.layers()
         .barrel()
         .setSensorAxes(std::move(axes))
@@ -395,7 +612,7 @@ namespace Blueprints {
         .setContainer(container)
         .setEnvelope(envelope)
         .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-        .onLayer(unsetXYCoG)
+        .onLayer(designateLayers(material, Acts::CylinderVolumeBounds::Face::InnerCylinder, container, unsetXYCoG))
         .build();
   }
 
@@ -409,15 +626,18 @@ namespace Blueprints {
   /// @param spec     Configuration spec (barrelContainer, barrelAxes,
   ///                 barrelFilter used; endcap fields ignored)
   /// @param envelope Extent envelope applied to the resulting volume
+  /// @param material If set, designate the inner cylinder of every barrel layer
+  ///                 as a material receiver
   ///
   /// @returns The barrel blueprint node
   template <typename MatchTransformF = decltype(identityKey)>
   std::shared_ptr<ContainerBlueprintNode> makeBarrel(ActsPlugins::DD4hep::BlueprintBuilder& builder,
                                                      const TrackerSpec&                     spec,
                                                      const Acts::ExtentEnvelope&            envelope = kBarrelEnvelope,
-                                                     MatchTransformF                        keyXform = identityKey) {
+                                                     MatchTransformF                        keyXform = identityKey,
+                                                     const std::optional<LayerMaterial>&    material = std::nullopt) {
     if (spec.barrelLayout == Layout::Grouped) {
-      return makeGroupedBarrel(builder, spec.barrelContainer, spec.barrelFilter, spec.barrelAxes, envelope);
+      return makeGroupedBarrel(builder, spec.barrelContainer, spec.barrelFilter, spec.barrelAxes, envelope, material);
     }
 
     const auto barrelDetElem    = builder.findDetElementByName(spec.barrelContainer);
@@ -433,7 +653,8 @@ namespace Blueprints {
         .setSensors(std::move(barrelLayerElems))
         .groupBy(doubleLayerName)
         .setContainerName(spec.barrelContainer)
-        .onLayer(unsetXYCoG)
+        .onLayer(designateLayers(material, Acts::CylinderVolumeBounds::Face::InnerCylinder, spec.barrelContainer,
+                                 unsetXYCoG))
         .build();
   }
 
@@ -448,29 +669,36 @@ namespace Blueprints {
   /// @param spec          Endcap configuration (container name, axes, pos/neg filters,
   ///                      layout); barrel fields of the spec are ignored
   /// @param containerName Name of the resulting top-level cylinder container node
+  /// @param material      If set, designate the IP-facing disc of every endcap
+  ///                      layer as a material receiver
   /// @param keyXform      Transform applied to capture group 1 of the filter regex
   ///                      to derive the layer-group key (Ungrouped path only)
   std::shared_ptr<CylinderContainerBlueprintNode> attachEndcaps(
       ActsPlugins::DD4hep::BlueprintBuilder& builder, std::shared_ptr<ContainerBlueprintNode>&& barrel,
       const TrackerSpec& spec, const std::string& containerName,
+      const std::optional<LayerMaterial>&            material = std::nullopt,
       std::function<std::string(const std::string&)> keyXform = [](const std::string& m) {
         return std::to_string(std::stoi(m) / 2);
       }) {
+    using enum Acts::CylinderVolumeBounds::Face;
     auto node = std::make_shared<CylinderContainerBlueprintNode>(containerName, AxisZ);
     node->addChild(barrel);
 
+    auto onPos = designateLayers(material, NegativeDisc, spec.endcapContainer);
+    auto onNeg = designateLayers(material, PositiveDisc, spec.endcapContainer);
+
     if (spec.endcapLayout == Layout::Grouped) {
       addGroupedEndcapSide(builder, *node, spec.endcapContainer, spec.endcapPosFilter, spec.endcapAxes,
-                           kVertexEndcapEnvelope);
+                           kVertexEndcapEnvelope, std::move(onPos));
       addGroupedEndcapSide(builder, *node, spec.endcapContainer, spec.endcapNegFilter, spec.endcapAxes,
-                           kVertexEndcapEnvelope);
+                           kVertexEndcapEnvelope, std::move(onNeg));
     } else {
       addUngroupedEndcapSide(builder, *node, spec.endcapContainer, spec.endcapPosFilter, spec.endcapAxes,
                              fmt::format("{}|doubleLayer_pos", spec.endcapContainer), kUngroupedVertexEndcapEnvelope,
-                             keyXform);
+                             keyXform, std::move(onPos));
       addUngroupedEndcapSide(builder, *node, spec.endcapContainer, spec.endcapNegFilter, spec.endcapAxes,
                              fmt::format("{}|doubleLayer_neg", spec.endcapContainer), kUngroupedVertexEndcapEnvelope,
-                             std::move(keyXform));
+                             std::move(keyXform), std::move(onNeg));
     }
     return node;
   }
@@ -488,17 +716,22 @@ namespace Blueprints {
   /// @param spec        The configuration spec defining the barrel and endcap
   ///                    container names, sensor axes, layer filters, and layout
   /// @param trackerName The name of the resulting top-level tracker node
+  /// @param barrelMaterial If set, designate the inner cylinder of every barrel
+  ///                       layer as a material receiver
+  /// @param endcapMaterial If set, designate the IP-facing disc of every endcap
+  ///                       layer as a material receiver
   ///
   /// @returns The tracker blueprint node
-  std::shared_ptr<CylinderContainerBlueprintNode> makeRegularTracker(ActsPlugins::DD4hep::BlueprintBuilder& builder,
-                                                                     const TrackerSpec&                     spec,
-                                                                     const std::string& trackerName) {
+  std::shared_ptr<CylinderContainerBlueprintNode> makeRegularTracker(
+      ActsPlugins::DD4hep::BlueprintBuilder& builder, const TrackerSpec& spec, const std::string& trackerName,
+      const std::optional<LayerMaterial>& barrelMaterial = std::nullopt,
+      const std::optional<LayerMaterial>& endcapMaterial = std::nullopt) {
     auto tracker = std::make_shared<CylinderContainerBlueprintNode>(trackerName, AxisZ);
-    tracker->addChild(makeBarrel(builder, spec, kTrackerEnvelope));
+    tracker->addChild(makeBarrel(builder, spec, kTrackerEnvelope, identityKey, barrelMaterial));
     addBothEndcapSides(builder, *tracker, spec.endcapContainer, spec.endcapPosFilter, spec.endcapNegFilter,
                        spec.endcapAxes, spec.endcapLayout, kTrackerEnvelope,
                        fmt::format("{}|layer_pos", spec.endcapContainer),
-                       fmt::format("{}|layer_neg", spec.endcapContainer));
+                       fmt::format("{}|layer_neg", spec.endcapContainer), identityKey, endcapMaterial);
     return tracker;
   }
 
@@ -538,11 +771,17 @@ namespace Blueprints {
   /// @param vertex   The vertex detector blueprint node
   /// @param spec     The spec for defining how the nesting is done specifically
   ///                 for this detector
+  /// @param barrelMaterial If set, designate the inner cylinder of every barrel
+  ///                       layer as a material receiver
+  /// @param endcapMaterial If set, designate the IP-facing disc of every endcap
+  ///                       layer as a material receiver
   ///
   /// @returns The inner tracker blueprint node
   std::shared_ptr<CylinderContainerBlueprintNode> makeNestedInnerTracker(
       ActsPlugins::DD4hep::BlueprintBuilder& builder, std::shared_ptr<CylinderContainerBlueprintNode>&& vertex,
-      const NestedInnerTrackerSpec& spec = NestedInnerTrackerSpec{}) {
+      const NestedInnerTrackerSpec&       spec           = NestedInnerTrackerSpec{},
+      const std::optional<LayerMaterial>& barrelMaterial = std::nullopt,
+      const std::optional<LayerMaterial>& endcapMaterial = std::nullopt) {
     // We have to create the inner tracker in several steps, because the inner
     // most endcap layer protrudes into the envelope that is created by the
     // outermost barrel layer. That creates an overlap in z while stacking.
@@ -554,8 +793,8 @@ namespace Blueprints {
     // two innermost InnerTrackerBarrel layers because the outermost vertex
     // layer extends further in r, than the innermost border of the InnerTracker
     // endcaps. Hence, we also need to stack them in the correct order.
-    auto innerInnerBarrel =
-        makeGroupedBarrel(builder, spec.barrelContainer, spec.barrelInnerFilter, spec.barrelAxes, kTrackerEnvelope);
+    auto innerInnerBarrel = makeGroupedBarrel(builder, spec.barrelContainer, spec.barrelInnerFilter, spec.barrelAxes,
+                                              kTrackerEnvelope, barrelMaterial);
     innerInnerBarrel->addChild(vertex);
 
     auto innerInnerTracker = std::make_shared<CylinderContainerBlueprintNode>("InnerInnerTracker", AxisZ);
@@ -564,20 +803,20 @@ namespace Blueprints {
     addBothEndcapSides(builder, *innerInnerTracker, spec.endcapContainer, spec.endcapPosInnerFilter,
                        spec.endcapNegInnerFilter, spec.endcapAxes, spec.layout, kTrackerEnvelope,
                        fmt::format("{}|layer_pos", spec.endcapContainer),
-                       fmt::format("{}|layer_neg", spec.endcapContainer));
+                       fmt::format("{}|layer_neg", spec.endcapContainer), identityKey, endcapMaterial);
 
     auto innerTracker = std::make_shared<CylinderContainerBlueprintNode>("InnerTracker", AxisZ);
     innerTracker->addCylinderContainer("InnerTrackerBarrel", AxisR, [&](auto& innerBarrel) {
       innerBarrel.addChild(innerInnerTracker);
-      auto outerBarrel =
-          makeGroupedBarrel(builder, spec.barrelContainer, spec.barrelOuterFilter, spec.barrelAxes, kTrackerEnvelope);
+      auto outerBarrel = makeGroupedBarrel(builder, spec.barrelContainer, spec.barrelOuterFilter, spec.barrelAxes,
+                                           kTrackerEnvelope, barrelMaterial);
       innerBarrel.addChild(outerBarrel);
     });
 
     addBothEndcapSides(builder, *innerTracker, spec.endcapContainer, spec.endcapPosOuterFilter,
                        spec.endcapNegOuterFilter, spec.endcapAxes, spec.layout, kTrackerEnvelope,
                        fmt::format("{}|layer_pos", spec.endcapContainer),
-                       fmt::format("{}|layer_neg", spec.endcapContainer));
+                       fmt::format("{}|layer_neg", spec.endcapContainer), identityKey, endcapMaterial);
 
     return innerTracker;
   }
@@ -593,6 +832,21 @@ namespace Blueprints {
         Acts::NavigationPolicyFactory{}.add<Acts::TryAllNavigationPolicy>(Acts::TryAllNavigationPolicy::Config{}));
   }
 
+  /// Outer radius shared by the calo barrel and endcap volumes.
+  ///
+  /// The endcap disc usually reaches further out than the barrel corners, so
+  /// sizing the volumes on the barrel alone would cut the disc off at the barrel
+  /// circumradius. That truncation matters for tracks crossing the barrel face
+  /// close to the barrel/endcap corner: they go on to cross the endcap face at
+  /// a radius beyond the barrel corners, and would otherwise leave the world
+  /// before the navigator ever sees the disc. Both volumes therefore share the
+  /// larger of the two radii, which also keeps the top-level z-stack radially
+  /// aligned without gap shells.
+  double caloVolumeRMax(const IActsGeoSvc::CaloFaceSurfaces& calo) {
+    constexpr double pad = 1_mm;
+    return std::max(calo.barrelRMax, calo.endcapRMax) + pad;
+  }
+
   /// Add the calorimeter barrel as a passive static volume to @p parent (the
   /// radial container around the tracker). The volume is a cylinder enclosing
   /// the regular-polygon inner face, with one planar surface per polygon side.
@@ -606,7 +860,7 @@ namespace Blueprints {
   void addCaloBarrel(BlueprintNode& parent, const IActsGeoSvc::CaloFaceSurfaces& calo) {
     constexpr double pad    = 1_mm;
     auto             bounds = std::make_shared<Acts::CylinderVolumeBounds>(std::max(0.0, calo.barrelRMin - pad),
-                                                                           calo.barrelRMax + pad, calo.barrelHalfZ + pad);
+                                                                           caloVolumeRMax(calo), calo.barrelHalfZ + pad);
     auto vol = std::make_unique<Acts::TrackingVolume>(Acts::Transform3::Identity(), std::move(bounds), "CaloBarrel");
     for (const auto& face : calo.barrelFaces) {
       vol->addSurface(face);
@@ -634,9 +888,10 @@ namespace Blueprints {
     const double halfZ  = std::max(5_mm, (zOuter - zInner) / 2.0);
     const double zc     = (zInner + zOuter) / 2.0;
 
-    // Span the full radius (0 .. barrel circumradius) so the volume shares the
-    // central radial extent and the z-stack does not need radial gap shells.
-    auto bounds = std::make_shared<Acts::CylinderVolumeBounds>(0.0, calo.barrelRMax + pad, halfZ);
+    // Span the full radius (0 .. caloVolumeRMax) so the volume shares the
+    // central radial extent and the z-stack does not need radial gap shells,
+    // and so the disc itself fits inside its volume.
+    auto bounds = std::make_shared<Acts::CylinderVolumeBounds>(0.0, caloVolumeRMax(calo), halfZ);
 
     Acts::Transform3 transform = Acts::Transform3::Identity();
     transform.translation()    = Acts::Vector3{0, 0, positive ? zc : -zc};
@@ -687,24 +942,81 @@ namespace MuColl {
   namespace MAIA_v0 {
     void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
                            ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo) {
+      // Material receivers for MAIA. See the "Material designation" block in the
+      // Blueprints namespace for why only the IP-facing face of each layer is
+      // designated. The three barrels differ in whether their innermost layer
+      // has to be left out, because that depends on what else sits in the same
+      // radial stack:
+      //
+      // - VertexBarrel and OuterTrackerBarrel are plain layer stacks, so the
+      //   inner cylinder of their layer 0 *is* the container's inner cylinder.
+      //   Both containers are then children of a z-stack (Vertex and
+      //   OuterTracker), which merges its children's cylinder faces, so those
+      //   layers are skipped. Designating them aborts the construction with
+      //   "Material is designated on portal faces that are merged when stacking
+      //   child volumes in AxisZ direction".
+      // - InnerTrackerBarrel encloses the whole vertex detector
+      //   (makeNestedInnerTracker adds it as a radial child), so its layer0
+      //   inner cylinder is an interior portal fused with Vertex's outer
+      //   cylinder, which designates nothing. It is safe, and designated.
+      //
+      // Nothing is lost by skipping: each excluded face survives as part of a
+      // receiver that is designated. VertexBarrel's is Beampipe.OuterCylinder
+      // (the same portal, shared through every enclosing container), and
+      // OuterTrackerBarrel's is InnerTracker.OuterCylinder.
+      const auto vertexBarrelMaterial = Blueprints::LayerMaterial{.skipInnermost = std::regex{"layer_0"}};
+      const auto innerBarrelMaterial  = Blueprints::LayerMaterial{};
+      const auto outerBarrelMaterial  = Blueprints::LayerMaterial{.skipInnermost = std::regex{"layer0"}};
+      const auto endcapMaterial       = Blueprints::LayerMaterial{};
+
       // Build the tracker detectors as radial children of the supplied
       // container.
       auto buildTrackers = [&](ContainerBlueprintNode& outer) {
-        Blueprints::addCylindricalBeampipe(outer);
+        Blueprints::addCylindricalBeampipe(outer, /*designateMaterial=*/true);
 
         // NOTE: Need to set rather small padding here for the R-direction,
         // because the innermost two layers are a double layer for which the
         // cylindrical volumes are overlapping otherwise
         auto vertexBarrel = Blueprints::makeGroupedBarrel(builder, "VertexBarrel", std::regex{"layer_\\d"}, "ZYX",
-                                                          Blueprints::kTightBarrelEnvelope);
+                                                          Blueprints::kTightBarrelEnvelope, vertexBarrelMaterial);
         auto vertex       = Blueprints::attachEndcaps(builder, std::move(vertexBarrel),
-                                                      Blueprints::DoubleBarrelLayerVertexSpec, "Vertex");
+                                                      Blueprints::DoubleBarrelLayerVertexSpec, "Vertex", endcapMaterial);
 
-        auto innerTracker = Blueprints::makeNestedInnerTracker(builder, std::move(vertex));
-        outer.addChild(innerTracker);
+        auto innerTracker = Blueprints::makeNestedInnerTracker(
+            builder, std::move(vertex), Blueprints::NestedInnerTrackerSpec{}, innerBarrelMaterial, endcapMaterial);
+        // The inner tracker's outer cylinder is fused with the outer tracker's
+        // inner cylinder, which carries no material (the innermost outer-tracker
+        // barrel layer is skipped), so it is free to receive the material of the
+        // services between the two subdetectors.
+        outer.addChild(Blueprints::withMaterial(innerTracker, "InnerTracker_Material",
+                                                Acts::CylinderVolumeBounds::Face::OuterCylinder));
 
-        auto outerTracker = Blueprints::makeRegularTracker(builder, Blueprints::OuterTrackerSpec, "OuterTracker");
-        outer.addChild(outerTracker);
+        auto outerTracker = Blueprints::makeRegularTracker(builder, Blueprints::OuterTrackerSpec, "OuterTracker",
+                                                           outerBarrelMaterial, endcapMaterial);
+        outer.addChild(Blueprints::withMaterial(outerTracker, "OuterTracker_Material",
+                                                Acts::CylinderVolumeBounds::Face::OuterCylinder));
+
+        // In MAIA_v0 the solenoid sits between the outer tracker and the
+        // calorimeter (coil at r = 1500..1857 mm, ECAL barrel face at 1857 mm),
+        // so every extrapolation to the calorimeter face crosses it. Give it a
+        // volume of its own: without one the radial stack stretches the outer
+        // tracker across the whole coil and the designation above ends up hard
+        // against the calorimeter face, with nothing anywhere near the coil.
+        //
+        // With the volume in place the two designations bracket the coil --
+        // OuterTracker_Material lands at its inner face and Solenoid_Material at
+        // its outer face -- so the mapping can spread the coil material over its
+        // thickness rather than lumping it at one edge. A single surface inside
+        // the coil would be better still; that is the next refinement.
+        //
+        // Guarded, not unconditional: MuSIC_v2 shares this blueprint but puts
+        // its coil at r = 2055 mm, outside its calorimeter (1690..1960 mm),
+        // where it is irrelevant for the extrapolation and a volume here would
+        // not fit the radial stack at all.
+        if (const auto solenoidRMin = Blueprints::findSolenoidInnerRadius(builder);
+            !calo.empty() && solenoidRMin.has_value() && *solenoidRMin < calo.barrelRMin) {
+          Blueprints::addCylindricalSolenoid(outer, *solenoidRMin, /*designateMaterial=*/true);
+        }
       };
 
       if (calo.empty()) {

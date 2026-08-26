@@ -99,6 +99,13 @@ private:
   Gaudi::Property<bool> m_extrapolateToCalo{
       this, "ExtrapolateToCalo", true,
       "Extrapolate fitted tracks to the calorimeter face and add an AtCalorimeter track state."};
+  Gaudi::Property<bool> m_addEndcapCaloState{
+      this, "AddEndcapCaloState", false,
+      "Give a track that crosses both calorimeter sections one AtCalorimeter track state per section instead of a "
+      "single one. A track entering the barrel face close to the barrel/endcap corner goes on to enter the endcap "
+      "too; with this enabled it gets a second AtCalorimeter state there, appended after the barrel one (the states "
+      "are ordered as the track crosses them). Off by default, since a consumer looking up 'the' AtCalorimeter state "
+      "by location would silently see only the barrel one. Ignored unless ExtrapolateToCalo is set."};
   Gaudi::Property<unsigned int> m_minSeedHits{this, "MinSeedHits", 3,
                                               "Minimum number of hits an input track must have to seed the CKF."};
   ///@}
@@ -164,13 +171,24 @@ StatusCode CKFTrackingFromSeedsAlg::initialize() {
                  "no AtCalorimeter track states will be produced."
               << endmsg;
   }
+  if (m_addEndcapCaloState && !m_extrapolateToCalo) {
+    error() << "AddEndcapCaloState requested but ExtrapolateToCalo is off; no AtCalorimeter track states "
+               "are produced at all, so the setting has no effect."
+            << endmsg;
+    return StatusCode::FAILURE;
+  } else if (m_addEndcapCaloState && m_actsGeoSvc->caloEndcapSurfaceGeoIds().empty()) {
+    warning() << "AddEndcapCaloState requested but ActsGeoSvc provides no calorimeter endcap surfaces; "
+                 "every track will keep a single AtCalorimeter state."
+              << endmsg;
+  }
 
   m_ckfRunner.emplace(*m_actsGeoSvc,
                       ACTSTracking::CKFRunner::Config{.chi2CutOff            = m_CKF_chi2CutOff,
                                                       .numMeasurementsCutOff = m_CKF_numMeasurementsCutOff,
                                                       .propagateBackward     = m_propagateBackward,
                                                       .extrapolateToCalo     = m_extrapolateToCalo,
-                                                      .maxSteps              = m_maxPropagationSteps});
+                                                      .maxSteps              = m_maxPropagationSteps,
+                                                      .addEndcapCaloState    = m_addEndcapCaloState});
 
   return StatusCode::SUCCESS;
 }
@@ -214,15 +232,6 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingFromSe
   debug() << fmt::format("Created {} sourceLinks from {} hits", sourceLinks.size(), trackerHitCollection.size())
           << endmsg;
 
-  // Per-hit seed info: global position + transverse radius, resolved once per
-  // usable hit so the seed triplet can be ordered by radius without recomputing
-  // positions inside the sort comparator.
-  struct SeedHit {
-    Acts::Vector3            pos;
-    double                   r;
-    ACTSTracking::SourceLink sl;
-  };
-
   // Parallelise over the input seed tracks: each task turns a contiguous chunk
   // of candidates into three-point seeds + initial parameters, then runs the CKF
   // once over that chunk (so the ACTS track containers are reused across the
@@ -239,16 +248,10 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingFromSe
     for (std::size_t i = range.begin(); i != range.end(); ++i) {
       const auto seedTrack = seedTrackCollection[i];
 
-      std::vector<SeedHit> hits;
-      hits.reserve(seedTrack.trackerHits_size());
-      for (const auto& hit : seedTrack.getTrackerHits()) {
-        auto it = slByHit.find(ACTSTracking::trackerHitKey(hit));
-        if (it == slByHit.end()) {
-          continue;
-        }
-        const edm4hep::Vector3d p = hitContainer[it->second.index()].getPosition();
-        hits.push_back({Acts::Vector3(p.x, p.y, p.z), std::hypot(p.x, p.y), it->second});
-      }
+      // Build the radius-ordered seed hits; the triplet is innermost / middle /
+      // outermost.
+      const std::vector<ACTSTracking::SeedHit> hits =
+          ACTSTracking::collectSeedHits(seedTrack.getTrackerHits(), slByHit, hitContainer);
 
       if (hits.size() < m_minSeedHits) {
         debug() << "Skipping input track with " << hits.size() << " usable hits (< " << m_minSeedHits.value() << ")."
@@ -256,23 +259,9 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingFromSe
         continue;
       }
 
-      // Order by radius and pick innermost / middle / outermost as the seed triplet.
-      std::sort(hits.begin(), hits.end(), [](const SeedHit& a, const SeedHit& b) { return a.r < b.r; });
-
-      const SeedHit& bottom = hits.front();
-      const SeedHit& middle = hits[hits.size() / 2];
-      const SeedHit& top    = hits.back();
-
-      const Acts::Surface* bottomSurface = m_actsGeoSvc->trackingGeometry()->findSurface(bottom.sl.geometryId());
-      if (bottomSurface == nullptr) {
-        warning() << "Surface with geoID " << bottom.sl.geometryId() << " not found in tracking geometry" << endmsg;
-        continue;
-      }
-
       std::optional<Acts::BoundTrackParameters> paramseed = ACTSTracking::estimateSeedParameters(
-          *this, *m_actsGeoSvc, geoCtx, *bottomSurface, bottom.pos, middle.pos, top.pos,
-          hitContainer[bottom.sl.index()].getTime(), magCacheLocal, m_initialTrackError_pos, m_initialTrackError_phi,
-          m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time);
+          *this, *m_actsGeoSvc, geoCtx, hits, hitContainer, magCacheLocal, m_initialTrackError_pos,
+          m_initialTrackError_phi, m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time);
       if (!paramseed) {
         continue;
       }
@@ -282,7 +271,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingFromSe
 
       ACTSTracking::appendSeedTrack(
           seedCollection, m_seedMutex, seedTrackState,
-          hits | std::views::transform([&](const SeedHit& h) { return hitContainer[h.sl.index()]; }));
+          hits | std::views::transform([&](const ACTSTracking::SeedHit& h) { return hitContainer[h.sl.index()]; }));
     }
 
     // One CKF pass for the whole chunk.

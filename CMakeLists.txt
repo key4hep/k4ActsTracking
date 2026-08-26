@@ -16,23 +16,39 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ]]
-CMAKE_MINIMUM_REQUIRED(VERSION 3.18)
+# 3.22 is required by the DL_PATHS option of catch_discover_tests, see
+# test/unittests/CMakeLists.txt
+CMAKE_MINIMUM_REQUIRED(VERSION 3.22)
 
 project(k4ActsTracking LANGUAGES CXX)
 
 SET( ${PROJECT_NAME}_VERSION_MAJOR 0 )
-SET( ${PROJECT_NAME}_VERSION_MINOR 4 )
+SET( ${PROJECT_NAME}_VERSION_MINOR 5 )
 SET( ${PROJECT_NAME}_VERSION_PATCH 0 )
 
 SET( ${PROJECT_NAME}_VERSION  "${${PROJECT_NAME}_VERSION_MAJOR}.${${PROJECT_NAME}_VERSION_MINOR}.${${PROJECT_NAME}_VERSION_PATCH}" )
 
+# The GNN track finding code depends on Torch, onnxruntime and the Acts Gnn
+# plugin. Guard it behind an option so that the package can also be built
+# without those dependencies.
+option(K4ACTSTRACKING_BUILD_GNN
+  "Build the GNN track finding code (requires Torch, onnxruntime and the Acts Gnn plugin)"
+  OFF)
 include(cmake/MaybeBuildActs.cmake)
 
 find_package(EDM4HEP REQUIRED)
 find_package(k4FWCore REQUIRED)
-find_package(Acts REQUIRED COMPONENTS Core PluginDD4hep)
+set(ACTS_COMPONENTS Core PluginDD4hep)
+if(K4ACTSTRACKING_BUILD_GNN)
+  list(APPEND ACTS_COMPONENTS PluginGnn)
+endif()
+find_package(Acts REQUIRED COMPONENTS ${ACTS_COMPONENTS})
 find_package(DD4hep REQUIRED COMPONENTS DDCore DDRec)
 find_package(TBB REQUIRED)
+if(K4ACTSTRACKING_BUILD_GNN)
+  find_package(onnxruntime REQUIRED)
+  find_package(Torch REQUIRED)
+endif()
 
 include(cmake/Key4hepConfig.cmake)
 
@@ -43,6 +59,9 @@ include(GNUInstallDirs)
 include(CTest)
 
 add_subdirectory(k4ActsTracking)
+if(K4ACTSTRACKING_BUILD_GNN)
+  add_subdirectory(GNNTrackFinding)
+endif()
 add_subdirectory(data)
 if (BUILD_TESTING)
   add_subdirectory(test)

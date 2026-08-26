@@ -88,164 +88,6 @@ namespace ACTSTracking {
   using CombKalmanFilter      = Acts::CombinatorialKalmanFilter<CKFPropagator, CKFTrackContainer>;
 
   /**
-   * @brief Thread-safe counters for the calorimeter-face extrapolation.
-   *
-   * Shared by the CKF tracking algorithms: CKFRunner::findTracks updates the
-   * counters (through a const pointer, hence the mutable atomics) and each
-   * algorithm reports summary() in finalize().
-   */
-  struct CaloExtrapMonitor {
-    mutable std::atomic<std::size_t> attempts{0};      ///< tracks with a usable start state
-    mutable std::atomic<std::size_t> noStartState{0};  ///< tracks without a measured smoothed state
-    mutable std::atomic<std::size_t> notReached{0};    ///< propagation did not reach a calo face
-    mutable std::atomic<std::size_t> propFailed{0};    ///< propagation itself failed
-    mutable std::atomic<std::size_t> ok{0};            ///< reached a calo face
-
-    std::string summary() const {
-      const std::size_t a        = attempts.load();
-      const std::size_t o        = ok.load();
-      const std::size_t nr       = notReached.load();
-      const std::size_t pf       = propFailed.load();
-      const std::size_t ns       = noStartState.load();
-      const std::size_t failed   = nr + pf;
-      const double      failRate = a > 0 ? static_cast<double>(failed) / static_cast<double>(a) : 0.0;
-      return fmt::format(
-          "Calorimeter-face extrapolation summary: {} attempts, {} reached the face, {} failed "
-          "({:.2f}%: {} not reached, {} propagation errors); {} tracks had no measured smoothed start state.",
-          a, o, failed, 100.0 * failRate, nr, pf, ns);
-    }
-  };
-
-  /**
-   * @brief Build the ACTS measurements and source links for a set of tracker hits.
-   *
-   * Shared hit-conversion loop of the CKF tracking algorithms:
-   *  - looks up the ACTS surface for each hit's cellID,
-   *  - sorts hits by geometry identifier for efficient multiset insertion,
-   *  - converts global to local coordinates and creates a Measurement + SourceLink.
-   *
-   * For each converted hit the @p hitSink callback is invoked with the hit, its
-   * SourceLink and the geometry needed to build seeding space points, so each
-   * algorithm can decide what to keep (a per-hit source-link map, seed grid
-   * inputs, ...).
-   *
-   * The @p hits container is filled in lockstep with @p measurements: entry i is
-   * the edm4hep hit of the source link whose index() is i, so the compact
-   * SourceLink can recover its hit via hits[sourceLink.index()].
-   *
-   * @tparam Alg     Owning Gaudi algorithm (used only for level-aware logging).
-   * @tparam HitSink Callback (const edm4hep::TrackerHitPlane&, const SourceLink&,
-   *                 const Acts::Vector3& globalPos, const Acts::Surface&,
-   *                 const Acts::SquareMatrix2& localCov).
-   */
-  template <class Alg, class HitSink>
-  void prepareTrackerHits(const Alg& alg, const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx,
-                          const edm4hep::TrackerHitPlaneCollection& trackerHits,
-                          ACTSTracking::MeasurementContainer&       measurements,
-                          ACTSTracking::SourceLinkContainer& sourceLinks, ACTSTracking::HitContainer& hits,
-                          int numThreads, HitSink&& hitSink) {
-    const auto& cellIdToSurface = geo.cellIdToSurfaceMap();
-
-    std::vector<std::pair<Acts::GeometryIdentifier, edm4hep::TrackerHitPlane>> sortedHits;
-    sortedHits.reserve(trackerHits.size());
-
-    for (const auto& hit : trackerHits) {
-      auto it = cellIdToSurface.find(hit.getCellID());
-      if (it == cellIdToSurface.end()) {
-        alg.warning() << "No surface found for cellID " << hit.getCellID() << ". skipping hit for tracking." << endmsg;
-        continue;
-      }
-      sortedHits.push_back({it->second->geometryId(), hit});
-    }
-    alg.debug() << "Working with " << sortedHits.size() << " hits." << endmsg;
-
-    // Sort hits by geometry ID for efficient SourceLink multiset insertion
-    auto compare = [](const auto& a, const auto& b) { return a.first < b.first; };
-    if (numThreads > 1) {
-      tbb::task_arena arena(numThreads);
-      arena.execute([&] { tbb::parallel_sort(sortedHits.begin(), sortedHits.end(), compare); });
-    } else {
-      std::sort(sortedHits.begin(), sortedHits.end(), compare);
-    }
-
-    sourceLinks.reserve(sortedHits.size());
-    hits.reserve(sortedHits.size());
-
-    for (const auto& hitPair : sortedHits) {
-      const Acts::Surface* surface = geo.trackingGeometry()->findSurface(hitPair.first);
-      if (surface == nullptr) {
-        alg.warning() << "Surface with geoID " << hitPair.first
-                      << " not found in tracking geometry. Skipping hit for tracking." << endmsg;
-        continue;
-      }
-
-      const edm4hep::Vector3d& edmGlobalPos = hitPair.second.getPosition();
-      Acts::Vector3            globalPos    = {edmGlobalPos.x, edmGlobalPos.y, edmGlobalPos.z};
-
-      Acts::Result<Acts::Vector2> lpResult =
-          surface->globalToLocal(geoCtx, globalPos, {0, 0, 0}, 0.5 * Acts::UnitConstants::um);
-      if (!lpResult.ok()) {
-        alg.warning() << "Global to local transformation did not succeed for hit. Skipping it in tracking." << endmsg;
-        continue;
-      }
-
-      Acts::Vector2 loc = lpResult.value();
-
-      Acts::SquareMatrix2 localCov = Acts::SquareMatrix2::Zero();
-      localCov(0, 0)               = std::pow(hitPair.second.getDu() * Acts::UnitConstants::mm, 2);
-      localCov(1, 1)               = std::pow(hitPair.second.getDv() * Acts::UnitConstants::mm, 2);
-
-      ACTSTracking::SourceLink  sourceLink(surface->geometryId(), measurements.size());
-      Acts::SourceLink          srcWrap{sourceLink};
-      ACTSTracking::Measurement meas =
-          ACTSTracking::makeMeasurement(srcWrap, loc, localCov, Acts::eBoundLoc0, Acts::eBoundLoc1);
-
-      measurements.push_back(meas);
-      hits.push_back(hitPair.second);
-      sourceLinks.emplace_hint(sourceLinks.end(), sourceLink);
-
-      hitSink(hitPair.second, sourceLink, globalPos, *surface, localCov);
-    }
-  }
-
-  /**
-   * @brief Estimate initial bound track parameters from a three-point seed.
-   *
-   * Evaluates the magnetic field at the bottom position, calls
-   * Acts::estimateTrackParamsFromSeed on the bottom/middle/top positions and
-   * builds a diagonal initial covariance.
-   *
-   * @return The estimated parameters, or std::nullopt if the estimation fails. A
-   *         field-lookup failure throws, matching the tracking algorithms.
-   */
-  template <class Alg>
-  std::optional<Acts::BoundTrackParameters> estimateSeedParameters(
-      const Alg& alg, const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx, const Acts::Surface& bottomSurface,
-      const Acts::Vector3& bottomPos, const Acts::Vector3& middlePos, const Acts::Vector3& topPos, double t0,
-      Acts::MagneticFieldProvider::Cache& magCache, double errPos, double errPhi, double errLambda, double errRelP,
-      double errTime) {
-    // Magnetic field at the seed (bottom space point) position
-    Acts::Result<Acts::Vector3> seedField = geo.magneticField()->getField(bottomPos, magCache);
-    if (!seedField.ok()) {
-      throw std::runtime_error("Field lookup error: " + std::to_string(seedField.error().value()));
-    }
-
-    Acts::Result<Acts::BoundVector> optParams =
-        Acts::estimateTrackParamsFromSeed(geoCtx, bottomSurface, bottomPos, t0, middlePos, topPos, *seedField);
-    if (!optParams.ok()) {
-      alg.debug() << "Failed estimation of track parameters for seed." << endmsg;
-      return std::nullopt;
-    }
-
-    const Acts::BoundVector& params = *optParams;
-    float                    p      = std::abs(1.f / params[Acts::eBoundQOverP]);
-
-    Acts::BoundMatrix cov = ACTSTracking::makeInitialCovariance(p, errPos, errPhi, errLambda, errRelP, errTime);
-
-    return Acts::BoundTrackParameters(bottomSurface.getSharedPtr(), params, cov, Acts::ParticleHypothesis::pion());
-  }
-
-  /**
    * @brief Convert estimated seed parameters into an edm4hep seed TrackState.
    */
   template <class Alg>
@@ -314,6 +156,12 @@ namespace ACTSTracking {
       bool         extrapolateToCalo     = false;
       std::size_t  maxSteps              = kDefaultMaxPropagationSteps;
 
+      /// Whether a track that crosses both calorimeter sections gets an
+      /// AtCalorimeter state for each of them. False (the default) keeps one
+      /// state per track, at the first calo face the track reaches. See
+      /// CaloStateAppender::addEndcapStateAfterBarrel.
+      bool addEndcapCaloState = false;
+
       // Branch stopper: optionally terminate CKF branches early on too many
       // holes/outliers or low pT. Disabled by default (useBranchStopper = false).
       bool   useBranchStopper    = false;
@@ -359,14 +207,10 @@ namespace ACTSTracking {
           m_referenceSurface(cfg.referenceSurface
                                  ? cfg.referenceSurface
                                  : Acts::Surface::makeShared<Acts::PerigeeSurface>(Acts::Vector3::Zero())),
-          m_extrapolator(std::make_unique<CKFPropagator>(makePropagator(geo, false))) {
-      // The calorimeter inner-face surfaces are passive surfaces of the tracking
-      // geometry, so the calo propagator's navigator must resolve passive
-      // surfaces. Only built when requested and when the geometry provides them.
-      if (cfg.extrapolateToCalo && !geo.caloSurfaceGeoIds().empty()) {
-        m_caloPropagator = std::make_unique<ACTSTracking::CaloFacePropagator>(makePropagator(geo, true));
-      }
-    }
+          m_extrapolator(std::make_unique<CKFPropagator>(makePropagator(geo, false))),
+          m_caloAppender(
+              geo, m_geoCtx, m_magCtx,
+              {.enabled = cfg.extrapolateToCalo, .addEndcapState = cfg.addEndcapCaloState, .maxSteps = cfg.maxSteps}) {}
 
     CKFRunner(const CKFRunner&)            = delete;
     CKFRunner(CKFRunner&&)                 = delete;
@@ -454,7 +298,7 @@ namespace ACTSTracking {
 
             auto track = ACTSTracking::ACTS2edm4hep_track(m_geoCtx, trackTip, hits, m_geo.magneticField(), magCache);
 
-            addCaloState(alg, trackTip, track, magCache, caloMonitor);
+            m_caloAppender.addCaloState(alg, trackTip, track, magCache, caloMonitor);
 
             {
               std::lock_guard lock{trackMutex};
@@ -509,80 +353,6 @@ namespace ACTSTracking {
       return (nMeas >= m_bsMinMeasurements) ? Result::StopAndKeep : Result::StopAndDrop;
     }
 
-    /// Extrapolate the smoothed track to the calorimeter face and, on success,
-    /// append an AtCalorimeter track state to @p track. No-op when calo
-    /// extrapolation is disabled. Starts from the outermost smoothed state that
-    /// carries a real measurement (closest to the calorimeter).
-    template <class Alg, class TrackProxy>
-    void addCaloState(const Alg& alg, const TrackProxy& trackTip, edm4hep::MutableTrack& track,
-                      Acts::MagneticFieldProvider::Cache& magCache, const CaloExtrapMonitor* caloMonitor) const {
-      if (!m_caloPropagator) {
-        return;
-      }
-
-      std::optional<Acts::BoundTrackParameters> startParams;
-      for (const auto& state : trackTip.trackStatesReversed()) {
-        const auto flags = state.typeFlags();
-        if (state.hasSmoothed() && flags.test(Acts::TrackStateFlag::HasMeasurement) &&
-            !flags.test(Acts::TrackStateFlag::IsOutlier)) {
-          startParams.emplace(state.referenceSurface().getSharedPtr(), state.smoothed(), state.smoothedCovariance(),
-                              trackTip.particleHypothesis());
-          break;
-        }
-      }
-
-      if (!startParams) {
-        if (caloMonitor) {
-          ++caloMonitor->noStartState;
-        }
-        alg.debug() << "No measured smoothed state available; no AtCalorimeter state added for this track." << endmsg;
-        return;
-      }
-
-      if (caloMonitor) {
-        ++caloMonitor->attempts;
-      }
-      const ACTSTracking::CaloFacePropagator& caloPropagator = *m_caloPropagator;
-      const auto                              caloResult     = ACTSTracking::extrapolateToCaloFace(
-          caloPropagator, *startParams, m_geo.caloSurfaceGeoIds(), m_geoCtx, m_magCtx, m_maxSteps);
-
-      using ACTSTracking::CaloExtrapolationStatus;
-      switch (caloResult.status) {
-        case CaloExtrapolationStatus::Ok: {
-          if (caloMonitor) {
-            ++caloMonitor->ok;
-          }
-          const Acts::Vector3 caloPos  = caloResult.params->position(m_geoCtx);
-          auto                fieldRes = m_geo.magneticField()->getField(caloPos, magCache);
-          const double        Bz       = fieldRes.ok() ? (*fieldRes)[2] / Acts::UnitConstants::T : 0.0;
-          // The calo-face parameters are local to the target surface;
-          // ACTS2edm4hep_trackState re-expresses them at an ad-hoc perigee at the
-          // calo-face position and sets the referencePoint accordingly.
-          auto caloState = ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtCalorimeter, m_geoCtx,
-                                                                 *caloResult.params, Bz);
-          track.addToTrackStates(caloState);
-          break;
-        }
-        case CaloExtrapolationStatus::NotReached:
-        case CaloExtrapolationStatus::NoSurfaces:
-          if (caloMonitor) {
-            ++caloMonitor->notReached;
-          }
-          alg.debug() << "Extrapolation to the calorimeter face did not reach a surface; "
-                         "no AtCalorimeter state added for this track."
-                      << endmsg;
-          break;
-        case CaloExtrapolationStatus::PropagationError:
-          if (caloMonitor) {
-            ++caloMonitor->propFailed;
-          }
-          alg.debug() << "Extrapolation to the calorimeter face failed during propagation; "
-                         "no AtCalorimeter state added for this track."
-                      << endmsg;
-          break;
-      }
-    }
-
     const IActsGeoSvc&                m_geo;
     Acts::GeometryContext             m_geoCtx;
     Acts::MagneticFieldContext        m_magCtx{};
@@ -597,10 +367,10 @@ namespace ACTSTracking {
     int                               m_bsPtMinMeasurements = 3;
     Acts::MeasurementSelector::Config m_measSelConfig;
 
-    std::unique_ptr<CombKalmanFilter>                 m_trackFinder;
-    std::shared_ptr<const Acts::Surface>              m_referenceSurface;
-    std::unique_ptr<CKFPropagator>                    m_extrapolator;
-    std::unique_ptr<ACTSTracking::CaloFacePropagator> m_caloPropagator;
+    std::unique_ptr<CombKalmanFilter>    m_trackFinder;
+    std::shared_ptr<const Acts::Surface> m_referenceSurface;
+    std::unique_ptr<CKFPropagator>       m_extrapolator;
+    CaloStateAppender                    m_caloAppender;
   };
 
 }  // namespace ACTSTracking

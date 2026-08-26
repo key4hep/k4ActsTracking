@@ -63,7 +63,21 @@ else()
   set_target_properties(Catch2::Catch2 PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${CATCH2_IF_INC_DIRS}")
 endif()
 
-add_executable(unittest_k4ActsTracking CellIDSelectionTests.cpp)
+# The key4hep stack ships its own copies of the libraries built here
+# (libk4ActsTracking.so, libGNNTracking*.so), and its lib directory ends up on
+# LD_LIBRARY_PATH. CMake emits the build tree rpath as DT_RUNPATH, which the
+# dynamic loader searches *after* LD_LIBRARY_PATH, so the stack copy shadows the
+# one that was just built. Any symbol that only exists in the local build then
+# fails to resolve at run time, both when catch_discover_tests runs the binary at
+# build time to enumerate the test cases and when ctest runs it later.
+#
+# The DL_PATHS below put the build tree ahead of the stack on LD_LIBRARY_PATH for
+# both of those, so the freshly built libraries win. This is the same shadowing
+# that the LD_PRELOAD in ../CMakeLists.txt works around for the Gaudi plugin
+# module; that test environment does not apply here because test discovery
+# happens at build time. DL_PATHS is what sets the CMake 3.22 floor of this
+# project.
+add_executable(unittest_k4ActsTracking CellIDSelectionTests.cpp HitFeatureTests.cpp)
 target_link_libraries(unittest_k4ActsTracking PUBLIC k4ActsTracking PRIVATE Catch2::Catch2WithMain)
 # Catch2 TEST_CASE/SECTION macros expand __COUNTER__ at the call site in user
 # code, so marking Catch2 headers as system includes is not sufficient to
@@ -74,4 +88,25 @@ include(Catch)
 catch_discover_tests(unittest_k4ActsTracking
   WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
   TEST_PREFIX "UT_" # make it possible to filter easily with -R ^UT
+  DL_PATHS $<TARGET_FILE_DIR:k4ActsTracking> # see the shadowing note above
 )
+
+# GNN track finding: unit tests for the mlutils helpers in ONNXInferenceModel.h.
+# The GNNTrackingONNXInferenceModels usage requirements provide the
+# GNNTrackFinding/include directory, so no extra include path is needed here.
+# Only built when the GNN track finding code is enabled (it provides the
+# GNNTrackingONNXInferenceModels target this test links against).
+if(K4ACTSTRACKING_BUILD_GNN)
+  add_executable(unittest_gnntrackfinding ONNXInferenceModelTests.cpp)
+  target_link_libraries(unittest_gnntrackfinding
+    PUBLIC GNNTrackingONNXInferenceModels
+    PRIVATE Catch2::Catch2WithMain)
+  target_compile_options(unittest_gnntrackfinding PRIVATE -Wno-c2y-extensions)
+
+  catch_discover_tests(unittest_gnntrackfinding
+    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+    TEST_PREFIX "UT_" # make it possible to filter easily with -R ^UT
+    # see the shadowing note above, the stack ships this library too
+    DL_PATHS $<TARGET_FILE_DIR:GNNTrackingONNXInferenceModels>
+  )
+endif()

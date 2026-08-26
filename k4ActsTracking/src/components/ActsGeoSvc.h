@@ -39,6 +39,7 @@ namespace Acts {
   class MagneticFieldProvider;
   class Surface;
   class Blueprint;
+  class IMaterialDecorator;
 }  // namespace Acts
 
 namespace dd4hep {
@@ -56,6 +57,14 @@ public:
 
   const std::vector<Acts::GeometryIdentifier>& caloSurfaceGeoIds() const override { return m_caloSurfaceGeoIds; }
 
+  const std::vector<Acts::GeometryIdentifier>& caloBarrelSurfaceGeoIds() const override {
+    return m_caloBarrelSurfaceGeoIds;
+  }
+
+  const std::vector<Acts::GeometryIdentifier>& caloEndcapSurfaceGeoIds() const override {
+    return m_caloEndcapSurfaceGeoIds;
+  }
+
   ActsGeoSvc(const std::string& name, ISvcLocator* svcLoc);
 
   ~ActsGeoSvc() = default;
@@ -72,6 +81,13 @@ public:
   Gaudi::Property<bool> m_buildCaloSurfaces{
       this, "BuildCaloSurfaces", true,
       "Whether to build the ECAL inner-face surfaces (for track extrapolation to the calorimeter face)."};
+  Gaudi::Property<std::string> m_materialMapFile{
+      this, "MaterialMapFile", "",
+      "Path to an ACTS material map to decorate the tracking geometry with. A '.root' file is read with ACTS' "
+      "RootMaterialDecorator, anything else ('.json', '.cbor') with the JsonMaterialDecorator. Empty (the default) "
+      "leaves the geometry carrying only the proto-material placeholders that the material mapping step projects "
+      "onto. The map is keyed by geometry identifier, which for a Gen3 geometry is assigned by the blueprint "
+      "traversal order, so a map is only valid for the blueprint that produced it."};
   Gaudi::Property<bool> m_useDD4hepField{
       this, "UseDD4hepBField", false,
       "Use the real, position-dependent DD4hep magnetic field (via ACTS' DD4hepFieldAdapter) for all propagation, "
@@ -102,6 +118,12 @@ private:
   /// placement. @p lengthScale converts DD4hep native lengths to ACTS units.
   void buildPlanarCaloFace(const dd4hep::DetElement& ecal, double lengthScale);
 
+  /// Build the material decorator selected by the MaterialMapFile property into
+  /// @p decorator, choosing the reader from the file extension. Leaves
+  /// @p decorator empty (and succeeds) when no map file is configured, and
+  /// fails when the configured file does not exist.
+  StatusCode makeMaterialDecorator(std::shared_ptr<const Acts::IMaterialDecorator>& decorator) const;
+
   SmartIF<IGeoSvc>                                          m_geoSvc;
   std::shared_ptr<const Acts::TrackingGeometry>             m_trackingGeo{nullptr};
   std::shared_ptr<const Acts::MagneticFieldProvider>        m_magneticField{nullptr};
@@ -110,6 +132,8 @@ private:
   std::string                                               m_cellIDEncodingString{};
   CaloFaceSurfaces                                          m_caloFaceSurfaces{};
   std::vector<Acts::GeometryIdentifier>                     m_caloSurfaceGeoIds{};
+  std::vector<Acts::GeometryIdentifier>                     m_caloBarrelSurfaceGeoIds{};
+  std::vector<Acts::GeometryIdentifier>                     m_caloEndcapSurfaceGeoIds{};
 };
 
 inline std::shared_ptr<const Acts::TrackingGeometry> ActsGeoSvc::trackingGeometry() const { return m_trackingGeo; }
