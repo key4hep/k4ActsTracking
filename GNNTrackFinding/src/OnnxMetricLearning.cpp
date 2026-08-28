@@ -31,6 +31,8 @@
 
 #include <torch/torch.h>
 
+#include <cuda_runtime.h>
+
 #include <fmt/format.h>
 #include <fmt/ostream.h>
 #include <fmt/ranges.h>
@@ -86,16 +88,26 @@ namespace {
   /// Convert the Onnx tensor into a torch Tensor.
   /// @note: This doesn't take ownership, it essentially just "re-skins" the data
   /// owned by the Onnx tensor
-  torch::Tensor toTorchTensor(const Ort::Value& onnxTensor) {
+  torch::Tensor toTorchTensor(const Ort::Value& onnxTensor, std::size_t cudaDeviceIndex = 0) {
     auto tensorInfo  = onnxTensor.GetTensorTypeAndShapeInfo();
+    auto memoryInfo  = onnxTensor.GetTensorMemoryInfo();
     auto shape       = tensorInfo.GetShape();
     auto elementType = tensorInfo.GetElementType();
 
     const void* data      = onnxTensor.GetTensorData<void>();
     const auto  torchType = toTorchType(elementType);
 
-    // Create torch tensor from existing data without copying
-    auto torchTensor = torch::from_blob(const_cast<void*>(data), shape, torchType);
+    // ONNX Runtime may place the output either in CPU or CUDA memory depending
+    // on the execution provider and which nodes were assigned to it. Create the
+    // wrapper tensor on the matching device so that clone() performs a valid
+    // copy before the Ort::Value goes out of scope.
+    const bool onCudaMemory = memoryInfo.GetDeviceType() == OrtMemoryInfoDeviceType_GPU;
+    auto       options      = torch::TensorOptions().dtype(torchType);
+    if (onCudaMemory) {
+      options = options.device(torch::Device(torch::kCUDA, static_cast<int64_t>(cudaDeviceIndex)));
+    }
+
+    auto torchTensor = torch::from_blob(const_cast<void*>(data), shape, options).clone();
     return torchTensor;
   }
 
@@ -242,13 +254,18 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
   ACTS_DEBUG(fmt::format("First input space point: {}", std::span(inferenceValues.data(), numFeatures)));
 
   const auto outputs = m_model.runInference(inferenceValues, inputShape);
-  // The ONNX session returns its outputs in host memory. Move the embedding to
-  // the pipeline's target device so that the edge building below (buildEdges
-  // dispatches FRNN/CUDA vs KD-Tree/CPU based on the tensor's device) runs on
-  // the same device as the rest of the pipeline.
-  const auto torchDevice =
-      execContext.device.isCuda() ? torch::Device(torch::kCUDA, execContext.device.index) : torch::Device(torch::kCPU);
-  auto embeddedPoints = toTorchTensor(outputs[0]).to(torchDevice);
+  // Set CUDA device as context
+  if (execContext.device.isCuda()) {
+    cudaSetDevice(execContext.device.index);
+  }
+
+  auto embeddedPoints = toTorchTensor(outputs[0], execContext.device.index);
+  if (execContext.device.isCuda() && embeddedPoints.device().is_cpu()) {
+    embeddedPoints = embeddedPoints.to(torch::Device(torch::kCUDA, static_cast<int64_t>(execContext.device.index)));
+  }
+  if (execContext.device.isCuda()) {
+    cudaDeviceSynchronize();
+  }
   assert(embeddedPoints.size(0) == inputShape[0]);  // Do not change the number of points
   // A model that declares its embedding dimension has to stick to it. This is
   // checked (rather than asserted) because a mismatch here means the loaded
@@ -356,10 +373,21 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
   }
   std::vector<float>& downstreamValues = paddedInputValues.empty() ? inputValues : paddedInputValues;
 
+  // Build the downstream node tensor on same device as the execution
+  // context. Acts helper allocates destination storage on execContext and
+  // wraps it with from_blob using the source tensor options; feeding it a CPU
+  // tensor while targeting CUDA can therefore dereference device memory as host
+  // memory.
+  auto downstreamNodeTensor = ActsPlugins::detail::vectorToTensor2D(downstreamValues, fullNumFeatures);
+  if (execContext.device.isCuda()) {
+    downstreamNodeTensor =
+        downstreamNodeTensor.to(torch::Device(torch::kCUDA, static_cast<int64_t>(execContext.device.index)));
+  }
+
   return {ActsPlugins::detail::torchToActsTensor<float>(
               // The full-feature node tensor, unscaled: each stage selects and
               // scales the features it needs from it.
-              ActsPlugins::detail::vectorToTensor2D(downstreamValues, fullNumFeatures), execContext),
+              downstreamNodeTensor, execContext),
           ActsPlugins::detail::torchToActsTensor<int64_t>(edgeList, execContext), std::move(actsEdgeFeatures),
           std::nullopt};
 }
