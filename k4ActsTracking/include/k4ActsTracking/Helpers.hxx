@@ -88,50 +88,33 @@ namespace ACTSTracking {
 
   //! Convert ACTS KF result to edm4hep track class
   /**
+ * Thin wrapper around the centralised ActsPlugins EDM4hep converter
+ * (`ActsPlugins::EDM4hepUtil::writeTrack`). This function only supplies the
+ * pieces the plugin cannot know about, namely how to resolve a track state's
+ * source link into the edm4hep hit it came from.
+ *
  * Converted properties are:
- *  - goodness of fit (chi2, ndf)
+ *  - goodness of fit (chi2, ndf, number of holes)
  *  - associated hits
- *  - track states at IP
+ *  - track states at IP and at each measurement
+ *
+ * Track states are emitted IP-first, followed by the measurement states ordered
+ * inside-out (AtFirstHit ... AtLastHit); any AtCalorimeter states appended by
+ * the caller therefore still come last.
  *
  * \param gctx geometry context used to resolve surface positions
- * \param fitOutput KF fit result
+ * \param mctx magnetic field context used for the field lookups
+ * \param fitter_res KF/CKF fit result
  * \param hits edm4hep hits parallel to the measurement container; the hit of
  *        each track state is recovered via its source-link index()
- * \param magneticField magnetic field at different locations in the detector
- * \param magCache cache to help with magnetic field lookup
+ * \param magneticField magnetic field at different locations in the detector;
+ *        evaluated at each track state, so a non-uniform field is handled
  *
  * \return Track with equivalent parameters of the ACTS track
  */
-  edm4hep::MutableTrack ACTS2edm4hep_track(const Acts::GeometryContext& gctx, const TrackResult& fitter_res,
-                                           const HitContainer&                                hits,
-                                           std::shared_ptr<const Acts::MagneticFieldProvider> magneticField,
-                                           Acts::MagneticFieldProvider::Cache&                magCache);
-
-  //! Convert ACTS track state class to edm4hep class
-  /**
- * The EDM4hep track state uses a perigee (D0, Z0, phi, omega, tanLambda)
- * parametrization defined relative to a reference point. If \p params are not
- * already expressed on a perigee surface, they are re-expressed at an ad-hoc
- * perigee surface created at their global position (transporting parameters and
- * covariance), and the state's referencePoint is set to that perigee. This
- * mirrors ActsPlugins EDM4hep::convertTrackParametersToEdm4hep.
- *
- * \param location Location where the track state is defined (ie: `AtIP`)
- * \param gctx geometry context used to resolve surface positions
- * \param params ACTS track state parameters
- * \params Bz magnetic field at location of track state [Tesla]
- *
- * \return Track state with equivalent parameters of the ACTS track
- */
-  edm4hep::TrackState ACTS2edm4hep_trackState(int location, const Acts::GeometryContext& gctx,
-                                              const Acts::BoundTrackParameters& params, double Bz);
-  //! Helper Method for ACTS2edm4hep_trackState. Expects \p value / \p cov to
-  //! already be in the perigee reference frame and does NOT set the
-  //! referencePoint; callers holding generic on-surface parameters should use
-  //! the BoundTrackParameters overload above, which re-expresses them at an
-  //! ad-hoc perigee first.
-  edm4hep::TrackState ACTS2edm4hep_trackState(int location, const Acts::BoundVector& value,
-                                              const Acts::BoundMatrix& cov, double Bz);
+  edm4hep::MutableTrack ACTS2edm4hep_track(const Acts::GeometryContext& gctx, const Acts::MagneticFieldContext& mctx,
+                                           const TrackResult& fitter_res, const HitContainer& hits,
+                                           std::shared_ptr<const Acts::MagneticFieldProvider> magneticField);
 
   //! Get particle hypothesis in ACTS format
   /**

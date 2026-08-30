@@ -38,7 +38,7 @@ include(cmake/MaybeBuildActs.cmake)
 
 find_package(EDM4HEP REQUIRED)
 find_package(k4FWCore REQUIRED)
-set(ACTS_COMPONENTS Core PluginDD4hep)
+set(ACTS_COMPONENTS Core PluginDD4hep PluginEDM4hep)
 if(K4ACTSTRACKING_BUILD_GNN)
   list(APPEND ACTS_COMPONENTS PluginGnn)
 endif()
