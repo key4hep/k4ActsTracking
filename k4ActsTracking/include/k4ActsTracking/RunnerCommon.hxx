@@ -351,8 +351,8 @@ namespace ACTSTracking {
       // centralised converter re-expresses them at an ad-hoc perigee at the
       // calo-face position, sets the referencePoint accordingly, and evaluates
       // the local field there.
-      track.addToTrackStates(ActsPlugins::EDM4hepUtil::writeTrackState(
-          m_geoCtx, edm4hep::TrackState::AtCalorimeter, params, *m_geo.magneticField(), magCache));
+      track.addToTrackStates(ActsPlugins::EDM4hepUtil::writeTrackState(m_geoCtx, edm4hep::TrackState::AtCalorimeter,
+                                                                       params, *m_geo.magneticField(), magCache));
     }
 
     /// Continue the calorimeter extrapolation from a barrel-face crossing out to

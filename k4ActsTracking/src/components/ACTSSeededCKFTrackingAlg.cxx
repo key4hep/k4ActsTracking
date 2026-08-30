@@ -577,8 +577,8 @@ std::vector<Acts::BoundTrackParameters> ACTSSeededCKFTrackingAlg::seedsToParamet
     // Compute seed state before acquiring the lock. The centralised converter
     // re-expresses the seed parameters at an ad-hoc perigee and evaluates the
     // local field at their position itself.
-    auto seedTrackState = ActsPlugins::EDM4hepUtil::writeTrackState(
-        geometryContext(), edm4hep::TrackState::AtFirstHit, paramseed, *magneticField(), magCache);
+    auto seedTrackState = ActsPlugins::EDM4hepUtil::writeTrackState(geometryContext(), edm4hep::TrackState::AtFirstHit,
+                                                                    paramseed, *magneticField(), magCache);
 
     // Add seed to collection, all building of seed under the lock
     {
@@ -601,9 +601,9 @@ std::vector<Acts::BoundTrackParameters> ACTSSeededCKFTrackingAlg::seedsToParamet
 // CKF tracking,
 StatusCode ACTSSeededCKFTrackingAlg::tracking(const std::vector<Acts::BoundTrackParameters>& paramseeds,
                                               const CKF& trackFinder, const TrackFinderOptions& ckfOptions,
-                                              const Propagator&                   extrapPropagator,
-                                              const Acts::PerigeeSurface&         perigeeSurface,
-                                              Propagator::Options<>&              extrapOptions,
+                                              const Propagator&                 extrapPropagator,
+                                              const Acts::PerigeeSurface&       perigeeSurface,
+                                              Propagator::Options<>&            extrapOptions,
                                               const ACTSTracking::HitContainer& hits,
                                               edm4hep::TrackCollection&         trackCollection) const {
   // Initialize track finder

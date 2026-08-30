@@ -291,8 +291,7 @@ namespace ACTSTracking {
               continue;
             }
 
-            auto track =
-                ACTSTracking::ACTS2edm4hep_track(m_geoCtx, m_magCtx, trackTip, hits, m_geo.magneticField());
+            auto track = ACTSTracking::ACTS2edm4hep_track(m_geoCtx, m_magCtx, trackTip, hits, m_geo.magneticField());
 
             m_caloAppender.addCaloState(alg, trackTip, track, magCache, caloMonitor);
 
