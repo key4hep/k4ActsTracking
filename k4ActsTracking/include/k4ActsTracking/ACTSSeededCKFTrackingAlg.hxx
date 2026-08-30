@@ -109,8 +109,7 @@ public:
   StatusCode tracking(const std::vector<Acts::BoundTrackParameters>& paramseeds, const CKF& trackFinder,
                       const TrackFinderOptions& ckfOptions, const Propagator& extrapPropagator,
                       const Acts::PerigeeSurface& perigeeSurface, Propagator::Options<>& extrapOptions,
-                      const ACTSTracking::HitContainer& hits, Acts::MagneticFieldProvider::Cache& magCache,
-                      edm4hep::TrackCollection& trackCollection) const;
+                      const ACTSTracking::HitContainer& hits, edm4hep::TrackCollection& trackCollection) const;
 
 protected:
   /**
