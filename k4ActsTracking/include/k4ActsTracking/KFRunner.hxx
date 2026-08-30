@@ -103,6 +103,7 @@ namespace ACTSTracking {
              const ACTSTracking::HitContainer& hits, const Config& cfg)
         : m_geo(geo),
           m_geoCtx(geoCtx),
+          m_magCtx(magCtx),
           m_trackingGeometry(geo.trackingGeometry()),
           m_perigee(Acts::Surface::makeShared<Acts::PerigeeSurface>(Acts::Vector3::Zero())),
           m_measCal(measurements),
@@ -153,7 +154,7 @@ namespace ACTSTracking {
 
       // The fit already targets the perigee (m_kfOptions' reference surface), so
       // the AtIP state is well defined; the calo states are appended on top.
-      auto track = ACTSTracking::ACTS2edm4hep_track(m_geoCtx, result.value(), m_hits, m_geo.magneticField(), magCache);
+      auto track = ACTSTracking::ACTS2edm4hep_track(m_geoCtx, m_magCtx, result.value(), m_hits, m_geo.magneticField());
       m_caloAppender.addCaloState(alg, result.value(), track, magCache, caloMonitor);
       return track;
     }
@@ -161,6 +162,7 @@ namespace ACTSTracking {
   private:
     const IActsGeoSvc&                            m_geo;
     Acts::GeometryContext                         m_geoCtx;
+    Acts::MagneticFieldContext                    m_magCtx;
     std::shared_ptr<const Acts::TrackingGeometry> m_trackingGeometry;
     std::shared_ptr<Acts::PerigeeSurface>         m_perigee;
 

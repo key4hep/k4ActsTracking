@@ -59,6 +59,9 @@
 #include <Acts/Surfaces/Surface.hpp>
 #include <Acts/Utilities/Result.hpp>
 
+// ActsPlugins: centralised ACTS -> EDM4hep conversion
+#include <ActsPlugins/EDM4hep/EDM4hepUtil.hpp>
+
 // TBB
 #include <tbb/parallel_sort.h>
 #include <tbb/task_arena.h>
@@ -344,14 +347,12 @@ namespace ACTSTracking {
     /// AtCalorimeter track state and append it to @p track.
     void appendCaloState(edm4hep::MutableTrack& track, const Acts::BoundTrackParameters& params,
                          Acts::MagneticFieldProvider::Cache& magCache) const {
-      const Acts::Vector3 caloPos  = params.position(m_geoCtx);
-      auto                fieldRes = m_geo.magneticField()->getField(caloPos, magCache);
-      const double        Bz       = fieldRes.ok() ? (*fieldRes)[2] / Acts::UnitConstants::T : 0.0;
-      // The calo-face parameters are local to the target surface;
-      // ACTS2edm4hep_trackState re-expresses them at an ad-hoc perigee at the
-      // calo-face position and sets the referencePoint accordingly.
-      track.addToTrackStates(
-          ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtCalorimeter, m_geoCtx, params, Bz));
+      // The calo-face parameters are local to the target surface; the
+      // centralised converter re-expresses them at an ad-hoc perigee at the
+      // calo-face position, sets the referencePoint accordingly, and evaluates
+      // the local field there.
+      track.addToTrackStates(ActsPlugins::EDM4hepUtil::writeTrackState(m_geoCtx, edm4hep::TrackState::AtCalorimeter,
+                                                                       params, *m_geo.magneticField(), magCache));
     }
 
     /// Continue the calorimeter extrapolation from a barrel-face crossing out to

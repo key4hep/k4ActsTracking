@@ -45,6 +45,9 @@
 #include <Acts/Utilities/RangeXD.hpp>
 #include <Acts/Utilities/TrackHelpers.hpp>
 
+// ActsPlugins: centralised ACTS -> EDM4hep conversion
+#include <ActsPlugins/EDM4hep/EDM4hepUtil.hpp>
+
 // TBB
 #include <tbb/concurrent_vector.h>
 #include <tbb/parallel_for.h>
@@ -487,7 +490,7 @@ std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> ACTSSeededCKFTrac
       return;
 
     if (!tracking(paramseeds, trackFinder, ckfOptions, extrapPropagator, *perigeeSurface, extrapOptions, hits,
-                  localMagCache, trackCollection)
+                  trackCollection)
              .isSuccess()) {
       warning() << "Tracking failed for this event" << endmsg;
     }
@@ -571,17 +574,11 @@ std::vector<Acts::BoundTrackParameters> ACTSSeededCKFTrackingAlg::seedsToParamet
     Acts::BoundTrackParameters paramseed(surface->getSharedPtr(), params, cov, Acts::ParticleHypothesis::pion());
     paramseeds.push_back(paramseed);
 
-    // Compute seed state before acquiring the lock
-    Acts::Vector3 globalPos =
-        surface->localToGlobal(geometryContext(), {params[Acts::eBoundLoc0], params[Acts::eBoundLoc1]}, {0, 0, 0});
-
-    Acts::Result<Acts::Vector3> hitField = magneticField()->getField(globalPos, magCache);
-    if (!hitField.ok()) {
-      throw std::runtime_error("Field lookup error: " + hitField.error().message());
-    }
-
-    auto seedTrackState = ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtFirstHit, geometryContext(),
-                                                                paramseed, (*hitField)[2] / Acts::UnitConstants::T);
+    // Compute seed state before acquiring the lock. The centralised converter
+    // re-expresses the seed parameters at an ad-hoc perigee and evaluates the
+    // local field at their position itself.
+    auto seedTrackState = ActsPlugins::EDM4hepUtil::writeTrackState(geometryContext(), edm4hep::TrackState::AtFirstHit,
+                                                                    paramseed, *magneticField(), magCache);
 
     // Add seed to collection, all building of seed under the lock
     {
@@ -604,12 +601,11 @@ std::vector<Acts::BoundTrackParameters> ACTSSeededCKFTrackingAlg::seedsToParamet
 // CKF tracking,
 StatusCode ACTSSeededCKFTrackingAlg::tracking(const std::vector<Acts::BoundTrackParameters>& paramseeds,
                                               const CKF& trackFinder, const TrackFinderOptions& ckfOptions,
-                                              const Propagator&                   extrapPropagator,
-                                              const Acts::PerigeeSurface&         perigeeSurface,
-                                              Propagator::Options<>&              extrapOptions,
-                                              const ACTSTracking::HitContainer&   hits,
-                                              Acts::MagneticFieldProvider::Cache& magCache,
-                                              edm4hep::TrackCollection&           trackCollection) const {
+                                              const Propagator&                 extrapPropagator,
+                                              const Acts::PerigeeSurface&       perigeeSurface,
+                                              Propagator::Options<>&            extrapOptions,
+                                              const ACTSTracking::HitContainer& hits,
+                                              edm4hep::TrackCollection&         trackCollection) const {
   // Initialize track finder
   debug() << "Starting CKF track finding with " << paramseeds.size() << " seeds." << endmsg;
 
@@ -655,7 +651,8 @@ StatusCode ACTSSeededCKFTrackingAlg::tracking(const std::vector<Acts::BoundTrack
         debug() << "\tnStates       " << trackTip.nTrackStates() << endmsg;
 
         // Make track object
-        auto track = ACTSTracking::ACTS2edm4hep_track(geometryContext(), trackTip, hits, magneticField(), magCache);
+        auto track = ACTSTracking::ACTS2edm4hep_track(geometryContext(), magneticFieldContext(), trackTip, hits,
+                                                      magneticField());
 
         // Save results
         {

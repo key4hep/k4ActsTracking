@@ -61,6 +61,9 @@
 #include <Acts/TrackFitting/GainMatrixUpdater.hpp>
 #include <Acts/Utilities/TrackHelpers.hpp>
 
+// ActsPlugins: centralised ACTS -> EDM4hep conversion
+#include <ActsPlugins/EDM4hep/EDM4hepUtil.hpp>
+
 // TBB
 #include <tbb/parallel_sort.h>
 #include <tbb/task_arena.h>
@@ -95,18 +98,10 @@ namespace ACTSTracking {
                                          const Acts::GeometryContext&        geoCtx,
                                          const Acts::BoundTrackParameters&   paramseed,
                                          Acts::MagneticFieldProvider::Cache& magCache) {
-    const Acts::Surface&     surface = paramseed.referenceSurface();
-    const Acts::BoundVector& params  = paramseed.parameters();
-
-    Acts::Vector3 globalPos =
-        surface.localToGlobal(geoCtx, {params[Acts::eBoundLoc0], params[Acts::eBoundLoc1]}, {0, 0, 0});
-    Acts::Result<Acts::Vector3> hitField = geo.magneticField()->getField(globalPos, magCache);
-    if (!hitField.ok()) {
-      throw std::runtime_error("Field lookup error: " + std::to_string(hitField.error().value()));
-    }
-
-    return ACTSTracking::ACTS2edm4hep_trackState(edm4hep::TrackState::AtFirstHit, geoCtx, paramseed,
-                                                 (*hitField)[2] / Acts::UnitConstants::T);
+    // The centralised converter re-expresses the seed parameters at an ad-hoc
+    // perigee and evaluates the local field at their position itself.
+    return ActsPlugins::EDM4hepUtil::writeTrackState(geoCtx, edm4hep::TrackState::AtFirstHit, paramseed,
+                                                     *geo.magneticField(), magCache);
   }
 
   /**
@@ -296,7 +291,7 @@ namespace ACTSTracking {
               continue;
             }
 
-            auto track = ACTSTracking::ACTS2edm4hep_track(m_geoCtx, trackTip, hits, m_geo.magneticField(), magCache);
+            auto track = ACTSTracking::ACTS2edm4hep_track(m_geoCtx, m_magCtx, trackTip, hits, m_geo.magneticField());
 
             m_caloAppender.addCaloState(alg, trackTip, track, magCache, caloMonitor);
 
