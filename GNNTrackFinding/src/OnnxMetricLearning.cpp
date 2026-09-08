@@ -42,6 +42,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <span>
@@ -88,7 +89,7 @@ namespace {
   /// Convert the Onnx tensor into a torch Tensor.
   /// @note: This doesn't take ownership, it essentially just "re-skins" the data
   /// owned by the Onnx tensor
-  torch::Tensor toTorchTensor(const Ort::Value& onnxTensor, std::size_t cudaDeviceIndex = 0) {
+  torch::Tensor toTorchTensor(const Ort::Value& onnxTensor, bool targetCuda, std::size_t cudaDeviceIndex = 0) {
     auto tensorInfo  = onnxTensor.GetTensorTypeAndShapeInfo();
     auto memoryInfo  = onnxTensor.GetTensorMemoryInfo();
     auto shape       = tensorInfo.GetShape();
@@ -104,11 +105,24 @@ namespace {
     const bool onCudaMemory = memoryInfo.GetDeviceType() == OrtMemoryInfoDeviceType_GPU;
     auto       options      = torch::TensorOptions().dtype(torchType);
     if (onCudaMemory) {
-      options = options.device(torch::Device(torch::kCUDA, static_cast<int64_t>(cudaDeviceIndex)));
+      options = options.device(torch::Device(torch::kCUDA, static_cast<int64_t>(memoryInfo.GetDeviceId())));
     }
 
-    auto torchTensor = torch::from_blob(const_cast<void*>(data), shape, options).clone();
-    return torchTensor;
+    auto torchTensor = torch::from_blob(const_cast<void*>(data), shape, options);
+
+    if (targetCuda && memoryInfo.GetDeviceId() != static_cast<int>(cudaDeviceIndex)) {
+      // not on target CUDA device
+      const auto targetDevice = torch::Device(torch::kCUDA, static_cast<int64_t>(cudaDeviceIndex));
+      return torchTensor.to(targetDevice);
+    }
+
+    if (onCudaMemory && !targetCuda) {
+      // not on target CPU
+      return torchTensor.to(torch::kCPU);
+    }
+
+    // on target device (Host or CUDA), clone for ownership
+    return torchTensor.clone();
   }
 
 }  // namespace
@@ -252,20 +266,13 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
 
   ACTS_DEBUG(fmt::format("Embedding input tensor shape: {}", inputShape));
   ACTS_DEBUG(fmt::format("First input space point: {}", std::span(inferenceValues.data(), numFeatures)));
-
-  const auto outputs = m_model.runInference(inferenceValues, inputShape);
-  // Set CUDA device as context
   if (execContext.device.isCuda()) {
     cudaSetDevice(execContext.device.index);
   }
+  const auto outputs =
+      m_model.runInference(inferenceValues, inputShape, execContext.device.isCuda(), execContext.device.index);
 
-  auto embeddedPoints = toTorchTensor(outputs[0], execContext.device.index);
-  if (execContext.device.isCuda() && embeddedPoints.device().is_cpu()) {
-    embeddedPoints = embeddedPoints.to(torch::Device(torch::kCUDA, static_cast<int64_t>(execContext.device.index)));
-  }
-  if (execContext.device.isCuda()) {
-    cudaDeviceSynchronize();
-  }
+  auto embeddedPoints = toTorchTensor(outputs[0], execContext.device.isCuda(), execContext.device.index);
   assert(embeddedPoints.size(0) == inputShape[0]);  // Do not change the number of points
   // A model that declares its embedding dimension has to stick to it. This is
   // checked (rather than asserted) because a mismatch here means the loaded
@@ -373,23 +380,30 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
   }
   std::vector<float>& downstreamValues = paddedInputValues.empty() ? inputValues : paddedInputValues;
 
-  // Build the downstream node tensor on same device as the execution
-  // context. Acts helper allocates destination storage on execContext and
-  // wraps it with from_blob using the source tensor options; feeding it a CPU
-  // tensor while targeting CUDA can therefore dereference device memory as host
-  // memory.
-  auto downstreamNodeTensor = ActsPlugins::detail::vectorToTensor2D(downstreamValues, fullNumFeatures);
-  if (execContext.device.isCuda()) {
-    downstreamNodeTensor =
-        downstreamNodeTensor.to(torch::Device(torch::kCUDA, static_cast<int64_t>(execContext.device.index)));
+  // Create the node-feature input tensor for EdgeClassifiers directly in ACTS memory on the
+  // target device, this should avoid further ORT-internal copies downstream + ensure that pipeline runs on CUDA if 
+  // requested. This avoids the old procedure: 
+  // vector -> Torch CPU tensor (-> move to CUDA) -> torchToActsTensor(execContext),
+  // which does not guarantee inputs on CUDA => OnnxEdgeClasifier running on CPU if inputs in host mem
+  const std::size_t downstreamNumNodes = downstreamValues.size() / fullNumFeatures;
+  auto downstreamNodeTensor = ActsPlugins::Tensor<float>::Create({downstreamNumNodes, fullNumFeatures}, execContext);
+  const auto nbytes         = downstreamValues.size() * sizeof(float);
+  if (!execContext.device.isCuda()) {
+    std::copy(downstreamValues.begin(), downstreamValues.end(), downstreamNodeTensor.data());
+  } else {
+    const auto status =
+        execContext.stream.has_value()
+            ? cudaMemcpyAsync(downstreamNodeTensor.data(), downstreamValues.data(), nbytes, cudaMemcpyHostToDevice,
+                              *execContext.stream)
+            : cudaMemcpy(downstreamNodeTensor.data(), downstreamValues.data(), nbytes, cudaMemcpyHostToDevice);
+    if (status != cudaSuccess) {
+      throw std::runtime_error(fmt::format("Failed to copy node features to CUDA: {}", cudaGetErrorString(status)));
+    }
   }
 
-  return {ActsPlugins::detail::torchToActsTensor<float>(
-              // The full-feature node tensor, unscaled: each stage selects and
-              // scales the features it needs from it.
-              downstreamNodeTensor, execContext),
-          ActsPlugins::detail::torchToActsTensor<int64_t>(edgeList, execContext), std::move(actsEdgeFeatures),
-          std::nullopt};
+  auto actsEdgeList = ActsPlugins::detail::torchToActsTensor<int64_t>(edgeList, execContext);
+
+  return {std::move(downstreamNodeTensor), std::move(actsEdgeList), std::move(actsEdgeFeatures), std::nullopt};
 }
 
 std::optional<torch::Tensor> OnnxMetricLearning::buildEdgeFeatures(const std::vector<float>& inputValues,

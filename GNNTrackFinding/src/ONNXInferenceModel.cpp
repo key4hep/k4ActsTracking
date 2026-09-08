@@ -58,7 +58,8 @@ namespace mlutils {
   }
 
   std::vector<Ort::Value> ONNXInferenceModel::runInference(const std::vector<float>&   inputData,
-                                                           const std::vector<int64_t>& inputShape) {
+                                                           const std::vector<int64_t>& inputShape, bool runOnCuda,
+                                                           std::size_t cudaDeviceIndex) {
     if (!m_modelLoaded) {
       throw std::runtime_error("Model not loaded");
     }
@@ -81,9 +82,24 @@ namespace mlutils {
         outputNames.push_back(name.c_str());
       }
 
-      // Run inference
-      return m_session->Run(Ort::RunOptions{nullptr}, inputNames.data(), &inputTensor, 1, outputNames.data(),
-                            outputNames.size());
+      if (!runOnCuda) {
+        // Run inference (CPU/default)
+        return m_session->Run(Ort::RunOptions{nullptr}, inputNames.data(), &inputTensor, 1, outputNames.data(),
+                              outputNames.size());
+      }
+
+      // CUDA: bind outputs explicitly to CUDA so result tensors stay on GPU.
+      Ort::IoBinding ioBinding(*m_session);
+      ioBinding.BindInput(inputNames.front(), inputTensor);
+
+      Ort::MemoryInfo cudaOutputMemoryInfo{"Cuda", OrtAllocatorType::OrtDeviceAllocator,
+                                           static_cast<int>(cudaDeviceIndex), OrtMemTypeDefault};
+      for (const auto* outputName : outputNames) {
+        ioBinding.BindOutput(outputName, cudaOutputMemoryInfo);
+      }
+
+      m_session->Run(Ort::RunOptions{nullptr}, ioBinding);
+      return ioBinding.GetOutputValues();
     } catch (const std::exception& e) {
       throw std::runtime_error("Inference failed: " + std::string(e.what()));
     }
