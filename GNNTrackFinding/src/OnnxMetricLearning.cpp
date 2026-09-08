@@ -31,7 +31,9 @@
 
 #include <torch/torch.h>
 
+#ifdef ACTS_GNN_WITH_CUDA
 #include <cuda_runtime.h>
+#endif
 
 #include <fmt/format.h>
 #include <fmt/ostream.h>
@@ -267,7 +269,11 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
   ACTS_DEBUG(fmt::format("Embedding input tensor shape: {}", inputShape));
   ACTS_DEBUG(fmt::format("First input space point: {}", std::span(inferenceValues.data(), numFeatures)));
   if (execContext.device.isCuda()) {
+#ifdef ACTS_GNN_WITH_CUDA
     cudaSetDevice(execContext.device.index);
+#else
+    throw std::runtime_error("can not run on CUDA, k4ActsTracking/ACTS was built without CUDA support");
+#endif
   }
   const auto outputs =
       m_model.runInference(inferenceValues, inputShape, execContext.device.isCuda(), execContext.device.index);
@@ -391,6 +397,7 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
   if (!execContext.device.isCuda()) {
     std::copy(downstreamValues.begin(), downstreamValues.end(), downstreamNodeTensor.data());
   } else {
+#ifdef ACTS_GNN_WITH_CUDA
     const auto status =
         execContext.stream.has_value()
             ? cudaMemcpyAsync(downstreamNodeTensor.data(), downstreamValues.data(), nbytes, cudaMemcpyHostToDevice,
@@ -399,6 +406,9 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
     if (status != cudaSuccess) {
       throw std::runtime_error(fmt::format("Failed to copy node features to CUDA: {}", cudaGetErrorString(status)));
     }
+#else
+    throw std::runtime_error("cannot run on CUDA, k4ActsTracking/ACTS was built without CUDA support");
+#endif
   }
 
   auto actsEdgeList = ActsPlugins::detail::torchToActsTensor<int64_t>(edgeList, execContext);
