@@ -381,8 +381,8 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
   std::vector<float>& downstreamValues = paddedInputValues.empty() ? inputValues : paddedInputValues;
 
   // Create the node-feature input tensor for EdgeClassifiers directly in ACTS memory on the
-  // target device, this should avoid further ORT-internal copies downstream + ensure that pipeline runs on CUDA if 
-  // requested. This avoids the old procedure: 
+  // target device, this should avoid further ORT-internal copies downstream + ensure that pipeline runs on CUDA if
+  // requested. This avoids the old procedure:
   // vector -> Torch CPU tensor (-> move to CUDA) -> torchToActsTensor(execContext),
   // which does not guarantee inputs on CUDA => OnnxEdgeClasifier running on CPU if inputs in host mem
   const std::size_t downstreamNumNodes = downstreamValues.size() / fullNumFeatures;
