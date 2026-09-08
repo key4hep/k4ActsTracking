@@ -393,11 +393,11 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
   // which does not guarantee inputs on CUDA => OnnxEdgeClasifier running on CPU if inputs in host mem
   const std::size_t downstreamNumNodes = downstreamValues.size() / fullNumFeatures;
   auto downstreamNodeTensor = ActsPlugins::Tensor<float>::Create({downstreamNumNodes, fullNumFeatures}, execContext);
-  const auto nbytes         = downstreamValues.size() * sizeof(float);
   if (!execContext.device.isCuda()) {
     std::copy(downstreamValues.begin(), downstreamValues.end(), downstreamNodeTensor.data());
   } else {
 #ifdef ACTS_GNN_WITH_CUDA
+    const auto nbytes = downstreamValues.size() * sizeof(float);
     const auto status =
         execContext.stream.has_value()
             ? cudaMemcpyAsync(downstreamNodeTensor.data(), downstreamValues.data(), nbytes, cudaMemcpyHostToDevice,
