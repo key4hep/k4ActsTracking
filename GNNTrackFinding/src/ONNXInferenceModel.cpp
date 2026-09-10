@@ -58,8 +58,8 @@ namespace mlutils {
   }
 
   std::vector<Ort::Value> ONNXInferenceModel::runInference(const std::vector<float>&   inputData,
-                                                           const std::vector<int64_t>& inputShape, bool runOnCuda,
-                                                           std::size_t cudaDeviceIndex) {
+                                                           const std::vector<int64_t>& inputShape,
+                                                           int                         cudaDeviceIndex) {
     if (!m_modelLoaded) {
       throw std::runtime_error("Model not loaded");
     }
@@ -82,7 +82,7 @@ namespace mlutils {
         outputNames.push_back(name.c_str());
       }
 
-      if (!runOnCuda) {
+      if (cudaDeviceIndex < 0) {
         // Run inference (CPU/default)
         return m_session->Run(Ort::RunOptions{nullptr}, inputNames.data(), &inputTensor, 1, outputNames.data(),
                               outputNames.size());
@@ -92,8 +92,8 @@ namespace mlutils {
       Ort::IoBinding ioBinding(*m_session);
       ioBinding.BindInput(inputNames.front(), inputTensor);
 
-      Ort::MemoryInfo cudaOutputMemoryInfo{"Cuda", OrtAllocatorType::OrtDeviceAllocator,
-                                           static_cast<int>(cudaDeviceIndex), OrtMemTypeDefault};
+      Ort::MemoryInfo cudaOutputMemoryInfo{"Cuda", OrtAllocatorType::OrtDeviceAllocator, cudaDeviceIndex,
+                                           OrtMemTypeDefault};
       for (const auto* outputName : outputNames) {
         ioBinding.BindOutput(outputName, cudaOutputMemoryInfo);
       }

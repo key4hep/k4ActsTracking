@@ -275,8 +275,7 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
     throw std::runtime_error("can not run on CUDA, k4ActsTracking/ACTS was built without CUDA support");
 #endif
   }
-  const auto outputs =
-      m_model.runInference(inferenceValues, inputShape, execContext.device.isCuda(), execContext.device.index);
+  const auto outputs = m_model.runInference(inferenceValues, inputShape, execContext.device);
 
   auto embeddedPoints = toTorchTensor(outputs[0], execContext.device.isCuda(), execContext.device.index);
   assert(embeddedPoints.size(0) == inputShape[0]);  // Do not change the number of points
