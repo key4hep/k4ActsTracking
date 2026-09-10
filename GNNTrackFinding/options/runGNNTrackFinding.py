@@ -38,6 +38,7 @@ parser.add_argument(
     "--compactFile",
     help="The geometry compact file that is used to build the ACTS geometry",
     type=str,
+    required=True,
 )
 parser.add_argument(
     "--modelBase", help="The base directory for the model", default=".", type=Path
