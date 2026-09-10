@@ -31,6 +31,10 @@
 
 #include <torch/torch.h>
 
+#ifdef ACTS_GNN_WITH_CUDA
+#include <cuda_runtime.h>
+#endif
+
 #include <fmt/format.h>
 #include <fmt/ostream.h>
 #include <fmt/ranges.h>
@@ -40,6 +44,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <span>
@@ -86,17 +91,40 @@ namespace {
   /// Convert the Onnx tensor into a torch Tensor.
   /// @note: This doesn't take ownership, it essentially just "re-skins" the data
   /// owned by the Onnx tensor
-  torch::Tensor toTorchTensor(const Ort::Value& onnxTensor) {
+  torch::Tensor toTorchTensor(const Ort::Value& onnxTensor, bool targetCuda, std::size_t cudaDeviceIndex = 0) {
     auto tensorInfo  = onnxTensor.GetTensorTypeAndShapeInfo();
+    auto memoryInfo  = onnxTensor.GetTensorMemoryInfo();
     auto shape       = tensorInfo.GetShape();
     auto elementType = tensorInfo.GetElementType();
 
     const void* data      = onnxTensor.GetTensorData<void>();
     const auto  torchType = toTorchType(elementType);
 
-    // Create torch tensor from existing data without copying
-    auto torchTensor = torch::from_blob(const_cast<void*>(data), shape, torchType);
-    return torchTensor;
+    // ONNX Runtime may place the output either in CPU or CUDA memory depending
+    // on the execution provider and which nodes were assigned to it. Create the
+    // wrapper tensor on the matching device so that clone() performs a valid
+    // copy before the Ort::Value goes out of scope.
+    const bool onCudaMemory = memoryInfo.GetDeviceType() == OrtMemoryInfoDeviceType_GPU;
+    auto       options      = torch::TensorOptions().dtype(torchType);
+    if (onCudaMemory) {
+      options = options.device(torch::Device(torch::kCUDA, static_cast<int64_t>(memoryInfo.GetDeviceId())));
+    }
+
+    auto torchTensor = torch::from_blob(const_cast<void*>(data), shape, options);
+
+    if (targetCuda && memoryInfo.GetDeviceId() != static_cast<int>(cudaDeviceIndex)) {
+      // not on target CUDA device
+      const auto targetDevice = torch::Device(torch::kCUDA, static_cast<int64_t>(cudaDeviceIndex));
+      return torchTensor.to(targetDevice);
+    }
+
+    if (onCudaMemory && !targetCuda) {
+      // not on target CPU
+      return torchTensor.to(torch::kCPU);
+    }
+
+    // on target device (Host or CUDA), clone for ownership
+    return torchTensor.clone();
   }
 
 }  // namespace
@@ -240,15 +268,16 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
 
   ACTS_DEBUG(fmt::format("Embedding input tensor shape: {}", inputShape));
   ACTS_DEBUG(fmt::format("First input space point: {}", std::span(inferenceValues.data(), numFeatures)));
+  if (execContext.device.isCuda()) {
+#ifdef ACTS_GNN_WITH_CUDA
+    cudaSetDevice(execContext.device.index);
+#else
+    throw std::runtime_error("can not run on CUDA, k4ActsTracking/ACTS was built without CUDA support");
+#endif
+  }
+  const auto outputs = m_model.runInference(inferenceValues, inputShape, execContext.device);
 
-  const auto outputs = m_model.runInference(inferenceValues, inputShape);
-  // The ONNX session returns its outputs in host memory. Move the embedding to
-  // the pipeline's target device so that the edge building below (buildEdges
-  // dispatches FRNN/CUDA vs KD-Tree/CPU based on the tensor's device) runs on
-  // the same device as the rest of the pipeline.
-  const auto torchDevice =
-      execContext.device.isCuda() ? torch::Device(torch::kCUDA, execContext.device.index) : torch::Device(torch::kCPU);
-  auto embeddedPoints = toTorchTensor(outputs[0]).to(torchDevice);
+  auto embeddedPoints = toTorchTensor(outputs[0], execContext.device.isCuda(), execContext.device.index);
   assert(embeddedPoints.size(0) == inputShape[0]);  // Do not change the number of points
   // A model that declares its embedding dimension has to stick to it. This is
   // checked (rather than asserted) because a mismatch here means the loaded
@@ -356,12 +385,34 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
   }
   std::vector<float>& downstreamValues = paddedInputValues.empty() ? inputValues : paddedInputValues;
 
-  return {ActsPlugins::detail::torchToActsTensor<float>(
-              // The full-feature node tensor, unscaled: each stage selects and
-              // scales the features it needs from it.
-              ActsPlugins::detail::vectorToTensor2D(downstreamValues, fullNumFeatures), execContext),
-          ActsPlugins::detail::torchToActsTensor<int64_t>(edgeList, execContext), std::move(actsEdgeFeatures),
-          std::nullopt};
+  // Create the node-feature input tensor for EdgeClassifiers directly in ACTS memory on the
+  // target device, this should avoid further ORT-internal copies downstream + ensure that pipeline runs on CUDA if
+  // requested. This avoids the old procedure:
+  // vector -> Torch CPU tensor (-> move to CUDA) -> torchToActsTensor(execContext),
+  // which does not guarantee inputs on CUDA => OnnxEdgeClasifier running on CPU if inputs in host mem
+  const std::size_t downstreamNumNodes = downstreamValues.size() / fullNumFeatures;
+  auto downstreamNodeTensor = ActsPlugins::Tensor<float>::Create({downstreamNumNodes, fullNumFeatures}, execContext);
+  if (!execContext.device.isCuda()) {
+    std::copy(downstreamValues.begin(), downstreamValues.end(), downstreamNodeTensor.data());
+  } else {
+#ifdef ACTS_GNN_WITH_CUDA
+    const auto nbytes = downstreamValues.size() * sizeof(float);
+    const auto status =
+        execContext.stream.has_value()
+            ? cudaMemcpyAsync(downstreamNodeTensor.data(), downstreamValues.data(), nbytes, cudaMemcpyHostToDevice,
+                              *execContext.stream)
+            : cudaMemcpy(downstreamNodeTensor.data(), downstreamValues.data(), nbytes, cudaMemcpyHostToDevice);
+    if (status != cudaSuccess) {
+      throw std::runtime_error(fmt::format("Failed to copy node features to CUDA: {}", cudaGetErrorString(status)));
+    }
+#else
+    throw std::runtime_error("cannot run on CUDA, k4ActsTracking/ACTS was built without CUDA support");
+#endif
+  }
+
+  auto actsEdgeList = ActsPlugins::detail::torchToActsTensor<int64_t>(edgeList, execContext);
+
+  return {std::move(downstreamNodeTensor), std::move(actsEdgeList), std::move(actsEdgeFeatures), std::nullopt};
 }
 
 std::optional<torch::Tensor> OnnxMetricLearning::buildEdgeFeatures(const std::vector<float>& inputValues,
