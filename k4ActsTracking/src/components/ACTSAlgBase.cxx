@@ -56,7 +56,7 @@ ACTSAlgBase::ACTSAlgBase(const std::string& name, ISvcLocator* svcLoc)
           name, svcLoc, {KeyValues("InputTrackerHitCollectionName", {"TrackerHits"})},
           {KeyValues("OutputSeedCollectionName", {"SeedTracks"}), KeyValues("OutputTrackCollectionName", {"Tracks"})}),
       m_geometryContext(Acts::GeometryContext::dangerouslyDefaultConstruct()) {
-  m_geoSvc = serviceLocator()->service("GeoSvc");  // important to initialize m_geoSvc
+  m_geoSvc = serviceLocator()->service("GeoSvc"); // important to initialize m_geoSvc
 }
 
 std::shared_ptr<GeometryIdMappingTool> ACTSAlgBase::geoIDMappingTool() const { return m_geoIDMappingTool; }
@@ -78,8 +78,8 @@ const Acts::Surface* ACTSAlgBase::findSurface(const edm4hep::TrackerHit hit) con
 
 StatusCode ACTSAlgBase::initialize() {
   // Parse parameters
-  m_matFile      = findFile(m_matFile);
-  m_tgeoFile     = findFile(m_tgeoFile);
+  m_matFile = findFile(m_matFile);
+  m_tgeoFile = findFile(m_tgeoFile);
   m_tgeodescFile = findFile(m_tgeodescFile);
 
   // Load geometry
@@ -116,8 +116,8 @@ StatusCode ACTSAlgBase::initialize() {
 void ACTSAlgBase::buildDetector() {
   // Logging
   Acts::Logging::Level surfaceLogLevel = Acts::Logging::INFO;
-  Acts::Logging::Level layerLogLevel   = Acts::Logging::INFO;
-  Acts::Logging::Level volumeLogLevel  = Acts::Logging::INFO;
+  Acts::Logging::Level layerLogLevel = Acts::Logging::INFO;
+  Acts::Logging::Level volumeLogLevel = Acts::Logging::INFO;
 
   // Material description
   std::shared_ptr<const Acts::IMaterialDecorator> matDeco = nullptr;
@@ -133,7 +133,7 @@ void ACTSAlgBase::buildDetector() {
   if (!m_tgeoFile.empty()) {
     // Save current geometry. This is needed by all the other Processors
     gGeoManagerOld = gGeoManager;
-    gGeoManager    = nullptr;  // prevents it from being deleted
+    gGeoManager = nullptr; // prevents it from being deleted
 
     // Load new geometry
     TGeoManager::Import(m_tgeoFile.value().c_str());
@@ -141,12 +141,12 @@ void ACTSAlgBase::buildDetector() {
 
   // configure surface array creator
   Acts::SurfaceArrayCreator::Config sacConfig;
-  auto                              surfaceArrayCreator = std::make_shared<const Acts::SurfaceArrayCreator>(
+  auto surfaceArrayCreator = std::make_shared<const Acts::SurfaceArrayCreator>(
       sacConfig, Acts::getDefaultLogger("SurfaceArrayCreator", surfaceLogLevel));
 
   // configure the proto layer helper
   Acts::ProtoLayerHelper::Config plhConfig;
-  auto                           protoLayerHelper = std::make_shared<const Acts::ProtoLayerHelper>(
+  auto protoLayerHelper = std::make_shared<const Acts::ProtoLayerHelper>(
       plhConfig, Acts::getDefaultLogger("ProtoLayerHelper", layerLogLevel));
 
   // configure the layer creator that uses the surface array creator
@@ -157,7 +157,7 @@ void ACTSAlgBase::buildDetector() {
 
   // configure the layer array creator
   Acts::LayerArrayCreator::Config lacConfig;
-  auto                            layerArrayCreator = std::make_shared<const Acts::LayerArrayCreator>(
+  auto layerArrayCreator = std::make_shared<const Acts::LayerArrayCreator>(
       lacConfig, Acts::getDefaultLogger("LayerArrayCreator", layerLogLevel));
 
   // tracking volume array creator
@@ -167,9 +167,9 @@ void ACTSAlgBase::buildDetector() {
 
   // configure the cylinder volume helper
   Acts::CylinderVolumeHelper::Config cvhConfig;
-  cvhConfig.layerArrayCreator          = layerArrayCreator;
+  cvhConfig.layerArrayCreator = layerArrayCreator;
   cvhConfig.trackingVolumeArrayCreator = tVolumeArrayCreator;
-  auto cylinderVolumeHelper            = std::make_shared<const Acts::CylinderVolumeHelper>(
+  auto cylinderVolumeHelper = std::make_shared<const Acts::CylinderVolumeHelper>(
       cvhConfig, Acts::getDefaultLogger("CylinderVolumeHelper", volumeLogLevel));
 
   //-------------------------------------------------------------------------------------
@@ -222,7 +222,7 @@ void ACTSAlgBase::buildDetector() {
 
   // Open the description file
   nlohmann::json tgeodesc;
-  std::ifstream  tgeoDescFile(m_tgeodescFile.value(), std::ifstream::in | std::ifstream::binary);
+  std::ifstream tgeoDescFile(m_tgeodescFile.value(), std::ifstream::in | std::ifstream::binary);
   if (!tgeoDescFile.is_open()) {
     error() << "Could not open TGeo description file " << m_tgeodescFile.value() << endmsg;
     throw std::runtime_error("Could not open TGeo description file " + m_tgeodescFile.value());
@@ -238,8 +238,8 @@ void ACTSAlgBase::buildDetector() {
   for (const auto& volume : tgeodesc["Volumes"]) {
     // Volume information
     ActsPlugins::TGeoLayerBuilder::Config layerBuilderConfig;
-    layerBuilderConfig.configurationName  = volume["geo-tgeo-volume-name"];
-    layerBuilderConfig.unit               = 1 * Acts::UnitConstants::cm;
+    layerBuilderConfig.configurationName = volume["geo-tgeo-volume-name"];
+    layerBuilderConfig.unit = 1 * Acts::UnitConstants::cm;
     layerBuilderConfig.autoSurfaceBinning = true;
 
     // AutoBinning
@@ -253,7 +253,7 @@ void ACTSAlgBase::buildDetector() {
     // Loop over subvolumes (two endcaps and one barrel)
     std::array<std::string, 3> subvolumeNames = {
         "negative", "central",
-        "positive"};  // List of possible subvolume names. Order corresponds to layerConfigurations.
+        "positive"}; // List of possible subvolume names. Order corresponds to layerConfigurations.
     for (std::size_t idx = 0; idx < 3; idx++) {
       const std::string& subvolumeName = subvolumeNames[idx];
       if (!volume["geo-tgeo-volume-layers"][subvolumeName]) {
@@ -263,10 +263,10 @@ void ACTSAlgBase::buildDetector() {
 
       // Create the layer config object and fill it
       ActsPlugins::TGeoLayerBuilder::LayerConfig lConfig;
-      lConfig.volumeName  = volume["geo-tgeo-subvolume-names"][subvolumeName];
+      lConfig.volumeName = volume["geo-tgeo-subvolume-names"][subvolumeName];
       lConfig.sensorNames = volume["geo-tgeo-sensitive-names"][subvolumeName];
-      lConfig.localAxes   = ActsPlugins::TGeoAxes::parse(std::string(volume["geo-tgeo-sensitive-axes"][subvolumeName]));
-      lConfig.envelope    = std::pair<double, double>(0.1 * Acts::UnitConstants::mm, 0.1 * Acts::UnitConstants::mm);
+      lConfig.localAxes = ActsPlugins::TGeoAxes::parse(std::string(volume["geo-tgeo-sensitive-axes"][subvolumeName]));
+      lConfig.envelope = std::pair<double, double>(0.1 * Acts::UnitConstants::mm, 0.1 * Acts::UnitConstants::mm);
 
       // Fill the parsing restrictions in r
       lConfig.parseRanges.push_back(
@@ -313,17 +313,17 @@ void ACTSAlgBase::buildDetector() {
       // configure the layer creator that uses the surface array creator
       Acts::LayerCreator::Config lcConfigLB;
       lcConfigLB.surfaceArrayCreator = surfaceArrayCreatorLB;
-      layerCreatorLB                 = std::make_shared<const Acts::LayerCreator>(
+      layerCreatorLB = std::make_shared<const Acts::LayerCreator>(
           lcConfigLB, Acts::getDefaultLogger(lbc.configurationName + "LayerCreator", layerLogLevel));
     }
 
     // Configure the proto layer helper
     Acts::ProtoLayerHelper::Config plhConfigLB;
-    auto                           protoLayerHelperLB = std::make_shared<const Acts::ProtoLayerHelper>(
+    auto protoLayerHelperLB = std::make_shared<const Acts::ProtoLayerHelper>(
         plhConfigLB, Acts::getDefaultLogger(lbc.configurationName + "ProtoLayerHelper", layerLogLevel));
 
     //-------------------------------------------------------------------------------------
-    lbc.layerCreator     = (layerCreatorLB != nullptr) ? layerCreatorLB : layerCreator;
+    lbc.layerCreator = (layerCreatorLB != nullptr) ? layerCreatorLB : layerCreator;
     lbc.protoLayerHelper = (protoLayerHelperLB != nullptr) ? protoLayerHelperLB : protoLayerHelper;
 
     auto layerBuilder = std::make_shared<const ActsPlugins::TGeoLayerBuilder>(
@@ -334,15 +334,15 @@ void ACTSAlgBase::buildDetector() {
     // build the pixel volume
     Acts::CylinderVolumeBuilder::Config volumeConfig;
     volumeConfig.trackingVolumeHelper = cylinderVolumeHelper;
-    volumeConfig.volumeName           = lbc.configurationName;
-    volumeConfig.buildToRadiusZero    = (volumeBuilders.size() == 0);
-    volumeConfig.layerEnvelopeR       = {1. * Acts::UnitConstants::mm, 5. * Acts::UnitConstants::mm};
+    volumeConfig.volumeName = lbc.configurationName;
+    volumeConfig.buildToRadiusZero = (volumeBuilders.size() == 0);
+    volumeConfig.layerEnvelopeR = {1. * Acts::UnitConstants::mm, 5. * Acts::UnitConstants::mm};
     auto ringLayoutConfiguration =
         [&](const std::vector<ActsPlugins::TGeoLayerBuilder::LayerConfig>& lConfigs) -> void {
       for (const auto& lcfg : lConfigs) {
         for (const auto& scfg : lcfg.splitConfigs) {
           if (scfg.first == Acts::AxisDirection::AxisR and scfg.second > 0.) {
-            volumeConfig.ringTolerance   = std::max(volumeConfig.ringTolerance, scfg.second);
+            volumeConfig.ringTolerance = std::max(volumeConfig.ringTolerance, scfg.second);
             volumeConfig.checkRingLayout = true;
           }
         }
@@ -351,7 +351,7 @@ void ACTSAlgBase::buildDetector() {
     ringLayoutConfiguration(lbc.layerConfigurations[0]);
     ringLayoutConfiguration(lbc.layerConfigurations[2]);
     volumeConfig.layerBuilder = layerBuilder;
-    auto volumeBuilder        = std::make_shared<const Acts::CylinderVolumeBuilder>(
+    auto volumeBuilder = std::make_shared<const Acts::CylinderVolumeBuilder>(
         volumeConfig, Acts::getDefaultLogger(lbc.configurationName + "VolumeBuilder", volumeLogLevel));
     // add to the list of builders
     volumeBuilders.push_back(volumeBuilder);
@@ -369,7 +369,7 @@ void ACTSAlgBase::buildDetector() {
   }
   // Add the helper
   tgConfig.trackingVolumeHelper = cylinderVolumeHelper;
-  auto cylinderGeometryBuilder  = std::make_shared<const Acts::TrackingGeometryBuilder>(
+  auto cylinderGeometryBuilder = std::make_shared<const Acts::TrackingGeometryBuilder>(
       tgConfig, Acts::getDefaultLogger("TrackerGeometryBuilder", volumeLogLevel));
   // get the geometry
   m_trackingGeometry = cylinderGeometryBuilder->trackingGeometry(m_geometryContext);
@@ -388,11 +388,11 @@ void ACTSAlgBase::buildDetector() {
 
 void ACTSAlgBase::buildBfield() {
   // Get the magnetic field
-  dd4hep::Detector& lcdd        = dd4hep::Detector::getInstance();
-  const double      position[3] = {0, 0, 0};  // position to calculate magnetic field at (the origin in this case)
-  double            magneticFieldVector[3] = {0, 0, 0};  // initialise object to hold magnetic field
+  dd4hep::Detector& lcdd = dd4hep::Detector::getInstance();
+  const double position[3] = {0, 0, 0};      // position to calculate magnetic field at (the origin in this case)
+  double magneticFieldVector[3] = {0, 0, 0}; // initialise object to hold magnetic field
   lcdd.field().magneticField(position,
-                             magneticFieldVector);  // get the magnetic field vector from DD4hep
+                             magneticFieldVector); // get the magnetic field vector from DD4hep
 
   // Build ACTS representation of field
   // Note:

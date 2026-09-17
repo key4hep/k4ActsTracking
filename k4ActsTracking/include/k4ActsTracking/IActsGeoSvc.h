@@ -33,16 +33,16 @@
 #include <vector>
 
 namespace dd4hep {
-  namespace rec {
-    class Surface;
-  }
-}  // namespace dd4hep
+namespace rec {
+  class Surface;
+}
+} // namespace dd4hep
 
 namespace Acts {
-  class TrackingGeometry;
-  class Surface;
-  class MagneticFieldProvider;
-}  // namespace Acts
+class TrackingGeometry;
+class Surface;
+class MagneticFieldProvider;
+} // namespace Acts
 
 class GAUDI_API IActsGeoSvc : virtual public IService {
 public:
@@ -59,25 +59,25 @@ public:
   /// flat discs at constant z. The struct also carries the bounding cylinder
   /// dimensions used to build the enclosing TrackingVolumes (ACTS units).
   struct CaloFaceSurfaces {
-    std::vector<std::shared_ptr<Acts::Surface>> barrelFaces;  ///< one plane per polygon side
-    std::shared_ptr<Acts::Surface>              endcapPos;    ///< disc at +z, may be null
-    std::shared_ptr<Acts::Surface>              endcapNeg;    ///< disc at -z, may be null
+    std::vector<std::shared_ptr<Acts::Surface>> barrelFaces; ///< one plane per polygon side
+    std::shared_ptr<Acts::Surface> endcapPos;                ///< disc at +z, may be null
+    std::shared_ptr<Acts::Surface> endcapNeg;                ///< disc at -z, may be null
 
     // Bounding-cylinder dimensions for the enclosing TrackingVolumes.
-    double barrelRMin  = 0;  ///< inner radius of the barrel calo volume (~apothem)
-    double barrelRMax  = 0;  ///< outer radius of the barrel calo volume (~circumradius)
-    double barrelHalfZ = 0;  ///< barrel half-length along z
-    double endcapRMin  = 0;  ///< inner radius of the endcap disc volumes
-    double endcapRMax  = 0;  ///< outer radius of the endcap disc volumes
-    double endcapZ     = 0;  ///< |z| of the endcap inner face
+    double barrelRMin = 0;  ///< inner radius of the barrel calo volume (~apothem)
+    double barrelRMax = 0;  ///< outer radius of the barrel calo volume (~circumradius)
+    double barrelHalfZ = 0; ///< barrel half-length along z
+    double endcapRMin = 0;  ///< inner radius of the endcap disc volumes
+    double endcapRMax = 0;  ///< outer radius of the endcap disc volumes
+    double endcapZ = 0;     ///< |z| of the endcap inner face
 
     // Telescope geometries (e.g. LUXE) are not cylindrical: the calorimeter is a
     // single rectangular slab, possibly offset from the beam axis. Its inner
     // face is modelled as one planar surface enclosed in a cuboid volume rather
     // than the barrel/endcap cylinders above.
-    std::shared_ptr<Acts::Surface> planarFace;                   ///< rectangular calo inner face, may be null
-    std::array<double, 3>          planarVolumeCenter{0, 0, 0};  ///< center of the enclosing cuboid volume (ACTS units)
-    std::array<double, 3>          planarVolumeHalfLen{0, 0, 0};  ///< half-lengths (x, y, z) of the enclosing cuboid
+    std::shared_ptr<Acts::Surface> planarFace;          ///< rectangular calo inner face, may be null
+    std::array<double, 3> planarVolumeCenter{0, 0, 0};  ///< center of the enclosing cuboid volume (ACTS units)
+    std::array<double, 3> planarVolumeHalfLen{0, 0, 0}; ///< half-lengths (x, y, z) of the enclosing cuboid
 
     bool empty() const { return barrelFaces.empty() && !endcapPos && !endcapNeg && !planarFace; }
   };
@@ -85,11 +85,11 @@ public:
 public:
   DeclareInterfaceID(IActsGeoSvc, 1, 0);
 
-  virtual std::shared_ptr<const Acts::TrackingGeometry>      trackingGeometry() const     = 0;
-  virtual std::shared_ptr<const Acts::MagneticFieldProvider> magneticField() const        = 0;
-  virtual const CellIDSurfaceMap&                            cellIdToSurfaceMap() const   = 0;
-  virtual std::string                                        cellIDEncodingString() const = 0;
-  virtual const CaloFaceSurfaces&                            caloFaceSurfaces() const     = 0;
+  virtual std::shared_ptr<const Acts::TrackingGeometry> trackingGeometry() const = 0;
+  virtual std::shared_ptr<const Acts::MagneticFieldProvider> magneticField() const = 0;
+  virtual const CellIDSurfaceMap& cellIdToSurfaceMap() const = 0;
+  virtual std::string cellIDEncodingString() const = 0;
+  virtual const CaloFaceSurfaces& caloFaceSurfaces() const = 0;
 
   /// Geometry identifiers of the calorimeter-face surfaces, valid after the
   /// tracking geometry has been constructed. Used by the extrapolation to
@@ -110,4 +110,4 @@ public:
   virtual ~IActsGeoSvc() = default;
 };
 
-#endif  // IACTSGEOSVC_H
+#endif // IACTSGEOSVC_H

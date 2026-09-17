@@ -27,136 +27,137 @@
 #include <utility>
 
 namespace {
-  auto splitString(const std::string_view str, const char delim) {
-    namespace rv = std::ranges::views;
+auto splitString(const std::string_view str, const char delim) {
+  namespace rv = std::ranges::views;
 
-    return str | rv::split(delim) |
-           rv::transform([](auto&& subrange) { return std::string_view(subrange.begin(), subrange.end()); });
+  return str | rv::split(delim) |
+         rv::transform([](auto&& subrange) { return std::string_view(subrange.begin(), subrange.end()); });
+}
+
+// Implement a very simple polyfill to maintain compatibility with c++23
+template <typename T, std::ranges::input_range R>
+auto to_vector(R&& range) {
+  std::vector<T> container;
+  if constexpr (std::ranges::sized_range<R>) {
+    container.reserve(std::ranges::size(range));
+  }
+  std::ranges::copy(range, std::back_inserter(container));
+  return container;
+}
+
+std::pair<std::string, std::vector<int>> getFieldAndValues(std::string_view partialSelection) {
+  const auto fieldConfig = to_vector<std::string_view>(splitString(partialSelection, ':'));
+  if (fieldConfig.size() != 2) {
+    throw std::invalid_argument(std::string(partialSelection) + "' is not a valid selection string");
   }
 
-  // Implement a very simple polyfill to maintain compatibility with c++23
-  template <typename T, std::ranges::input_range R> auto to_vector(R&& range) {
-    std::vector<T> container;
-    if constexpr (std::ranges::sized_range<R>) {
-      container.reserve(std::ranges::size(range));
-    }
-    std::ranges::copy(range, std::back_inserter(container));
-    return container;
+  const auto fieldName = std::string(fieldConfig[0]);
+  const auto fieldValue = fieldConfig[1];
+  if (fieldValue.empty()) {
+    throw std::invalid_argument("'" + std::string(partialSelection) + "' has an empty value");
   }
 
-  std::pair<std::string, std::vector<int>> getFieldAndValues(std::string_view partialSelection) {
-    const auto fieldConfig = to_vector<std::string_view>(splitString(partialSelection, ':'));
-    if (fieldConfig.size() != 2) {
-      throw std::invalid_argument(std::string(partialSelection) + "' is not a valid selection string");
+  namespace rv = std::ranges::views;
+  auto layers = splitString(fieldValue, '|') | rv::transform([&](auto&& elem) {
+                  int val;
+                  if (std::from_chars<int>(elem.data(), elem.data() + elem.size(), val).ec != std::errc{}) {
+                    throw std::invalid_argument("'" + std::string(elem) + "' in '" + std::string(partialSelection) +
+                                                "' cannot be converted to an integer");
+                  }
+                  return val;
+                });
+  return {fieldName, to_vector<int>(layers)};
+}
+
+struct FieldValue {
+  std::string name;
+  int value;
+};
+
+std::vector<std::vector<FieldValue>> cartesianProductFields(auto&& fieldsAndValues) {
+  // fieldsAndValues is a range with elements of shape pair<string,
+  // vector<int>>. Each element in the range represents a field and values for
+  // that field. What we want is each combination of {(field_i, value_i),
+  // (field_j, value_j), (...)}
+  std::vector<std::vector<FieldValue>> product{};
+
+  for (const auto& [field, values] : fieldsAndValues) {
+    std::vector<FieldValue> thisFieldValues{};
+    thisFieldValues.reserve(values.size());
+    for (const int value : values) {
+      thisFieldValues.emplace_back(field, value);
     }
 
-    const auto fieldName  = std::string(fieldConfig[0]);
-    const auto fieldValue = fieldConfig[1];
-    if (fieldValue.empty()) {
-      throw std::invalid_argument("'" + std::string(partialSelection) + "' has an empty value");
-    }
-
-    namespace rv = std::ranges::views;
-    auto layers  = splitString(fieldValue, '|') | rv::transform([&](auto&& elem) {
-                    int val;
-                    if (std::from_chars<int>(elem.data(), elem.data() + elem.size(), val).ec != std::errc{}) {
-                      throw std::invalid_argument("'" + std::string(elem) + "' in '" + std::string(partialSelection) +
-                                                   "' cannot be converted to an integer");
-                    }
-                    return val;
-                  });
-    return {fieldName, to_vector<int>(layers)};
-  }
-
-  struct FieldValue {
-    std::string name;
-    int         value;
-  };
-
-  std::vector<std::vector<FieldValue>> cartesianProductFields(auto&& fieldsAndValues) {
-    // fieldsAndValues is a range with elements of shape pair<string,
-    // vector<int>>. Each element in the range represents a field and values for
-    // that field. What we want is each combination of {(field_i, value_i),
-    // (field_j, value_j), (...)}
-    std::vector<std::vector<FieldValue>> product{};
-
-    for (const auto& [field, values] : fieldsAndValues) {
-      std::vector<FieldValue> thisFieldValues{};
-      thisFieldValues.reserve(values.size());
-      for (const int value : values) {
-        thisFieldValues.emplace_back(field, value);
+    // If we are in the first field product is still empty and we simply store
+    // each individual value from this field there.
+    if (product.empty()) {
+      for (auto&& fv : thisFieldValues) {
+        product.emplace_back(std::vector{std::move(fv)});
       }
-
-      // If we are in the first field product is still empty and we simply store
-      // each individual value from this field there.
-      if (product.empty()) {
-        for (auto&& fv : thisFieldValues) {
-          product.emplace_back(std::vector{std::move(fv)});
+    } else {
+      // Otherwise we create new products by attaching the new field / values
+      // to the existing ones and then simply replace the existing ones
+      std::vector<std::vector<FieldValue>> newProduct{};
+      for (auto existing : product) {
+        for (const auto& fv : thisFieldValues) {
+          existing.emplace_back(fv);
+          newProduct.emplace_back(existing);
         }
-      } else {
-        // Otherwise we create new products by attaching the new field / values
-        // to the existing ones and then simply replace the existing ones
-        std::vector<std::vector<FieldValue>> newProduct{};
-        for (auto existing : product) {
-          for (const auto& fv : thisFieldValues) {
-            existing.emplace_back(fv);
-            newProduct.emplace_back(existing);
-          }
-        }
-        product = std::move(newProduct);
       }
+      product = std::move(newProduct);
     }
-
-    return product;
   }
 
-}  // namespace
+  return product;
+}
+
+} // namespace
 
 namespace k4ActsTracking {
-  CellIDSelector::CellIDSelector(const std::string& encodingString, const std::vector<std::string>& selections) {
-    dd4hep::BitFieldCoder decoder{encodingString};
+CellIDSelector::CellIDSelector(const std::string& encodingString, const std::vector<std::string>& selections) {
+  dd4hep::BitFieldCoder decoder{encodingString};
 
-    for (const auto& selection : selections) {
-      for (auto&& sel : getSelectionMasks(selection, decoder)) {
-        m_selectors.emplace_back(std::move(sel));
-      }
+  for (const auto& selection : selections) {
+    for (auto&& sel : getSelectionMasks(selection, decoder)) {
+      m_selectors.emplace_back(std::move(sel));
     }
   }
+}
 
-  std::vector<CellIDSelector::Selector> CellIDSelector::getSelectionMasks(const std::string&           selection,
-                                                                          const dd4hep::BitFieldCoder& decoder) {
-    if (selection.empty()) {
-      throw std::invalid_argument("selection string must not be empty");
-    }
-    namespace rv = std::ranges::views;
-    auto fieldsAndValues =
-        splitString(selection, ',') | rv::transform([](auto&& part) { return getFieldAndValues(part); });
+std::vector<CellIDSelector::Selector> CellIDSelector::getSelectionMasks(const std::string& selection,
+                                                                        const dd4hep::BitFieldCoder& decoder) {
+  if (selection.empty()) {
+    throw std::invalid_argument("selection string must not be empty");
+  }
+  namespace rv = std::ranges::views;
+  auto fieldsAndValues =
+      splitString(selection, ',') | rv::transform([](auto&& part) { return getFieldAndValues(part); });
 
-    dd4hep::CellID mask = 0;
-    for (const auto& [field, _] : fieldsAndValues) {
-      mask |= decoder[field].mask();
-    }
-
-    std::vector<Selector> selectors{};
-    for (const auto& fieldsValues : cartesianProductFields(fieldsAndValues)) {
-      dd4hep::CellID value{};
-      for (const auto& [name, val] : fieldsValues) {
-        decoder.set(value, std::string(name), val);
-      }
-      selectors.emplace_back(mask, value);
-    }
-
-    return selectors;
+  dd4hep::CellID mask = 0;
+  for (const auto& [field, _] : fieldsAndValues) {
+    mask |= decoder[field].mask();
   }
 
-  bool CellIDSelector::accept(const dd4hep::CellID cellID) const {
-    for (const auto& selector : m_selectors) {
-      // The passed CellID has to be equal to any of the configured values after
-      // masking irrelevant parts
-      if ((selector.value & selector.mask) == (cellID & selector.mask)) {
-        return true;
-      }
+  std::vector<Selector> selectors{};
+  for (const auto& fieldsValues : cartesianProductFields(fieldsAndValues)) {
+    dd4hep::CellID value{};
+    for (const auto& [name, val] : fieldsValues) {
+      decoder.set(value, std::string(name), val);
     }
-    return false;
+    selectors.emplace_back(mask, value);
   }
-}  // namespace k4ActsTracking
+
+  return selectors;
+}
+
+bool CellIDSelector::accept(const dd4hep::CellID cellID) const {
+  for (const auto& selector : m_selectors) {
+    // The passed CellID has to be equal to any of the configured values after
+    // masking irrelevant parts
+    if ((selector.value & selector.mask) == (cellID & selector.mask)) {
+      return true;
+    }
+  }
+  return false;
+}
+} // namespace k4ActsTracking

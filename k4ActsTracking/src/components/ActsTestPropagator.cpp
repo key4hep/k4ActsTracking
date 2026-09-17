@@ -59,22 +59,22 @@ struct ActsTestPropagator final : public k4FWCore::Producer<std::vector<podio::U
 
   Gaudi::Property<std::string> m_outFileName{this, "StepsOutputFile", "acts_steps.csv",
                                              "Output file for writing step positions and geometry id"};
-  Gaudi::Property<int>         m_numTracks{this, "NumTracks", 100, "Number of random tracks to propagate"};
-  Gaudi::Property<double>      m_minMomentum{this, "MinMomentum", 10.0, "Minimum particle momentum in GeV"};
-  Gaudi::Property<double>      m_maxMomentum{this, "MaxMomentum", 1000.0, "Maximum particle momentum in GeV"};
-  Gaudi::Property<double>      m_minEta{this, "MinEta", -2.5, "Minimum pseudorapidity"};
-  Gaudi::Property<double>      m_maxEta{this, "MaxEta", 2.5, "Maximum pseudorapidity"};
+  Gaudi::Property<int> m_numTracks{this, "NumTracks", 100, "Number of random tracks to propagate"};
+  Gaudi::Property<double> m_minMomentum{this, "MinMomentum", 10.0, "Minimum particle momentum in GeV"};
+  Gaudi::Property<double> m_maxMomentum{this, "MaxMomentum", 1000.0, "Maximum particle momentum in GeV"};
+  Gaudi::Property<double> m_minEta{this, "MinEta", -2.5, "Minimum pseudorapidity"};
+  Gaudi::Property<double> m_maxEta{this, "MaxEta", 2.5, "Maximum pseudorapidity"};
 
 private:
   SmartIF<IActsGeoSvc> m_actsGeoSvc;
-  SmartIF<IGeoSvc>     m_geoSvc;
+  SmartIF<IGeoSvc> m_geoSvc;
 
   std::shared_ptr<Acts::ConstantBField> m_magneticField{nullptr};
 
   std::unique_ptr<const Acts::Logger> m_actsLogger{nullptr};
 
   // Random number generator for generating different start parameters
-  mutable std::mt19937                           m_gen;
+  mutable std::mt19937 m_gen;
   mutable std::uniform_real_distribution<double> m_posDist;
   mutable std::uniform_real_distribution<double> m_dirDist;
   mutable std::uniform_real_distribution<double> m_qOverPDist;
@@ -92,19 +92,19 @@ StatusCode ActsTestPropagator::initialize() {
   // Initialize random number generator
   std::random_device rd;
   m_gen.seed(rd());
-  m_posDist = std::uniform_real_distribution<double>(-100.0, 100.0);  // Position range in mm
+  m_posDist = std::uniform_real_distribution<double>(-100.0, 100.0); // Position range in mm
 
   // Compute distributions from particle momenta and eta direction range
   // Convert eta range to theta range for direction generation
-  double minTheta = 2.0 * std::atan(std::exp(-m_maxEta));  // theta from max eta
-  double maxTheta = 2.0 * std::atan(std::exp(-m_minEta));  // theta from min eta
+  double minTheta = 2.0 * std::atan(std::exp(-m_maxEta)); // theta from max eta
+  double maxTheta = 2.0 * std::atan(std::exp(-m_minEta)); // theta from min eta
 
-  m_dirDist = std::uniform_real_distribution<double>(minTheta, maxTheta);  // theta range
+  m_dirDist = std::uniform_real_distribution<double>(minTheta, maxTheta); // theta range
 
   // q/p distribution based on momentum range (assuming charge ±1)
-  double maxQOverP = 1.0 / m_minMomentum;   // 1/GeV
-  double minQOverP = -1.0 / m_maxMomentum;  // 1/GeV (negative charge)
-  m_qOverPDist     = std::uniform_real_distribution<double>(minQOverP, maxQOverP);
+  double maxQOverP = 1.0 / m_minMomentum;  // 1/GeV
+  double minQOverP = -1.0 / m_maxMomentum; // 1/GeV (negative charge)
+  m_qOverPDist = std::uniform_real_distribution<double>(minQOverP, maxQOverP);
 
   return StatusCode::SUCCESS;
 }
@@ -114,34 +114,34 @@ std::vector<podio::UserDataCollection<double>> ActsTestPropagator::operator()() 
 
   // The step length logger for testing & end of world aborter
   using MaterialInteractor = Acts::MaterialInteractor;
-  using SteppingLogger     = Acts::detail::SteppingLogger;
-  using EndOfWorld         = Acts::EndOfWorldReached;
+  using SteppingLogger = Acts::detail::SteppingLogger;
+  using EndOfWorld = Acts::EndOfWorldReached;
 
-  using Stepper    = Acts::EigenStepper<>;
-  using Navigator  = Acts::Navigator;
+  using Stepper = Acts::EigenStepper<>;
+  using Navigator = Acts::Navigator;
   using Propagator = Acts::Propagator<Stepper, Navigator>;
 
-  using ActorList         = Acts::ActorList<SteppingLogger, MaterialInteractor, EndOfWorld>;
+  using ActorList = Acts::ActorList<SteppingLogger, MaterialInteractor, EndOfWorld>;
   using PropagatorOptions = Propagator::template Options<ActorList>;
 
   // Configurations
   Navigator::Config navigatorCfg{m_actsGeoSvc->trackingGeometry()};
-  navigatorCfg.resolvePassive   = false;
-  navigatorCfg.resolveMaterial  = true;
+  navigatorCfg.resolvePassive = false;
+  navigatorCfg.resolveMaterial = true;
   navigatorCfg.resolveSensitive = true;
 
-  Stepper    stepper(m_actsGeoSvc->magneticField());
-  Navigator  navigator(navigatorCfg, m_actsLogger->cloneWithSuffix(":Nav"));
+  Stepper stepper(m_actsGeoSvc->magneticField());
+  Navigator navigator(navigatorCfg, m_actsLogger->cloneWithSuffix(":Nav"));
   Propagator propagator(std::move(stepper), std::move(navigator), m_actsLogger->cloneWithSuffix(":Prop"));
 
   auto options = PropagatorOptions{Acts::GeometryContext::dangerouslyDefaultConstruct(), Acts::MagneticFieldContext{}};
 
   std::vector<podio::UserDataCollection<double>> stepOutputs(5);
-  auto&                                          stepsX      = stepOutputs[0].vec();
-  auto&                                          stepsY      = stepOutputs[1].vec();
-  auto&                                          stepsZ      = stepOutputs[2].vec();
-  auto&                                          stepsGeoID  = stepOutputs[3].vec();
-  auto&                                          stepsLength = stepOutputs[4].vec();
+  auto& stepsX = stepOutputs[0].vec();
+  auto& stepsY = stepOutputs[1].vec();
+  auto& stepsZ = stepOutputs[2].vec();
+  auto& stepsGeoID = stepOutputs[3].vec();
+  auto& stepsLength = stepOutputs[4].vec();
 
   debug() << fmt::format("Creating {} random tracks", m_numTracks.value()) << endmsg;
   for (int i = 0; i < m_numTracks; ++i) {
@@ -150,17 +150,17 @@ std::vector<podio::UserDataCollection<double>> ActsTestPropagator::operator()() 
 
     // Generate random direction using theta from eta range and uniform phi
     double theta = m_dirDist(m_gen);
-    double phi   = std::uniform_real_distribution<double>(0.0, 2.0 * M_PI)(m_gen);
+    double phi = std::uniform_real_distribution<double>(0.0, 2.0 * M_PI)(m_gen);
 
     Acts::Vector3 direction{std::sin(theta) * std::cos(phi), std::sin(theta) * std::sin(phi), std::cos(theta)};
 
     // Generate random charge over momentum
     double qOverP = m_qOverPDist(m_gen);
 
-    verbose() << fmt::format(
-                     "Track {}: Initial state - Position: ({:.2f}, {:.2f}, {:.2f}) mm, "
-                     "Direction: ({:.3f}, {:.3f}, {:.3f}), q/p: {:.4f} 1/GeV",
-                     i, startPos.x(), startPos.y(), startPos.z(), direction.x(), direction.y(), direction.z(), qOverP)
+    verbose() << fmt::format("Track {}: Initial state - Position: ({:.2f}, {:.2f}, {:.2f}) mm, "
+                             "Direction: ({:.3f}, {:.3f}, {:.3f}), q/p: {:.4f} 1/GeV",
+                             i, startPos.x(), startPos.y(), startPos.z(), direction.x(), direction.y(), direction.z(),
+                             qOverP)
               << endmsg;
 
     const auto startParameters = Acts::BoundTrackParameters::createCurvilinear(

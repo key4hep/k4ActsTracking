@@ -42,9 +42,9 @@ public:
   std::unique_ptr<Acts::Logging::OutputPrintPolicy> clone(const std::string& name) const override;
 
 private:
-  IMessageSvc*               m_svc{nullptr};
+  IMessageSvc* m_svc{nullptr};
   std::shared_ptr<MsgStream> m_msg{nullptr};
-  std::string                m_name{};
+  std::string m_name{};
 };
 
 /// Filter policy that maps the Gaudi log levels to the Acts log levels
@@ -74,8 +74,8 @@ std::unique_ptr<const Acts::Logger> makeActsGaudiLogger(IMessageSvc* svc, const 
 
 // Overload for accepting string literals
 inline std::unique_ptr<const Acts::Logger> makeActsGaudiLogger(const CommonMessagingBase* parent,
-                                                               const std::string&         name) {
+                                                               const std::string& name) {
   return makeActsGaudiLogger(parent, std::optional<std::string>{name});
 }
 
-#endif  // K4ACTSTRACKING_ACTSGAUDILOGGER_H
+#endif // K4ACTSTRACKING_ACTSGAUDILOGGER_H

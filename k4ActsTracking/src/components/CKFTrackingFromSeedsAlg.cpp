@@ -88,9 +88,9 @@ struct CKFTrackingFromSeedsAlg final
 
   StatusCode finalize() override;
 
-  std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> operator()(
-      const edm4hep::TrackerHitPlaneCollection& trackerHitCollection,
-      const edm4hep::TrackCollection&           seedTrackCollection) const override;
+  std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection>
+  operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitCollection,
+             const edm4hep::TrackCollection& seedTrackCollection) const override;
 
 private:
   /// @name Run control
@@ -112,17 +112,17 @@ private:
 
   /// @name Track-fit initial error estimates
   ///@{
-  Gaudi::Property<double>  m_initialTrackError_pos{this, "InitialTrackError_Pos", 10 * Acts::UnitConstants::um,
+  Gaudi::Property<double> m_initialTrackError_pos{this, "InitialTrackError_Pos", 10 * Acts::UnitConstants::um,
                                                   "Initial track error for local position."};
-  Gaudi::Property<double>  m_initialTrackError_phi{this, "InitialTrackError_Phi", 1 * Acts::UnitConstants::degree,
+  Gaudi::Property<double> m_initialTrackError_phi{this, "InitialTrackError_Phi", 1 * Acts::UnitConstants::degree,
                                                   "Initial track error for phi."};
-  Gaudi::Property<double>  m_initialTrackError_relP{this, "InitialTrackError_RelP", 0.25,
+  Gaudi::Property<double> m_initialTrackError_relP{this, "InitialTrackError_RelP", 0.25,
                                                    "Initial track error for momentum (relative)."};
-  Gaudi::Property<double>  m_initialTrackError_lambda{this, "InitialTrackError_Lambda", 1 * Acts::UnitConstants::degree,
+  Gaudi::Property<double> m_initialTrackError_lambda{this, "InitialTrackError_Lambda", 1 * Acts::UnitConstants::degree,
                                                      "Initial track error for lambda."};
-  Gaudi::Property<double>  m_initialTrackError_time{this, "InitialTrackError_Time", 100 * Acts::UnitConstants::ns,
+  Gaudi::Property<double> m_initialTrackError_time{this, "InitialTrackError_Time", 100 * Acts::UnitConstants::ns,
                                                    "Initial track error for time."};
-  Gaudi::Property<double>  m_CKF_chi2CutOff{this, "CKF_Chi2CutOff", 15, "Maximum local chi2 contribution."};
+  Gaudi::Property<double> m_CKF_chi2CutOff{this, "CKF_Chi2CutOff", 15, "Maximum local chi2 contribution."};
   Gaudi::Property<int32_t> m_CKF_numMeasurementsCutOff{this, "CKF_NumMeasurementsCutOff", 10,
                                                        "Maximum measurements on a single surface."};
   Gaudi::Property<unsigned int> m_maxPropagationSteps{
@@ -183,12 +183,12 @@ StatusCode CKFTrackingFromSeedsAlg::initialize() {
   }
 
   m_ckfRunner.emplace(*m_actsGeoSvc,
-                      ACTSTracking::CKFRunner::Config{.chi2CutOff            = m_CKF_chi2CutOff,
+                      ACTSTracking::CKFRunner::Config{.chi2CutOff = m_CKF_chi2CutOff,
                                                       .numMeasurementsCutOff = m_CKF_numMeasurementsCutOff,
-                                                      .propagateBackward     = m_propagateBackward,
-                                                      .extrapolateToCalo     = m_extrapolateToCalo,
-                                                      .maxSteps              = m_maxPropagationSteps,
-                                                      .addEndcapCaloState    = m_addEndcapCaloState});
+                                                      .propagateBackward = m_propagateBackward,
+                                                      .extrapolateToCalo = m_extrapolateToCalo,
+                                                      .maxSteps = m_maxPropagationSteps,
+                                                      .addEndcapCaloState = m_addEndcapCaloState});
 
   return StatusCode::SUCCESS;
 }
@@ -204,19 +204,19 @@ StatusCode CKFTrackingFromSeedsAlg::finalize() {
 // Event processing
 // ---------------------------------------------------------------------------
 
-std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> CKFTrackingFromSeedsAlg::operator()(
-    const edm4hep::TrackerHitPlaneCollection& trackerHitCollection,
-    const edm4hep::TrackCollection&           seedTrackCollection) const {
+std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection>
+CKFTrackingFromSeedsAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitCollection,
+                                    const edm4hep::TrackCollection& seedTrackCollection) const {
   edm4hep::TrackCollection seedCollection;
   edm4hep::TrackCollection trackCollection;
 
   // Default-construct ACTS contexts
-  const Acts::GeometryContext      geoCtx = Acts::GeometryContext::dangerouslyDefaultConstruct();
+  const Acts::GeometryContext geoCtx = Acts::GeometryContext::dangerouslyDefaultConstruct();
   const Acts::MagneticFieldContext magCtx{};
 
-  ACTSTracking::SourceLinkContainer  sourceLinks;
+  ACTSTracking::SourceLinkContainer sourceLinks;
   ACTSTracking::MeasurementContainer measurements;
-  ACTSTracking::HitContainer         hitContainer;
+  ACTSTracking::HitContainer hitContainer;
 
   // Build measurements + source links for all hits, and keep the source link of
   // each hit so the input track candidates can be turned into seeds.

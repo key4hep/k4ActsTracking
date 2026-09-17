@@ -28,54 +28,54 @@
 
 namespace ACTSTracking {
 
-  /// The per-hit quantity a configured feature name maps to. All CellID based
-  /// features share one enumerator and are distinguished by the decoder field
-  /// index stored alongside it.
-  enum class HitFeature { X, Y, Z, R, Phi, Theta, Eta, Time, Energy, CellIdField };
+/// The per-hit quantity a configured feature name maps to. All CellID based
+/// features share one enumerator and are distinguished by the decoder field
+/// index stored alongside it.
+enum class HitFeature { X, Y, Z, R, Phi, Theta, Eta, Time, Energy, CellIdField };
 
-  /// A configured input feature, resolved once to the quantity that has to be
-  /// read from a hit. Keeping the resolution out of the event loop avoids
-  /// per-hit string comparisons and CellID field name lookups.
-  struct ResolvedFeature {
-    HitFeature  kind{};
-    std::size_t cellIdField{0};  ///< only used for HitFeature::CellIdField
-  };
+/// A configured input feature, resolved once to the quantity that has to be
+/// read from a hit. Keeping the resolution out of the event loop avoids
+/// per-hit string comparisons and CellID field name lookups.
+struct ResolvedFeature {
+  HitFeature kind{};
+  std::size_t cellIdField{0}; ///< only used for HitFeature::CellIdField
+};
 
-  /// The (case insensitive) feature names that resolveHitFeature() accepts, as a
-  /// comma separated list. Meant for error messages and documentation.
-  std::string supportedHitFeatureNames();
+/// The (case insensitive) feature names that resolveHitFeature() accepts, as a
+/// comma separated list. Meant for error messages and documentation.
+std::string supportedHitFeatureNames();
 
-  /// Whether @p feature is one of the CellID based features, i.e. whether
-  /// resolving it needs a decoder. Unknown names return false, they are reported
-  /// by resolveHitFeature().
-  bool hitFeatureNeedsCellID(const std::string& feature);
+/// Whether @p feature is one of the CellID based features, i.e. whether
+/// resolving it needs a decoder. Unknown names return false, they are reported
+/// by resolveHitFeature().
+bool hitFeatureNeedsCellID(const std::string& feature);
 
-  /// Resolve a single feature name into the quantity that has to be read from a
-  /// hit.
-  ///
-  /// @param decoder the CellID decoder to look field names up in. May be nullptr
-  ///        if no CellID encoding is available, in which case requesting a
-  ///        CellID based feature is an error.
-  /// @throws std::runtime_error for an unknown feature name, or for a CellID
-  ///         based feature whose field is not part of the encoding (or when no
-  ///         decoder was given at all).
-  ResolvedFeature resolveHitFeature(const std::string& feature, const dd4hep::DDSegmentation::BitFieldCoder* decoder);
+/// Resolve a single feature name into the quantity that has to be read from a
+/// hit.
+///
+/// @param decoder the CellID decoder to look field names up in. May be nullptr
+///        if no CellID encoding is available, in which case requesting a
+///        CellID based feature is an error.
+/// @throws std::runtime_error for an unknown feature name, or for a CellID
+///         based feature whose field is not part of the encoding (or when no
+///         decoder was given at all).
+ResolvedFeature resolveHitFeature(const std::string& feature, const dd4hep::DDSegmentation::BitFieldCoder* decoder);
 
-  /// Resolve a list of feature names, see resolveHitFeature().
-  std::vector<ResolvedFeature> resolveHitFeatures(const std::vector<std::string>&              features,
-                                                  const dd4hep::DDSegmentation::BitFieldCoder* decoder);
+/// Resolve a list of feature names, see resolveHitFeature().
+std::vector<ResolvedFeature> resolveHitFeatures(const std::vector<std::string>& features,
+                                                const dd4hep::DDSegmentation::BitFieldCoder* decoder);
 
-  /// The value of one resolved feature for one hit.
-  ///
-  /// @param decoder only dereferenced for HitFeature::CellIdField, which
-  ///        resolveHitFeature() only ever produces when a decoder was given.
-  float hitFeatureValue(const edm4hep::TrackerHitPlane& hit, const ResolvedFeature& feature,
-                        const dd4hep::DDSegmentation::BitFieldCoder* decoder);
+/// The value of one resolved feature for one hit.
+///
+/// @param decoder only dereferenced for HitFeature::CellIdField, which
+///        resolveHitFeature() only ever produces when a decoder was given.
+float hitFeatureValue(const edm4hep::TrackerHitPlane& hit, const ResolvedFeature& feature,
+                      const dd4hep::DDSegmentation::BitFieldCoder* decoder);
 
-  /// Extract the requested hit information into a flat, row-major
-  /// (nHits x nFeatures) buffer, i.e. the layout the ONNX models expect.
-  std::vector<float> extractHitInformation(const edm4hep::TrackerHitPlaneCollection&    hits,
-                                           const std::vector<ResolvedFeature>&          features,
-                                           const dd4hep::DDSegmentation::BitFieldCoder* decoder);
+/// Extract the requested hit information into a flat, row-major
+/// (nHits x nFeatures) buffer, i.e. the layout the ONNX models expect.
+std::vector<float> extractHitInformation(const edm4hep::TrackerHitPlaneCollection& hits,
+                                         const std::vector<ResolvedFeature>& features,
+                                         const dd4hep::DDSegmentation::BitFieldCoder* decoder);
 
-}  // namespace ACTSTracking
+} // namespace ACTSTracking

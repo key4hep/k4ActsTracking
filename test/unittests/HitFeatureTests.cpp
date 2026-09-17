@@ -30,23 +30,23 @@
 #include <vector>
 
 namespace {
-  const std::string kEncoding = "system:5,side:-2,layer:6,module:11,sensor:8";
+const std::string kEncoding = "system:5,side:-2,layer:6,module:11,sensor:8";
 
-  edm4hep::MutableTrackerHitPlane makeHit(float x, float y, float z, float time = 0.f, float eDep = 0.f,
-                                          std::uint64_t cellID = 0) {
-    edm4hep::MutableTrackerHitPlane hit{};
-    hit.setPosition({x, y, z});
-    hit.setTime(time);
-    hit.setEDep(eDep);
-    hit.setCellID(cellID);
-    return hit;
-  }
+edm4hep::MutableTrackerHitPlane makeHit(float x, float y, float z, float time = 0.f, float eDep = 0.f,
+                                        std::uint64_t cellID = 0) {
+  edm4hep::MutableTrackerHitPlane hit{};
+  hit.setPosition({x, y, z});
+  hit.setTime(time);
+  hit.setEDep(eDep);
+  hit.setCellID(cellID);
+  return hit;
+}
 
-  float valueOf(const std::string& feature, const edm4hep::TrackerHitPlane& hit,
-                const dd4hep::DDSegmentation::BitFieldCoder* decoder = nullptr) {
-    return ACTSTracking::hitFeatureValue(hit, ACTSTracking::resolveHitFeature(feature, decoder), decoder);
-  }
-}  // namespace
+float valueOf(const std::string& feature, const edm4hep::TrackerHitPlane& hit,
+              const dd4hep::DDSegmentation::BitFieldCoder* decoder = nullptr) {
+  return ACTSTracking::hitFeatureValue(hit, ACTSTracking::resolveHitFeature(feature, decoder), decoder);
+}
+} // namespace
 
 TEST_CASE("resolveHitFeature") {
   dd4hep::DDSegmentation::BitFieldCoder decoder{kEncoding};
@@ -135,16 +135,16 @@ TEST_CASE("extractHitInformation") {
   hits.push_back(makeHit(6.f, 8.f, 2.f, 20.f));
 
   const auto features = ACTSTracking::resolveHitFeatures({"r", "z", "t"}, nullptr);
-  const auto flat     = ACTSTracking::extractHitInformation(hits, features, nullptr);
+  const auto flat = ACTSTracking::extractHitInformation(hits, features, nullptr);
 
   // Row-major (nHits x nFeatures)
   REQUIRE(flat.size() == 2 * 3);
-  REQUIRE_THAT(flat[0], Catch::Matchers::WithinAbs(5.0, 1e-5));   // hit 0, r
-  REQUIRE_THAT(flat[1], Catch::Matchers::WithinAbs(1.0, 1e-5));   // hit 0, z
-  REQUIRE_THAT(flat[2], Catch::Matchers::WithinAbs(10.0, 1e-5));  // hit 0, t
-  REQUIRE_THAT(flat[3], Catch::Matchers::WithinAbs(10.0, 1e-5));  // hit 1, r
-  REQUIRE_THAT(flat[4], Catch::Matchers::WithinAbs(2.0, 1e-5));   // hit 1, z
-  REQUIRE_THAT(flat[5], Catch::Matchers::WithinAbs(20.0, 1e-5));  // hit 1, t
+  REQUIRE_THAT(flat[0], Catch::Matchers::WithinAbs(5.0, 1e-5));  // hit 0, r
+  REQUIRE_THAT(flat[1], Catch::Matchers::WithinAbs(1.0, 1e-5));  // hit 0, z
+  REQUIRE_THAT(flat[2], Catch::Matchers::WithinAbs(10.0, 1e-5)); // hit 0, t
+  REQUIRE_THAT(flat[3], Catch::Matchers::WithinAbs(10.0, 1e-5)); // hit 1, r
+  REQUIRE_THAT(flat[4], Catch::Matchers::WithinAbs(2.0, 1e-5));  // hit 1, z
+  REQUIRE_THAT(flat[5], Catch::Matchers::WithinAbs(20.0, 1e-5)); // hit 1, t
 
   SECTION("no features gives an empty buffer") {
     REQUIRE(ACTSTracking::extractHitInformation(hits, {}, nullptr).empty());

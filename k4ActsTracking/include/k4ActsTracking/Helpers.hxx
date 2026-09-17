@@ -61,17 +61,17 @@
 
 namespace ACTSTracking {
 
-  /// Geometry-aware propagator used to extrapolate fitted tracks out to the
-  /// calorimeter face. It navigates the tracking geometry (which now includes
-  /// the passive calo volumes), so material along the way is accounted for and
-  /// the actual curved trajectory selects which calo surface is hit.
-  using CaloFacePropagator = Acts::Propagator<Acts::EigenStepper<>, Acts::Navigator>;
+/// Geometry-aware propagator used to extrapolate fitted tracks out to the
+/// calorimeter face. It navigates the tracking geometry (which now includes
+/// the passive calo volumes), so material along the way is accounted for and
+/// the actual curved trajectory selects which calo surface is hit.
+using CaloFacePropagator = Acts::Propagator<Acts::EigenStepper<>, Acts::Navigator>;
 
-  using TrackResult =
-      Acts::TrackContainer<Acts::VectorTrackContainer, Acts::VectorMultiTrajectory, std::shared_ptr>::TrackProxy;
+using TrackResult =
+    Acts::TrackContainer<Acts::VectorTrackContainer, Acts::VectorMultiTrajectory, std::shared_ptr>::TrackProxy;
 
-  //! Get path to a resource file
-  /**
+//! Get path to a resource file
+/**
  * Get absolute file of a file `inpath` by looking in the following places:
  *  - `inpath` to the current working directory
  *  - `ACTSTRACKING_SOURCEDIR/inpath`
@@ -84,10 +84,10 @@ namespace ACTSTracking {
  *
  * \return Absolute path to file.
  */
-  std::string findFile(const std::string& inpath);
+std::string findFile(const std::string& inpath);
 
-  //! Convert ACTS KF result to edm4hep track class
-  /**
+//! Convert ACTS KF result to edm4hep track class
+/**
  * Converted properties are:
  *  - goodness of fit (chi2, ndf)
  *  - associated hits
@@ -102,13 +102,13 @@ namespace ACTSTracking {
  *
  * \return Track with equivalent parameters of the ACTS track
  */
-  edm4hep::MutableTrack ACTS2edm4hep_track(const Acts::GeometryContext& gctx, const TrackResult& fitter_res,
-                                           const HitContainer&                                hits,
-                                           std::shared_ptr<const Acts::MagneticFieldProvider> magneticField,
-                                           Acts::MagneticFieldProvider::Cache&                magCache);
+edm4hep::MutableTrack ACTS2edm4hep_track(const Acts::GeometryContext& gctx, const TrackResult& fitter_res,
+                                         const HitContainer& hits,
+                                         std::shared_ptr<const Acts::MagneticFieldProvider> magneticField,
+                                         Acts::MagneticFieldProvider::Cache& magCache);
 
-  //! Convert ACTS track state class to edm4hep class
-  /**
+//! Convert ACTS track state class to edm4hep class
+/**
  * The EDM4hep track state uses a perigee (D0, Z0, phi, omega, tanLambda)
  * parametrization defined relative to a reference point. If \p params are not
  * already expressed on a perigee surface, they are re-expressed at an ad-hoc
@@ -123,40 +123,40 @@ namespace ACTSTracking {
  *
  * \return Track state with equivalent parameters of the ACTS track
  */
-  edm4hep::TrackState ACTS2edm4hep_trackState(int location, const Acts::GeometryContext& gctx,
-                                              const Acts::BoundTrackParameters& params, double Bz);
-  //! Helper Method for ACTS2edm4hep_trackState. Expects \p value / \p cov to
-  //! already be in the perigee reference frame and does NOT set the
-  //! referencePoint; callers holding generic on-surface parameters should use
-  //! the BoundTrackParameters overload above, which re-expresses them at an
-  //! ad-hoc perigee first.
-  edm4hep::TrackState ACTS2edm4hep_trackState(int location, const Acts::BoundVector& value,
-                                              const Acts::BoundMatrix& cov, double Bz);
+edm4hep::TrackState ACTS2edm4hep_trackState(int location, const Acts::GeometryContext& gctx,
+                                            const Acts::BoundTrackParameters& params, double Bz);
+//! Helper Method for ACTS2edm4hep_trackState. Expects \p value / \p cov to
+//! already be in the perigee reference frame and does NOT set the
+//! referencePoint; callers holding generic on-surface parameters should use
+//! the BoundTrackParameters overload above, which re-expresses them at an
+//! ad-hoc perigee first.
+edm4hep::TrackState ACTS2edm4hep_trackState(int location, const Acts::BoundVector& value, const Acts::BoundMatrix& cov,
+                                            double Bz);
 
-  //! Get particle hypothesis in ACTS format
-  /**
+//! Get particle hypothesis in ACTS format
+/**
  * \param MCParticle
  *
  * \return Particle Hypothesis based on MCParticle PDG
  */
-  Acts::ParticleHypothesis convertParticle(const edm4hep::MCParticle mcParticle);
+Acts::ParticleHypothesis convertParticle(const edm4hep::MCParticle mcParticle);
 
-  //! Outcome of a calorimeter-face extrapolation.
-  enum class CaloExtrapolationStatus {
-    Ok,                ///< reached a calo-face surface
-    NoSurfaces,        ///< no calo-face surfaces are configured
-    NotReached,        ///< propagation finished without reaching a calo-face surface
-    PropagationError,  ///< the propagation itself failed
-  };
+//! Outcome of a calorimeter-face extrapolation.
+enum class CaloExtrapolationStatus {
+  Ok,               ///< reached a calo-face surface
+  NoSurfaces,       ///< no calo-face surfaces are configured
+  NotReached,       ///< propagation finished without reaching a calo-face surface
+  PropagationError, ///< the propagation itself failed
+};
 
-  //! Result of a calorimeter-face extrapolation.
-  struct CaloExtrapolationResult {
-    std::optional<Acts::BoundTrackParameters> params{};
-    CaloExtrapolationStatus                   status{CaloExtrapolationStatus::NotReached};
-  };
+//! Result of a calorimeter-face extrapolation.
+struct CaloExtrapolationResult {
+  std::optional<Acts::BoundTrackParameters> params{};
+  CaloExtrapolationStatus status{CaloExtrapolationStatus::NotReached};
+};
 
-  //! Extrapolate track parameters to the calorimeter face.
-  /**
+//! Extrapolate track parameters to the calorimeter face.
+/**
  * Propagates the given parameters through the tracking geometry (which contains
  * the passive calo volumes) and terminates as soon as the actual trajectory
  * reaches one of the calorimeter-face surfaces, identified by their geometry
@@ -174,10 +174,10 @@ namespace ACTSTracking {
  * \return Bound track parameters at the calorimeter face together with a status
  *         describing why the extrapolation succeeded or failed.
  */
-  CaloExtrapolationResult extrapolateToCaloFace(const CaloFacePropagator&                    propagator,
-                                                const Acts::BoundTrackParameters&            start,
-                                                const std::vector<Acts::GeometryIdentifier>& caloSurfaceGeoIds,
-                                                const Acts::GeometryContext&                 gctx,
-                                                const Acts::MagneticFieldContext& mctx, std::size_t maxSteps);
+CaloExtrapolationResult extrapolateToCaloFace(const CaloFacePropagator& propagator,
+                                              const Acts::BoundTrackParameters& start,
+                                              const std::vector<Acts::GeometryIdentifier>& caloSurfaceGeoIds,
+                                              const Acts::GeometryContext& gctx, const Acts::MagneticFieldContext& mctx,
+                                              std::size_t maxSteps);
 
-}  // namespace ACTSTracking
+} // namespace ACTSTracking
