@@ -642,7 +642,7 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
     }
   }
   gridCfg.bottomBinFinder = Acts::GridBinFinder<3>{m_phiBottomBinLen.value(), m_zBottomBinLen.value(), 0};
-  gridCfg.topBinFinder    = Acts::GridBinFinder<3>{m_phiTopBinLen.value(), m_zTopBinLen.value(), 0};
+  gridCfg.topBinFinder = Acts::GridBinFinder<3>{m_phiTopBinLen.value(), m_zTopBinLen.value(), 0};
 
   Acts::CylindricalSpacePointGrid grid(gridCfg, Acts::getDefaultLogger("CKFSeedingGrid", Acts::Logging::WARNING));
 
