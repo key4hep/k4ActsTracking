@@ -26,10 +26,10 @@
 #include <Acts/Plugins/Gnn/Stages.hpp>
 #include <Acts/Plugins/Gnn/Tensor.hpp>
 namespace ActsPlugins {
-  using Device           = Acts::Device;
-  using ExecutionContext = Acts::ExecutionContext;
-  using PipelineTensors  = Acts::PipelineTensors;
-}  // namespace ActsPlugins
+using Device = Acts::Device;
+using ExecutionContext = Acts::ExecutionContext;
+using PipelineTensors = Acts::PipelineTensors;
+} // namespace ActsPlugins
 #endif
 
 #include <memory>
@@ -50,10 +50,10 @@ class PaddedEdgeRemoval final : public ActsPlugins::EdgeClassificationBase {
 public:
   explicit PaddedEdgeRemoval(std::unique_ptr<const Acts::Logger> logger);
 
-  ActsPlugins::PipelineTensors operator()(ActsPlugins::PipelineTensors         tensors,
+  ActsPlugins::PipelineTensors operator()(ActsPlugins::PipelineTensors tensors,
                                           const ActsPlugins::ExecutionContext& execContext = {}) override;
 
 private:
-  const auto&                         logger() const { return *m_logger; }
+  const auto& logger() const { return *m_logger; }
   std::unique_ptr<const Acts::Logger> m_logger{nullptr};
 };

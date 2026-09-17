@@ -22,9 +22,9 @@
 #include <DD4hep/BitFieldCoder.h>
 #include <Parsers/Primitives.h>
 
-#include <catch2/matchers/catch_matchers.hpp>
 #include "catch2/catch_test_macros.hpp"
 #include "catch2/matchers/catch_matchers_range_equals.hpp"
+#include <catch2/matchers/catch_matchers.hpp>
 
 #include <limits>
 #include <random>
@@ -34,8 +34,8 @@ using namespace k4ActsTracking;
 
 TEST_CASE("CellIDSelector::accept single selection") {
   const std::string encodingString = "system:8,side:-2,layer:5,module:7,sensor:10";
-  const auto        encoder        = dd4hep::BitFieldCoder(encodingString);
-  const auto        selector       = CellIDSelector{encodingString, {"system:8,layer:3"}};
+  const auto encoder = dd4hep::BitFieldCoder(encodingString);
+  const auto selector = CellIDSelector{encodingString, {"system:8,layer:3"}};
 
   dd4hep::CellID cellID{0};
   encoder.set(cellID, "system", 8);
@@ -60,7 +60,7 @@ TEST_CASE("CellIDSelector::accept single selection") {
 
 TEST_CASE("CellIDSelector::accept multiple selections") {
   const std::string encodingString = "system:8,side:-2,layer:5,module:7,sensor:10";
-  const auto        encoder        = dd4hep::BitFieldCoder(encodingString);
+  const auto encoder = dd4hep::BitFieldCoder(encodingString);
 
   const auto selector = CellIDSelector{encodingString, {"system:5,layer:1|4|5", "system:3,layer:2|6|8", "sensor:42"}};
 
@@ -112,7 +112,7 @@ TEST_CASE("CellIDSelector::getSelectionMasks") {
   const std::string encodingString = "system:8,side:-2,layer:5,module:7,sensor:10";
 
   constexpr dd4hep::CellID systemMask = (0x0001ULL << 8) - 1;
-  constexpr dd4hep::CellID layerMask  = ((0x0001ULL << 5) - 1) << (8 + 2);
+  constexpr dd4hep::CellID layerMask = ((0x0001ULL << 5) - 1) << (8 + 2);
 
   constexpr auto allValues = [](const auto& sel) {
     namespace rv = std::ranges::views;
@@ -224,8 +224,8 @@ TEST_CASE("CellIDSelector failure modes: duplicate field uses last value") {
   // produces one combination {(system,3),(system,5)} and the second set() call
   // overwrites the first, so the effective selector is system==5 only.
   const std::string encodingString = "system:8,side:-2,layer:5,module:7,sensor:10";
-  const auto        encoder        = dd4hep::BitFieldCoder(encodingString);
-  const auto        selector       = CellIDSelector{encodingString, {"system:3,system:5"}};
+  const auto encoder = dd4hep::BitFieldCoder(encodingString);
+  const auto selector = CellIDSelector{encodingString, {"system:3,system:5"}};
 
   dd4hep::CellID cellID{0};
   encoder.set(cellID, "system", 5);

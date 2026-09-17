@@ -106,8 +106,8 @@ struct MaterialValidationAlg final : public Gaudi::Algorithm {
 private:
   SmartIF<IActsGeoSvc> m_actsGeoSvc;
 
-  std::unique_ptr<const Acts::Logger>               m_actsLogger{nullptr};
-  std::unique_ptr<TChain>                           m_chain{nullptr};
+  std::unique_ptr<const Acts::Logger> m_actsLogger{nullptr};
+  std::unique_ptr<TChain> m_chain{nullptr};
   std::unique_ptr<ActsPlugins::RootMaterialTrackIo> m_reader{nullptr};
 
   using Assigner = ACTSTracking::GeantinoMaterialAssigner<ACTSTracking::GeantinoPropagator>;
@@ -117,13 +117,13 @@ private:
   std::shared_ptr<const Assigner::Stats> m_assignerStats{nullptr};
 
   // Mutated from the const execute(); this is a one-shot job.
-  mutable std::unique_ptr<TFile>                            m_outFile{nullptr};
-  mutable TTree*                                            m_outTree{nullptr};
+  mutable std::unique_ptr<TFile> m_outFile{nullptr};
+  mutable TTree* m_outTree{nullptr};
   mutable std::unique_ptr<ActsPlugins::RootMaterialTrackIo> m_writer{nullptr};
-  mutable std::size_t                                       m_nProcessed{0};
-  mutable bool                                              m_done{false};
+  mutable std::size_t m_nProcessed{0};
+  mutable bool m_done{false};
 
-  Acts::GeometryContext      m_gctx = Acts::GeometryContext::dangerouslyDefaultConstruct();
+  Acts::GeometryContext m_gctx = Acts::GeometryContext::dangerouslyDefaultConstruct();
   Acts::MagneticFieldContext m_mctx{};
 };
 
@@ -153,7 +153,7 @@ StatusCode MaterialValidationAlg::initialize() {
     auto assigner =
         std::make_shared<const Assigner>(ACTSTracking::makeGeantinoPropagator(*m_actsGeoSvc, m_resolvePassive.value()),
                                          m_maxPropagationSteps.value(), m_actsLogger->cloneWithSuffix("|Assigner"));
-    m_assignerStats      = assigner->stats();
+    m_assignerStats = assigner->stats();
     cfg.materialAssigner = std::move(assigner);
   } else if (m_assigner.value() == "intersection") {
     const auto surfaces = MaterialSurfaces::collectMaterialSurfaces(*m_actsGeoSvc->trackingGeometry());
@@ -189,7 +189,7 @@ StatusCode MaterialValidationAlg::initialize() {
 
   ActsPlugins::RootMaterialTrackIo::Config ioCfg;
   ioCfg.prePostStepInfo = true;
-  m_reader              = std::make_unique<ActsPlugins::RootMaterialTrackIo>(ioCfg);
+  m_reader = std::make_unique<ActsPlugins::RootMaterialTrackIo>(ioCfg);
   m_reader->connectForRead(*m_chain);
 
   info() << fmt::format("Re-propagating {} scan directions through the tracking geometry.", m_chain->GetEntries())
@@ -213,7 +213,7 @@ StatusCode MaterialValidationAlg::execute(const EventContext&) const {
 
   ActsPlugins::RootMaterialTrackIo::Config ioCfg;
   ioCfg.prePostStepInfo = true;
-  m_writer              = std::make_unique<ActsPlugins::RootMaterialTrackIo>(ioCfg);
+  m_writer = std::make_unique<ActsPlugins::RootMaterialTrackIo>(ioCfg);
   m_writer->connectForWrite(*m_outTree);
 
   const std::int64_t nEntries = m_chain->GetEntries();
@@ -227,8 +227,8 @@ StatusCode MaterialValidationAlg::execute(const EventContext&) const {
     }
     const auto scanTrack = m_reader->read();
 
-    const Acts::Vector3& position  = scanTrack.first.first;
-    const Acts::Vector3  direction = scanTrack.first.second.normalized();
+    const Acts::Vector3& position = scanTrack.first.first;
+    const Acts::Vector3 direction = scanTrack.first.second.normalized();
 
     // Same entry index as the scan, so the two files line up track by track.
     const std::size_t failedBefore = m_assignerStats != nullptr ? m_assignerStats->nFailed : 0;

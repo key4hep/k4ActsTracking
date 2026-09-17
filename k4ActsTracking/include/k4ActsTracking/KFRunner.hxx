@@ -53,129 +53,126 @@
 
 namespace ACTSTracking {
 
-  /// ACTS Kalman fitter type built on the shared propagator.
-  using KalmanFitter = Acts::KalmanFitter<CKFPropagator, Acts::VectorMultiTrajectory>;
+/// ACTS Kalman fitter type built on the shared propagator.
+using KalmanFitter = Acts::KalmanFitter<CKFPropagator, Acts::VectorMultiTrajectory>;
 
-  /// Surface accessor that resolves a SourceLink's surface via the tracking geometry.
-  struct GeometrySurfaceAccessor {
-    const Acts::TrackingGeometry* trackingGeometry = nullptr;
-    const Acts::Surface*          operator()(const Acts::SourceLink& sourceLink) const {
-      return trackingGeometry->findSurface(sourceLink.get<ACTSTracking::SourceLink>().geometryId());
-    }
+/// Surface accessor that resolves a SourceLink's surface via the tracking geometry.
+struct GeometrySurfaceAccessor {
+  const Acts::TrackingGeometry* trackingGeometry = nullptr;
+  const Acts::Surface* operator()(const Acts::SourceLink& sourceLink) const {
+    return trackingGeometry->findSurface(sourceLink.get<ACTSTracking::SourceLink>().geometryId());
+  }
+};
+
+/**
+ * @brief Owns the ACTS Kalman fitter and fits pre-grouped hit candidates.
+ *
+ * Whereas CKFRunner performs combinatorial track finding from seeds, KFRunner
+ * fits a track candidate whose measurements are already known (e.g. hit groups
+ * produced by an upstream pattern-recognition stage). For each candidate it
+ * runs the ACTS KalmanFitter over the candidate's source links and converts
+ * the smoothed result into an edm4hep::Track (via ACTS2edm4hep_track).
+ * Optionally the fitted track is then extrapolated to the calorimeter face to
+ * gain its AtCalorimeter track state(s), through the same CaloStateAppender
+ * the CKF uses, so a track carries the same calo states however it was found.
+ *
+ * Non-copyable and non-movable: the fitter extensions hold stable pointers to
+ * the member calibrator/updater/smoother/surface-accessor. A single instance
+ * may be shared by concurrent fit() calls (each uses its own track containers).
+ */
+class KFRunner {
+public:
+  struct Config {
+    bool propagateBackward = false;
+    std::size_t maxSteps = kDefaultMaxPropagationSteps;
+
+    /// Extrapolate fitted tracks to the calorimeter face and add an
+    /// AtCalorimeter track state.
+    bool extrapolateToCalo = false;
+    /// Whether a track that crosses both calorimeter sections gets an
+    /// AtCalorimeter state for each of them. False (the default) keeps one
+    /// state per track, at the first calo face the track reaches. See
+    /// CaloStateAppender::addEndcapStateAfterBarrel.
+    bool addEndcapCaloState = false;
   };
 
-  /**
-   * @brief Owns the ACTS Kalman fitter and fits pre-grouped hit candidates.
-   *
-   * Whereas CKFRunner performs combinatorial track finding from seeds, KFRunner
-   * fits a track candidate whose measurements are already known (e.g. hit groups
-   * produced by an upstream pattern-recognition stage). For each candidate it
-   * runs the ACTS KalmanFitter over the candidate's source links and converts
-   * the smoothed result into an edm4hep::Track (via ACTS2edm4hep_track).
-   * Optionally the fitted track is then extrapolated to the calorimeter face to
-   * gain its AtCalorimeter track state(s), through the same CaloStateAppender
-   * the CKF uses, so a track carries the same calo states however it was found.
-   *
-   * Non-copyable and non-movable: the fitter extensions hold stable pointers to
-   * the member calibrator/updater/smoother/surface-accessor. A single instance
-   * may be shared by concurrent fit() calls (each uses its own track containers).
-   */
-  class KFRunner {
-  public:
-    struct Config {
-      bool        propagateBackward = false;
-      std::size_t maxSteps          = kDefaultMaxPropagationSteps;
+  /// @param measurements Event-local measurement container; must outlive the runner.
+  /// @param hits Event-local hit container parallel to @p measurements; must outlive the runner.
+  KFRunner(const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx, const Acts::MagneticFieldContext& magCtx,
+           const Acts::CalibrationContext& calCtx, const ACTSTracking::MeasurementContainer& measurements,
+           const ACTSTracking::HitContainer& hits, const Config& cfg)
+      : m_geo(geo), m_geoCtx(geoCtx), m_trackingGeometry(geo.trackingGeometry()),
+        m_perigee(Acts::Surface::makeShared<Acts::PerigeeSurface>(Acts::Vector3::Zero())), m_measCal(measurements),
+        m_hits(hits),
+        m_caloAppender(
+            geo, geoCtx, magCtx,
+            {.enabled = cfg.extrapolateToCalo, .addEndcapState = cfg.addEndcapCaloState, .maxSteps = cfg.maxSteps}) {
+    m_fitter = std::make_unique<KalmanFitter>(makePropagator(geo, false));
 
-      /// Extrapolate fitted tracks to the calorimeter face and add an
-      /// AtCalorimeter track state.
-      bool extrapolateToCalo = false;
-      /// Whether a track that crosses both calorimeter sections gets an
-      /// AtCalorimeter state for each of them. False (the default) keeps one
-      /// state per track, at the first calo face the track reaches. See
-      /// CaloStateAppender::addEndcapStateAfterBarrel.
-      bool addEndcapCaloState = false;
-    };
+    m_surfaceAccessor.trackingGeometry = m_trackingGeometry.get();
+    m_extensions.surfaceAccessor.connect<&GeometrySurfaceAccessor::operator()>(&m_surfaceAccessor);
+    m_extensions.calibrator.template connect<&ACTSTracking::MeasurementCalibrator::calibrate>(&m_measCal);
+    m_extensions.updater.connect<&Acts::GainMatrixUpdater::operator()<Acts::VectorMultiTrajectory>>(&m_kfUpdater);
+    m_extensions.smoother.connect<&Acts::GainMatrixSmoother::operator()<Acts::VectorMultiTrajectory>>(&m_kfSmoother);
 
-    /// @param measurements Event-local measurement container; must outlive the runner.
-    /// @param hits Event-local hit container parallel to @p measurements; must outlive the runner.
-    KFRunner(const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx, const Acts::MagneticFieldContext& magCtx,
-             const Acts::CalibrationContext& calCtx, const ACTSTracking::MeasurementContainer& measurements,
-             const ACTSTracking::HitContainer& hits, const Config& cfg)
-        : m_geo(geo),
-          m_geoCtx(geoCtx),
-          m_trackingGeometry(geo.trackingGeometry()),
-          m_perigee(Acts::Surface::makeShared<Acts::PerigeeSurface>(Acts::Vector3::Zero())),
-          m_measCal(measurements),
-          m_hits(hits),
-          m_caloAppender(
-              geo, geoCtx, magCtx,
-              {.enabled = cfg.extrapolateToCalo, .addEndcapState = cfg.addEndcapCaloState, .maxSteps = cfg.maxSteps}) {
-      m_fitter = std::make_unique<KalmanFitter>(makePropagator(geo, false));
-
-      m_surfaceAccessor.trackingGeometry = m_trackingGeometry.get();
-      m_extensions.surfaceAccessor.connect<&GeometrySurfaceAccessor::operator()>(&m_surfaceAccessor);
-      m_extensions.calibrator.template connect<&ACTSTracking::MeasurementCalibrator::calibrate>(&m_measCal);
-      m_extensions.updater.connect<&Acts::GainMatrixUpdater::operator()<Acts::VectorMultiTrajectory>>(&m_kfUpdater);
-      m_extensions.smoother.connect<&Acts::GainMatrixSmoother::operator()<Acts::VectorMultiTrajectory>>(&m_kfSmoother);
-
-      Acts::PropagatorPlainOptions pOptions{geoCtx, magCtx};
-      pOptions.maxSteps = cfg.maxSteps;
-      if (cfg.propagateBackward) {
-        pOptions.direction = Acts::Direction::Backward();
-      }
-
-      m_kfOptions = std::make_unique<Acts::KalmanFitterOptions<Acts::VectorMultiTrajectory>>(
-          geoCtx, magCtx, std::cref(calCtx), m_extensions, pOptions, m_perigee.get());
+    Acts::PropagatorPlainOptions pOptions{geoCtx, magCtx};
+    pOptions.maxSteps = cfg.maxSteps;
+    if (cfg.propagateBackward) {
+      pOptions.direction = Acts::Direction::Backward();
     }
 
-    KFRunner(const KFRunner&)            = delete;
-    KFRunner(KFRunner&&)                 = delete;
-    KFRunner& operator=(const KFRunner&) = delete;
-    KFRunner& operator=(KFRunner&&)      = delete;
+    m_kfOptions = std::make_unique<Acts::KalmanFitterOptions<Acts::VectorMultiTrajectory>>(
+        geoCtx, magCtx, std::cref(calCtx), m_extensions, pOptions, m_perigee.get());
+  }
 
-    /// Fit a single candidate from its (uncalibrated) source links and initial parameters.
-    /// @param caloMonitor Optional counters for the calorimeter-face extrapolation.
-    /// @return The fitted edm4hep track, or std::nullopt if the fit failed.
-    template <class Alg>
-    std::optional<edm4hep::MutableTrack> fit(const Alg& alg, const std::vector<Acts::SourceLink>& sourceLinks,
-                                             const Acts::BoundTrackParameters&   initialParameters,
-                                             Acts::MagneticFieldProvider::Cache& magCache,
-                                             const CaloExtrapMonitor*            caloMonitor = nullptr) const {
-      auto              trackContainer      = std::make_shared<Acts::VectorTrackContainer>();
-      auto              trackStateContainer = std::make_shared<Acts::VectorMultiTrajectory>();
-      CKFTrackContainer tracks(trackContainer, trackStateContainer);
+  KFRunner(const KFRunner&) = delete;
+  KFRunner(KFRunner&&) = delete;
+  KFRunner& operator=(const KFRunner&) = delete;
+  KFRunner& operator=(KFRunner&&) = delete;
 
-      auto result = m_fitter->fit(sourceLinks.begin(), sourceLinks.end(), initialParameters, *m_kfOptions, tracks);
-      if (!result.ok()) {
-        alg.warning() << "Kalman fit error: " << result.error() << endmsg;
-        return std::nullopt;
-      }
+  /// Fit a single candidate from its (uncalibrated) source links and initial parameters.
+  /// @param caloMonitor Optional counters for the calorimeter-face extrapolation.
+  /// @return The fitted edm4hep track, or std::nullopt if the fit failed.
+  template <class Alg>
+  std::optional<edm4hep::MutableTrack> fit(const Alg& alg, const std::vector<Acts::SourceLink>& sourceLinks,
+                                           const Acts::BoundTrackParameters& initialParameters,
+                                           Acts::MagneticFieldProvider::Cache& magCache,
+                                           const CaloExtrapMonitor* caloMonitor = nullptr) const {
+    auto trackContainer = std::make_shared<Acts::VectorTrackContainer>();
+    auto trackStateContainer = std::make_shared<Acts::VectorMultiTrajectory>();
+    CKFTrackContainer tracks(trackContainer, trackStateContainer);
 
-      // The fit already targets the perigee (m_kfOptions' reference surface), so
-      // the AtIP state is well defined; the calo states are appended on top.
-      auto track = ACTSTracking::ACTS2edm4hep_track(m_geoCtx, result.value(), m_hits, m_geo.magneticField(), magCache);
-      m_caloAppender.addCaloState(alg, result.value(), track, magCache, caloMonitor);
-      return track;
+    auto result = m_fitter->fit(sourceLinks.begin(), sourceLinks.end(), initialParameters, *m_kfOptions, tracks);
+    if (!result.ok()) {
+      alg.warning() << "Kalman fit error: " << result.error() << endmsg;
+      return std::nullopt;
     }
 
-  private:
-    const IActsGeoSvc&                            m_geo;
-    Acts::GeometryContext                         m_geoCtx;
-    std::shared_ptr<const Acts::TrackingGeometry> m_trackingGeometry;
-    std::shared_ptr<Acts::PerigeeSurface>         m_perigee;
+    // The fit already targets the perigee (m_kfOptions' reference surface), so
+    // the AtIP state is well defined; the calo states are appended on top.
+    auto track = ACTSTracking::ACTS2edm4hep_track(m_geoCtx, result.value(), m_hits, m_geo.magneticField(), magCache);
+    m_caloAppender.addCaloState(alg, result.value(), track, magCache, caloMonitor);
+    return track;
+  }
 
-    Acts::GainMatrixUpdater             m_kfUpdater;
-    Acts::GainMatrixSmoother            m_kfSmoother;
-    ACTSTracking::MeasurementCalibrator m_measCal;
-    const ACTSTracking::HitContainer&   m_hits;
-    GeometrySurfaceAccessor             m_surfaceAccessor;
+private:
+  const IActsGeoSvc& m_geo;
+  Acts::GeometryContext m_geoCtx;
+  std::shared_ptr<const Acts::TrackingGeometry> m_trackingGeometry;
+  std::shared_ptr<Acts::PerigeeSurface> m_perigee;
 
-    Acts::KalmanFitterExtensions<Acts::VectorMultiTrajectory> m_extensions;
+  Acts::GainMatrixUpdater m_kfUpdater;
+  Acts::GainMatrixSmoother m_kfSmoother;
+  ACTSTracking::MeasurementCalibrator m_measCal;
+  const ACTSTracking::HitContainer& m_hits;
+  GeometrySurfaceAccessor m_surfaceAccessor;
 
-    std::unique_ptr<KalmanFitter>                                           m_fitter;
-    std::unique_ptr<Acts::KalmanFitterOptions<Acts::VectorMultiTrajectory>> m_kfOptions;
+  Acts::KalmanFitterExtensions<Acts::VectorMultiTrajectory> m_extensions;
 
-    CaloStateAppender m_caloAppender;
-  };
+  std::unique_ptr<KalmanFitter> m_fitter;
+  std::unique_ptr<Acts::KalmanFitterOptions<Acts::VectorMultiTrajectory>> m_kfOptions;
 
-}  // namespace ACTSTracking
+  CaloStateAppender m_caloAppender;
+};
+
+} // namespace ACTSTracking

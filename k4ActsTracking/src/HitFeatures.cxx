@@ -29,139 +29,139 @@
 
 namespace ACTSTracking {
 
-  namespace {
-    /// Lower-case an (ASCII) configuration string, so that feature names can be
-    /// given in any case.
-    std::string toLower(std::string str) {
-      std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) { return std::tolower(c); });
-      return str;
-    }
-
-    /// The CellID field a CellID based feature name reads, or nullptr if the
-    /// name is not a CellID based feature.
-    const char* cellIdFieldName(const std::string& lowerCaseFeature) {
-      if (lowerCaseFeature == "module_id") {
-        return "module";
-      }
-      if (lowerCaseFeature == "layer_id") {
-        return "layer";
-      }
-      if (lowerCaseFeature == "system_id" || lowerCaseFeature == "volume_id") {
-        return "system";
-      }
-      return nullptr;
-    }
-  }  // namespace
-
-  std::string supportedHitFeatureNames() {
-    return "x, y, z, r, phi, theta, eta, t (or time), E (or energy), module_id, layer_id, system_id (or volume_id)";
+namespace {
+  /// Lower-case an (ASCII) configuration string, so that feature names can be
+  /// given in any case.
+  std::string toLower(std::string str) {
+    std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) { return std::tolower(c); });
+    return str;
   }
 
-  bool hitFeatureNeedsCellID(const std::string& feature) { return cellIdFieldName(toLower(feature)) != nullptr; }
+  /// The CellID field a CellID based feature name reads, or nullptr if the
+  /// name is not a CellID based feature.
+  const char* cellIdFieldName(const std::string& lowerCaseFeature) {
+    if (lowerCaseFeature == "module_id") {
+      return "module";
+    }
+    if (lowerCaseFeature == "layer_id") {
+      return "layer";
+    }
+    if (lowerCaseFeature == "system_id" || lowerCaseFeature == "volume_id") {
+      return "system";
+    }
+    return nullptr;
+  }
+} // namespace
 
-  ResolvedFeature resolveHitFeature(const std::string& feature, const dd4hep::DDSegmentation::BitFieldCoder* decoder) {
-    const auto key = toLower(feature);
+std::string supportedHitFeatureNames() {
+  return "x, y, z, r, phi, theta, eta, t (or time), E (or energy), module_id, layer_id, system_id (or volume_id)";
+}
 
-    if (const char* field = cellIdFieldName(key); field != nullptr) {
-      if (decoder == nullptr) {
-        throw std::runtime_error(fmt::format(
-            "Cannot use hit feature '{}': no CellID encoding is available to decode the '{}' field", feature, field));
-      }
-      // Look up the index of a CellID field once, so that decoding a hit is a
-      // plain array access instead of a string based lookup.
-      try {
-        return ResolvedFeature{HitFeature::CellIdField, decoder->index(field)};
-      } catch (const std::exception& ex) {
-        throw std::runtime_error(fmt::format("Cannot use hit feature '{}': the CellID encoding has no '{}' field ({})",
-                                             feature, field, ex.what()));
-      }
-    }
+bool hitFeatureNeedsCellID(const std::string& feature) { return cellIdFieldName(toLower(feature)) != nullptr; }
 
-    if (key == "x") {
-      return {HitFeature::X};
-    }
-    if (key == "y") {
-      return {HitFeature::Y};
-    }
-    if (key == "z") {
-      return {HitFeature::Z};
-    }
-    if (key == "r") {
-      return {HitFeature::R};
-    }
-    if (key == "phi") {
-      return {HitFeature::Phi};
-    }
-    if (key == "theta") {
-      return {HitFeature::Theta};
-    }
-    if (key == "eta") {
-      return {HitFeature::Eta};
-    }
-    if (key == "t" || key == "time") {
-      return {HitFeature::Time};
-    }
-    if (key == "e" || key == "energy") {
-      return {HitFeature::Energy};
-    }
+ResolvedFeature resolveHitFeature(const std::string& feature, const dd4hep::DDSegmentation::BitFieldCoder* decoder) {
+  const auto key = toLower(feature);
 
-    throw std::runtime_error(
-        fmt::format("Unknown hit feature '{}' (supported are: {})", feature, supportedHitFeatureNames()));
+  if (const char* field = cellIdFieldName(key); field != nullptr) {
+    if (decoder == nullptr) {
+      throw std::runtime_error(fmt::format(
+          "Cannot use hit feature '{}': no CellID encoding is available to decode the '{}' field", feature, field));
+    }
+    // Look up the index of a CellID field once, so that decoding a hit is a
+    // plain array access instead of a string based lookup.
+    try {
+      return ResolvedFeature{HitFeature::CellIdField, decoder->index(field)};
+    } catch (const std::exception& ex) {
+      throw std::runtime_error(fmt::format("Cannot use hit feature '{}': the CellID encoding has no '{}' field ({})",
+                                           feature, field, ex.what()));
+    }
   }
 
-  std::vector<ResolvedFeature> resolveHitFeatures(const std::vector<std::string>&              features,
-                                                  const dd4hep::DDSegmentation::BitFieldCoder* decoder) {
-    std::vector<ResolvedFeature> resolved{};
-    resolved.reserve(features.size());
-    for (const auto& f : features) {
-      resolved.push_back(resolveHitFeature(f, decoder));
-    }
-    return resolved;
+  if (key == "x") {
+    return {HitFeature::X};
+  }
+  if (key == "y") {
+    return {HitFeature::Y};
+  }
+  if (key == "z") {
+    return {HitFeature::Z};
+  }
+  if (key == "r") {
+    return {HitFeature::R};
+  }
+  if (key == "phi") {
+    return {HitFeature::Phi};
+  }
+  if (key == "theta") {
+    return {HitFeature::Theta};
+  }
+  if (key == "eta") {
+    return {HitFeature::Eta};
+  }
+  if (key == "t" || key == "time") {
+    return {HitFeature::Time};
+  }
+  if (key == "e" || key == "energy") {
+    return {HitFeature::Energy};
   }
 
-  float hitFeatureValue(const edm4hep::TrackerHitPlane& hit, const ResolvedFeature& feature,
-                        const dd4hep::DDSegmentation::BitFieldCoder* decoder) {
-    const auto position = ROOT::Math::XYZPointF(hit.getPosition().x, hit.getPosition().y, hit.getPosition().z);
+  throw std::runtime_error(
+      fmt::format("Unknown hit feature '{}' (supported are: {})", feature, supportedHitFeatureNames()));
+}
 
-    switch (feature.kind) {
-      case HitFeature::X:
-        return position.x();
-      case HitFeature::Y:
-        return position.y();
-      case HitFeature::Z:
-        return position.z();
-      case HitFeature::R:
-        return position.rho();
-      case HitFeature::Phi:
-        return position.phi();
-      case HitFeature::Theta:
-        return position.theta();
-      case HitFeature::Eta:
-        return position.eta();
-      case HitFeature::Time:
-        return hit.getTime();
-      case HitFeature::Energy:
-        return hit.getEDep();
-      case HitFeature::CellIdField:
-        // resolveHitFeature() only produces this with a decoder in hand
-        assert(decoder != nullptr);
-        return static_cast<float>(decoder->get(hit.getCellID(), feature.cellIdField));
-    }
-    return 0.f;
+std::vector<ResolvedFeature> resolveHitFeatures(const std::vector<std::string>& features,
+                                                const dd4hep::DDSegmentation::BitFieldCoder* decoder) {
+  std::vector<ResolvedFeature> resolved{};
+  resolved.reserve(features.size());
+  for (const auto& f : features) {
+    resolved.push_back(resolveHitFeature(f, decoder));
   }
+  return resolved;
+}
 
-  std::vector<float> extractHitInformation(const edm4hep::TrackerHitPlaneCollection&    hits,
-                                           const std::vector<ResolvedFeature>&          features,
-                                           const dd4hep::DDSegmentation::BitFieldCoder* decoder) {
-    std::vector<float> hitInfo{};
-    hitInfo.reserve(hits.size() * features.size());
+float hitFeatureValue(const edm4hep::TrackerHitPlane& hit, const ResolvedFeature& feature,
+                      const dd4hep::DDSegmentation::BitFieldCoder* decoder) {
+  const auto position = ROOT::Math::XYZPointF(hit.getPosition().x, hit.getPosition().y, hit.getPosition().z);
 
-    for (const auto hit : hits) {
-      for (const auto& feature : features) {
-        hitInfo.push_back(hitFeatureValue(hit, feature, decoder));
-      }
-    }
-    return hitInfo;
+  switch (feature.kind) {
+  case HitFeature::X:
+    return position.x();
+  case HitFeature::Y:
+    return position.y();
+  case HitFeature::Z:
+    return position.z();
+  case HitFeature::R:
+    return position.rho();
+  case HitFeature::Phi:
+    return position.phi();
+  case HitFeature::Theta:
+    return position.theta();
+  case HitFeature::Eta:
+    return position.eta();
+  case HitFeature::Time:
+    return hit.getTime();
+  case HitFeature::Energy:
+    return hit.getEDep();
+  case HitFeature::CellIdField:
+    // resolveHitFeature() only produces this with a decoder in hand
+    assert(decoder != nullptr);
+    return static_cast<float>(decoder->get(hit.getCellID(), feature.cellIdField));
   }
+  return 0.f;
+}
 
-}  // namespace ACTSTracking
+std::vector<float> extractHitInformation(const edm4hep::TrackerHitPlaneCollection& hits,
+                                         const std::vector<ResolvedFeature>& features,
+                                         const dd4hep::DDSegmentation::BitFieldCoder* decoder) {
+  std::vector<float> hitInfo{};
+  hitInfo.reserve(hits.size() * features.size());
+
+  for (const auto hit : hits) {
+    for (const auto& feature : features) {
+      hitInfo.push_back(hitFeatureValue(hit, feature, decoder));
+    }
+  }
+  return hitInfo;
+}
+
+} // namespace ACTSTracking

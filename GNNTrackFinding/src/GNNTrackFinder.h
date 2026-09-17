@@ -20,8 +20,8 @@
 
 #include <k4FWCore/Transformer.h>
 
-#include <k4ActsTracking/IActsGeoSvc.h>
 #include <k4ActsTracking/HitFeatures.hxx>
+#include <k4ActsTracking/IActsGeoSvc.h>
 #include <k4ActsTracking/RunnerCommon.hxx>
 
 #include <Acts/Definitions/Units.hpp>
@@ -33,9 +33,9 @@
 #else
 #include <Acts/Plugins/Gnn/GnnPipeline.hpp>
 namespace ActsPlugins {
-  using GnnPipeline = Acts::GnnPipeline;
-  using Device      = Acts::Device;
-}  // namespace ActsPlugins
+using GnnPipeline = Acts::GnnPipeline;
+using Device = Acts::Device;
+} // namespace ActsPlugins
 #endif
 
 #include <Gaudi/Accumulators/RootHistogram.h>
@@ -62,20 +62,20 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
 
   StatusCode finalize() override;
 
-  edm4hep::TrackCollection     operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*> const&) const override;
+  edm4hep::TrackCollection operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*> const&) const override;
   Gaudi::Property<std::size_t> m_thetaBins{this, "ThetaBins", 1, "Number of theta bins for segmentation."};
   Gaudi::Property<std::size_t> m_phiBins{this, "PhiBins", 1, "Number of phi bins for segmentation."};
-  Gaudi::Property<double>      m_thetaOverlap{this, "ThetaOverlap", 0.0,
+  Gaudi::Property<double> m_thetaOverlap{this, "ThetaOverlap", 0.0,
                                          "Fractional theta overlap for segmentation (fraction of bin width)."};
-  Gaudi::Property<double>      m_phiOverlap{this, "PhiOverlap", 0.0,
+  Gaudi::Property<double> m_phiOverlap{this, "PhiOverlap", 0.0,
                                        "Fractional phi overlap for segmentation (fraction of bin width)."};
 
   Gaudi::Property<std::string> m_nodeEmbeddingModelPath{
       this, "NodeEmbeddingModelPath", "",
       "Path to the ONNX model file for the node embedding / graph construction metric model"};
-  Gaudi::Property<float>       m_edgeBuildingRadius{this, "EdgeBuildingRadius", 0.1f,
+  Gaudi::Property<float> m_edgeBuildingRadius{this, "EdgeBuildingRadius", 0.1f,
                                               "The radius parameter for the KD-Tree that is used in edge building"};
-  Gaudi::Property<float>       m_edgeBuildingKnn{this, "EdgeBuildingKnn", 100.f,
+  Gaudi::Property<float> m_edgeBuildingKnn{this, "EdgeBuildingKnn", 100.f,
                                            "The KNN parameter for the KD-Tree that is used in edge building"};
   Gaudi::Property<std::string> m_inputFeaturesEmbedding{
       this, "InputFeaturesEmbedding", "r,phi,z,t",
@@ -187,17 +187,17 @@ private:
   void buildPipeline(const std::vector<float>& embeddingScales, const std::vector<float>& edgeFeatureScales,
                      const std::vector<std::vector<float>>& edgeClassifierScales);
 
-  std::vector<std::string>                   m_allHitFeatures{};
+  std::vector<std::string> m_allHitFeatures{};
   std::vector<ACTSTracking::ResolvedFeature> m_resolvedHitFeatures{};
-  std::vector<std::pair<double, double>>     m_thetaBinEdges{};
-  std::vector<std::pair<double, double>>     m_phiBinEdges{};
-  std::vector<int>                           m_embeddingFeatureIndices{};
-  std::vector<int>                           m_edgeFeatureIndices{};
-  int                                        m_radiusFeatureIndex{-1};
-  std::vector<std::vector<int>>              m_edgeClassifierFeatureIndices{};
-  std::unique_ptr<ActsPlugins::GnnPipeline>  m_pipeline{nullptr};
-  std::unique_ptr<const Acts::Logger>        m_logger{nullptr};
-  ActsPlugins::Device                        m_runDevice{ActsPlugins::Device::Type::eCPU, 0};
+  std::vector<std::pair<double, double>> m_thetaBinEdges{};
+  std::vector<std::pair<double, double>> m_phiBinEdges{};
+  std::vector<int> m_embeddingFeatureIndices{};
+  std::vector<int> m_edgeFeatureIndices{};
+  int m_radiusFeatureIndex{-1};
+  std::vector<std::vector<int>> m_edgeClassifierFeatureIndices{};
+  std::unique_ptr<ActsPlugins::GnnPipeline> m_pipeline{nullptr};
+  std::unique_ptr<const Acts::Logger> m_logger{nullptr};
+  ActsPlugins::Device m_runDevice{ActsPlugins::Device::Type::eCPU, 0};
 
   /// CellID decoder, built once from the geometry service's encoding string
   /// (parsing it is too expensive to redo for every event / segment).

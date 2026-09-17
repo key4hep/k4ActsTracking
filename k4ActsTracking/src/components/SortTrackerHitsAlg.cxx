@@ -16,8 +16,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <k4ActsTracking/IActsGeoSvc.h>
 #include <k4ActsTracking/HitFeatures.hxx>
+#include <k4ActsTracking/IActsGeoSvc.h>
 
 #include <k4FWCore/GaudiChecks.h>
 #include <k4FWCore/Transformer.h>

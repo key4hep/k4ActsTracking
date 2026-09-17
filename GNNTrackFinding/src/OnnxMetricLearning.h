@@ -28,10 +28,10 @@
 #include <Acts/Plugins/Gnn/Stages.hpp>
 #include <Acts/Plugins/Gnn/Tensor.hpp>
 namespace ActsPlugins {
-  using Device           = Acts::Device;
-  using ExecutionContext = Acts::ExecutionContext;
-  using PipelineTensors  = Acts::PipelineTensors;
-}  // namespace ActsPlugins
+using Device = Acts::Device;
+using ExecutionContext = Acts::ExecutionContext;
+using PipelineTensors = Acts::PipelineTensors;
+} // namespace ActsPlugins
 #endif
 
 #include <torch/torch.h>
@@ -55,9 +55,9 @@ public:
   static constexpr std::size_t kNumEdgeFeatures = 6;
 
   struct Config {
-    std::string        modelPath{};
-    std::vector<int>   selectedFeatures{};  // If empty, use all features
-    std::vector<float> featureScales{};     // Must be same size as selectedFeatures
+    std::string modelPath{};
+    std::vector<int> selectedFeatures{}; // If empty, use all features
+    std::vector<float> featureScales{};  // Must be same size as selectedFeatures
     /// Indices of the r, phi, z and eta node features (in that order) in the
     /// full per-hit feature vector, from which the six edge features (dr, dphi,
     /// dz, deta, phislope, rphislope) are computed for every built edge. Edge
@@ -85,10 +85,10 @@ public:
     /// The padding edges are self loops on the last (padding) node, so they
     /// touch no real node, and PaddedEdgeRemoval drops them again after the
     /// classification. Needs keepPadding. 0 disables it.
-    int   fixedEdgeLength{0};
-    float rVal{1.6};                 // Same as TorchMetricLearning
-    float knnVal{500.};              // Same as TorchMetricLearning
-    bool  shuffleDirections{false};  // Same as TorchMetricLearning
+    int fixedEdgeLength{0};
+    float rVal{1.6};               // Same as TorchMetricLearning
+    float knnVal{500.};            // Same as TorchMetricLearning
+    bool shuffleDirections{false}; // Same as TorchMetricLearning
 
     // Device the embedding model and edge building run on. Defaults to CPU;
     // CUDA requires a CUDA-enabled onnxruntime/torch build.
@@ -99,7 +99,7 @@ public:
   ~OnnxMetricLearning() = default;
 
   ActsPlugins::PipelineTensors operator()(std::vector<float>& inputValues, std::size_t numNodes,
-                                          const std::vector<uint64_t>&         moduleIds,
+                                          const std::vector<uint64_t>& moduleIds,
                                           const ActsPlugins::ExecutionContext& execContext = {}) override;
 
   const Config& config() const { return m_config; }
@@ -139,6 +139,6 @@ private:
   int64_t m_inputLength{-1};
 
   // Common Acts infrastructure setup
-  const auto&                         logger() const { return *m_logger; }
+  const auto& logger() const { return *m_logger; }
   std::unique_ptr<const Acts::Logger> m_logger{nullptr};
 };

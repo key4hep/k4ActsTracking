@@ -33,13 +33,13 @@
 #include <Acts/Plugins/Gnn/OnnxEdgeClassifier.hpp>
 #include <Acts/Plugins/Gnn/Stages.hpp>
 namespace ActsPlugins {
-  using BoostTrackBuilding     = Acts::BoostTrackBuilding;
-  using Device                 = Acts::Device;
-  using EdgeClassificationBase = Acts::EdgeClassificationBase;
-  using GnnPipeline            = Acts::GnnPipeline;
-  using OnnxEdgeClassifier     = Acts::OnnxEdgeClassifier;
-  using TrackBuildingBase      = Acts::TrackBuildingBase;
-}  // namespace ActsPlugins
+using BoostTrackBuilding = Acts::BoostTrackBuilding;
+using Device = Acts::Device;
+using EdgeClassificationBase = Acts::EdgeClassificationBase;
+using GnnPipeline = Acts::GnnPipeline;
+using OnnxEdgeClassifier = Acts::OnnxEdgeClassifier;
+using TrackBuildingBase = Acts::TrackBuildingBase;
+} // namespace ActsPlugins
 #endif
 
 #include <k4ActsTracking/ActsGaudiLogger.h>
@@ -78,134 +78,134 @@ namespace ActsPlugins {
 #include <vector>
 
 namespace {
-  /// The hit features the six edge features (dr, dphi, dz, deta, phislope,
-  /// rphislope) are computed from. Their meaning is fixed by the formulas, so
-  /// unlike the per-model input features these are not configurable - only
-  /// their scales are, see GNNTrackFinder::m_edgeFeatureScales.
-  const std::array<std::string, OnnxMetricLearning::kNumEdgeFeatureInputs> kEdgeFeatureInputs{"r", "phi", "z", "eta"};
+/// The hit features the six edge features (dr, dphi, dz, deta, phislope,
+/// rphislope) are computed from. Their meaning is fixed by the formulas, so
+/// unlike the per-model input features these are not configurable - only
+/// their scales are, see GNNTrackFinder::m_edgeFeatureScales.
+const std::array<std::string, OnnxMetricLearning::kNumEdgeFeatureInputs> kEdgeFeatureInputs{"r", "phi", "z", "eta"};
 
-  /// Track building by connected components alone, i.e. Acts' BoostTrackBuilding
-  constexpr const char* kTrackBuildingCC = "connected-components";
-  /// Track building that additionally walks the components that are not paths
-  constexpr const char* kTrackBuildingCCAndWalk = "cc-and-walk";
+/// Track building by connected components alone, i.e. Acts' BoostTrackBuilding
+constexpr const char* kTrackBuildingCC = "connected-components";
+/// Track building that additionally walks the components that are not paths
+constexpr const char* kTrackBuildingCCAndWalk = "cc-and-walk";
 
-  /// The hit feature the "cc-and-walk" track building orders the two hits of an
-  /// edge by, to give the graph a direction. Not configurable: any other choice
-  /// would not be a radius.
-  const std::array<std::string, 1> kRadiusFeature{"r"};
+/// The hit feature the "cc-and-walk" track building orders the two hits of an
+/// edge by, to give the graph a direction. Not configurable: any other choice
+/// would not be a radius.
+const std::array<std::string, 1> kRadiusFeature{"r"};
 
-  /// Lower-case an (ASCII) configuration string, so that the device
-  /// specification can be given in any case.
-  std::string toLower(std::string str) {
-    std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) { return std::tolower(c); });
-    return str;
+/// Lower-case an (ASCII) configuration string, so that the device
+/// specification can be given in any case.
+std::string toLower(std::string str) {
+  std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) { return std::tolower(c); });
+  return str;
+}
+
+/// Build bin edges for segmentation. Every bin's upper edge is extended by
+/// @p overlapFraction of the bin width into its successor.
+///
+/// @param wrap whether the coordinate is periodic, i.e. whether the last bin
+///        has a successor to reach into. If it is, the last bin's upper edge
+///        is extended past @p max, and a value just above @p min falls into
+///        it as well - see binsFor().
+std::vector<std::pair<double, double>> buildBinEdges(double min, double max, std::size_t numBins,
+                                                     double overlapFraction, bool wrap) {
+  if (numBins == 0) {
+    throw std::invalid_argument("Number of bins must be greater than zero");
+  }
+  if (min >= max) {
+    throw std::invalid_argument("Minimum value must be less than maximum value");
+  }
+  if (overlapFraction < 0.0 || overlapFraction >= 1.0) {
+    throw std::invalid_argument("Overlap fraction must be in the range [0, 1)");
   }
 
-  /// Build bin edges for segmentation. Every bin's upper edge is extended by
-  /// @p overlapFraction of the bin width into its successor.
-  ///
-  /// @param wrap whether the coordinate is periodic, i.e. whether the last bin
-  ///        has a successor to reach into. If it is, the last bin's upper edge
-  ///        is extended past @p max, and a value just above @p min falls into
-  ///        it as well - see binsFor().
-  std::vector<std::pair<double, double>> buildBinEdges(double min, double max, std::size_t numBins,
-                                                       double overlapFraction, bool wrap) {
-    if (numBins == 0) {
-      throw std::invalid_argument("Number of bins must be greater than zero");
-    }
-    if (min >= max) {
-      throw std::invalid_argument("Minimum value must be less than maximum value");
-    }
-    if (overlapFraction < 0.0 || overlapFraction >= 1.0) {
-      throw std::invalid_argument("Overlap fraction must be in the range [0, 1)");
-    }
+  std::vector<std::pair<double, double>> edges(numBins);
+  const double binWidth = (max - min) / static_cast<double>(numBins);
+  const double overlapWidth = binWidth * overlapFraction;
 
-    std::vector<std::pair<double, double>> edges(numBins);
-    const double                           binWidth     = (max - min) / static_cast<double>(numBins);
-    const double                           overlapWidth = binWidth * overlapFraction;
-
-    for (std::size_t i = 0; i < numBins; ++i) {
-      const double left  = min + i * binWidth;
-      const double right = left + binWidth;
-      edges[i]           = {left, right};
-      if (i < numBins - 1 || wrap)
-        edges[i].second += overlapWidth;
-    }
-    return edges;
+  for (std::size_t i = 0; i < numBins; ++i) {
+    const double left = min + i * binWidth;
+    const double right = left + binWidth;
+    edges[i] = {left, right};
+    if (i < numBins - 1 || wrap)
+      edges[i].second += overlapWidth;
   }
+  return edges;
+}
 
-  /// Bins of @p edges that @p value falls into, written into @p bins. Returns
-  /// how many there are: since a bin only ever overlaps with its successor, a
-  /// value is in one or two of them.
-  ///
-  /// @param value must be inside the [min, max) range @p edges was built for
-  /// @param invBinWidth numBins / (max - min), i.e. the inverse (unextended) bin width
-  /// @param wrap whether the coordinate is periodic, see buildBinEdges(). The
-  ///        two bins are adjacent, but with wrapping they can be the last and
-  ///        the first one rather than i - 1 and i.
-  std::size_t binsFor(double value, double min, double invBinWidth, const std::vector<std::pair<double, double>>& edges,
-                      bool wrap, std::array<std::size_t, 2>& bins) {
-    // Direct lookup instead of a scan over all bins. The clamping guards
-    // against rounding differences w.r.t. the bin edges (and against a value
-    // sitting exactly on max).
-    std::size_t bin = std::min(static_cast<std::size_t>((value - min) * invBinWidth), edges.size() - 1);
-    if (bin > 0 && value < edges[bin].first) {
-      --bin;
-    }
-    bins[0] = bin;
-
-    // The preceding bin's upper edge is extended by the overlap, so it may still
-    // contain the value.
-    if (bin > 0) {
-      if (value < edges[bin - 1].second) {
-        bins[1] = bin - 1;
-        return 2;
-      }
-    } else if (wrap && edges.size() > 1) {
-      // Bin 0's predecessor is the last bin, whose upper edge was extended past
-      // max. Comparing against it means lifting the value by one period. With a
-      // single bin there is no predecessor - it already covers the full period,
-      // and returning it twice would put the hit into the same segment twice.
-      const double period = static_cast<double>(edges.size()) / invBinWidth;
-      if (value + period < edges.back().second) {
-        bins[1] = edges.size() - 1;
-        return 2;
-      }
-    }
-    return 1;
+/// Bins of @p edges that @p value falls into, written into @p bins. Returns
+/// how many there are: since a bin only ever overlaps with its successor, a
+/// value is in one or two of them.
+///
+/// @param value must be inside the [min, max) range @p edges was built for
+/// @param invBinWidth numBins / (max - min), i.e. the inverse (unextended) bin width
+/// @param wrap whether the coordinate is periodic, see buildBinEdges(). The
+///        two bins are adjacent, but with wrapping they can be the last and
+///        the first one rather than i - 1 and i.
+std::size_t binsFor(double value, double min, double invBinWidth, const std::vector<std::pair<double, double>>& edges,
+                    bool wrap, std::array<std::size_t, 2>& bins) {
+  // Direct lookup instead of a scan over all bins. The clamping guards
+  // against rounding differences w.r.t. the bin edges (and against a value
+  // sitting exactly on max).
+  std::size_t bin = std::min(static_cast<std::size_t>((value - min) * invBinWidth), edges.size() - 1);
+  if (bin > 0 && value < edges[bin].first) {
+    --bin;
   }
+  bins[0] = bin;
 
-  /// Format bin edges for the debug output. An upper edge past @p max belongs to
-  /// a bin that wraps around, so show where it actually reaches to.
-  std::string formatBinEdges(const std::vector<std::pair<double, double>>& edges, double min, double max) {
-    std::string formatted{};
-    for (const auto& [low, high] : edges) {
-      if (high > max) {
-        formatted += fmt::format(" [{}, {} -> {}]", low, max, min + (high - max));
-      } else {
-        formatted += fmt::format(" [{}, {}]", low, high);
-      }
+  // The preceding bin's upper edge is extended by the overlap, so it may still
+  // contain the value.
+  if (bin > 0) {
+    if (value < edges[bin - 1].second) {
+      bins[1] = bin - 1;
+      return 2;
     }
-    return formatted;
+  } else if (wrap && edges.size() > 1) {
+    // Bin 0's predecessor is the last bin, whose upper edge was extended past
+    // max. Comparing against it means lifting the value by one period. With a
+    // single bin there is no predecessor - it already covers the full period,
+    // and returning it twice would put the hit into the same segment twice.
+    const double period = static_cast<double>(edges.size()) / invBinWidth;
+    if (value + period < edges.back().second) {
+      bins[1] = edges.size() - 1;
+      return 2;
+    }
   }
+  return 1;
+}
 
-  /// Parse a device string ("cpu", "cuda", "cuda:<index>") into an Acts Device.
-  /// Throws std::invalid_argument on an unrecognised value.
-  ActsPlugins::Device parseDevice(const std::string& deviceSpec) {
-    const auto spec = toLower(deviceSpec);
-
-    if (spec == "cpu") {
-      return ActsPlugins::Device::Cpu();
+/// Format bin edges for the debug output. An upper edge past @p max belongs to
+/// a bin that wraps around, so show where it actually reaches to.
+std::string formatBinEdges(const std::vector<std::pair<double, double>>& edges, double min, double max) {
+  std::string formatted{};
+  for (const auto& [low, high] : edges) {
+    if (high > max) {
+      formatted += fmt::format(" [{}, {} -> {}]", low, max, min + (high - max));
+    } else {
+      formatted += fmt::format(" [{}, {}]", low, high);
     }
-    if (spec == "cuda") {
-      return ActsPlugins::Device::Cuda();
-    }
-    if (spec.rfind("cuda:", 0) == 0) {
-      return ActsPlugins::Device::Cuda(static_cast<std::size_t>(std::stoul(spec.substr(5))));
-    }
-    throw std::invalid_argument(fmt::format("Unknown device '{}', expected 'cpu', 'cuda' or 'cuda:<index>'", spec));
   }
-}  // namespace
+  return formatted;
+}
+
+/// Parse a device string ("cpu", "cuda", "cuda:<index>") into an Acts Device.
+/// Throws std::invalid_argument on an unrecognised value.
+ActsPlugins::Device parseDevice(const std::string& deviceSpec) {
+  const auto spec = toLower(deviceSpec);
+
+  if (spec == "cpu") {
+    return ActsPlugins::Device::Cpu();
+  }
+  if (spec == "cuda") {
+    return ActsPlugins::Device::Cuda();
+  }
+  if (spec.rfind("cuda:", 0) == 0) {
+    return ActsPlugins::Device::Cuda(static_cast<std::size_t>(std::stoul(spec.substr(5))));
+  }
+  throw std::invalid_argument(fmt::format("Unknown device '{}', expected 'cpu', 'cuda' or 'cuda:<index>'", spec));
+}
+} // namespace
 
 GNNTrackFinder::GNNTrackFinder(const std::string& name, ISvcLocator* svcLoc)
     : Transformer(name, svcLoc, {KeyValues("InputHitCollections", {"populate-me-properly"})},
@@ -251,11 +251,11 @@ StatusCode GNNTrackFinder::initialize() {
     return StatusCode::FAILURE;
   }
 
-  const auto embeddingFeatures          = mlutils::parseList<std::string>(m_inputFeaturesEmbedding.value());
-  const auto embeddingScales            = mlutils::parseList<float>(m_inputScalesEmbedding.value());
-  const auto edgeFeatureScales          = mlutils::parseList<float>(m_edgeFeatureScales.value());
+  const auto embeddingFeatures = mlutils::parseList<std::string>(m_inputFeaturesEmbedding.value());
+  const auto embeddingScales = mlutils::parseList<float>(m_inputScalesEmbedding.value());
+  const auto edgeFeatureScales = mlutils::parseList<float>(m_edgeFeatureScales.value());
   const auto edgeClassifierFeaturesList = mlutils::parseMultiList<std::string>(m_inputFeaturesEdgeClassifier.value());
-  const auto edgeClassifierScalesList   = mlutils::parseMultiList<float>(m_inputScalesEdgeClassifier.value());
+  const auto edgeClassifierScalesList = mlutils::parseMultiList<float>(m_inputScalesEdgeClassifier.value());
 
   // The six edge features are defined in terms of r, phi, z and eta, so unlike
   // the model inputs there is nothing to select: all that is configurable is
@@ -287,10 +287,9 @@ StatusCode GNNTrackFinder::initialize() {
     // applies its own cut, so from the second one on the edge count is whatever
     // survived the previous cut and no longer the fixed length.
     if (nEdgeClassifiers > 1) {
-      error() << fmt::format(
-                     "EdgeClassifierFixedInputLength does not work with {} chained edge classifiers: each one "
-                     "cuts on the score, so only the first would see the padded edge count",
-                     nEdgeClassifiers)
+      error() << fmt::format("EdgeClassifierFixedInputLength does not work with {} chained edge classifiers: each one "
+                             "cuts on the score, so only the first would see the padded edge count",
+                             nEdgeClassifiers)
               << endmsg;
       return StatusCode::FAILURE;
     }
@@ -304,10 +303,9 @@ StatusCode GNNTrackFinder::initialize() {
     return StatusCode::FAILURE;
   }
   if (ccAndWalk && m_walkMinScore.value() > m_walkAddScore.value()) {
-    error() << fmt::format(
-                   "WalkMinScore ({}) is above WalkAddScore ({}), so the threshold for branching would be "
-                   "looser than the one for following a single edge",
-                   m_walkMinScore.value(), m_walkAddScore.value())
+    error() << fmt::format("WalkMinScore ({}) is above WalkAddScore ({}), so the threshold for branching would be "
+                           "looser than the one for following a single edge",
+                           m_walkMinScore.value(), m_walkAddScore.value())
             << endmsg;
     return StatusCode::FAILURE;
   }
@@ -345,7 +343,7 @@ StatusCode GNNTrackFinder::initialize() {
     // theta runs from 0 to pi and stops there, phi is periodic and its last bin
     // reaches back around into the first one.
     m_thetaBinEdges = buildBinEdges(0.0, M_PI, m_thetaBins.value(), m_thetaOverlap.value(), /*wrap=*/false);
-    m_phiBinEdges   = buildBinEdges(-M_PI, M_PI, m_phiBins.value(), m_phiOverlap.value(), /*wrap=*/true);
+    m_phiBinEdges = buildBinEdges(-M_PI, M_PI, m_phiBins.value(), m_phiOverlap.value(), /*wrap=*/true);
   } catch (const std::invalid_argument& ex) {
     error() << ex.what() << endmsg;
     return StatusCode::FAILURE;
@@ -360,7 +358,7 @@ StatusCode GNNTrackFinder::initialize() {
   // features it needs from it by index.
   m_allHitFeatures.clear();
   std::unordered_set<std::string> seenFeatures{};
-  const auto                      addFeatures = [&seenFeatures, this](const auto& features) {
+  const auto addFeatures = [&seenFeatures, this](const auto& features) {
     for (const auto& feature : features) {
       if (seenFeatures.insert(feature).second) {
         m_allHitFeatures.push_back(feature);
@@ -391,8 +389,8 @@ StatusCode GNNTrackFinder::initialize() {
     return indices;
   };
   m_embeddingFeatureIndices = featureIndices(embeddingFeatures);
-  m_edgeFeatureIndices      = computeEdgeFeatures ? featureIndices(kEdgeFeatureInputs) : std::vector<int>{};
-  m_radiusFeatureIndex      = ccAndWalk ? featureIndices(kRadiusFeature).front() : -1;
+  m_edgeFeatureIndices = computeEdgeFeatures ? featureIndices(kEdgeFeatureInputs) : std::vector<int>{};
+  m_radiusFeatureIndex = ccAndWalk ? featureIndices(kRadiusFeature).front() : -1;
   m_edgeClassifierFeatureIndices.clear();
   m_edgeClassifierFeatureIndices.reserve(nEdgeClassifiers);
   for (const auto& edgeClassifierFeatures : edgeClassifierFeaturesList) {
@@ -421,31 +419,31 @@ StatusCode GNNTrackFinder::initialize() {
   return StatusCode::SUCCESS;
 }
 
-void GNNTrackFinder::buildPipeline(const std::vector<float>&              embeddingScales,
-                                   const std::vector<float>&              edgeFeatureScales,
+void GNNTrackFinder::buildPipeline(const std::vector<float>& embeddingScales,
+                                   const std::vector<float>& edgeFeatureScales,
                                    const std::vector<std::vector<float>>& edgeClassifierScales) {
   auto graphConstructor = std::make_shared<OnnxMetricLearning>(
-      OnnxMetricLearning::Config{.modelPath          = m_nodeEmbeddingModelPath.value(),
-                                 .selectedFeatures   = m_embeddingFeatureIndices,
-                                 .featureScales      = embeddingScales,
+      OnnxMetricLearning::Config{.modelPath = m_nodeEmbeddingModelPath.value(),
+                                 .selectedFeatures = m_embeddingFeatureIndices,
+                                 .featureScales = embeddingScales,
                                  .edgeFeatureIndices = m_edgeFeatureIndices,
-                                 .edgeFeatureScales  = edgeFeatureScales,
-                                 .fixedInputLength   = m_embeddingFixedInputLength.value(),
-                                 .keepPadding        = m_keepEmbeddingPadding.value(),
-                                 .fixedEdgeLength    = m_edgeClassifierFixedInputLength.value(),
-                                 .rVal               = m_edgeBuildingRadius.value(),
-                                 .knnVal             = m_edgeBuildingKnn.value(),
-                                 .device             = m_runDevice},
+                                 .edgeFeatureScales = edgeFeatureScales,
+                                 .fixedInputLength = m_embeddingFixedInputLength.value(),
+                                 .keepPadding = m_keepEmbeddingPadding.value(),
+                                 .fixedEdgeLength = m_edgeClassifierFixedInputLength.value(),
+                                 .rVal = m_edgeBuildingRadius.value(),
+                                 .knnVal = m_edgeBuildingKnn.value(),
+                                 .device = m_runDevice},
       m_logger->clone(name() + ".MetricLearning"));
 
   std::vector<std::shared_ptr<ActsPlugins::EdgeClassificationBase>> edgeClassifiers{};
   edgeClassifiers.reserve(m_edgeClassifierModelPath.size());
   for (std::size_t i = 0; i < m_edgeClassifierModelPath.size(); ++i) {
     edgeClassifiers.push_back(std::make_shared<ActsPlugins::OnnxEdgeClassifier>(
-        ActsPlugins::OnnxEdgeClassifier::Config{.modelPath        = m_edgeClassifierModelPath[i],
+        ActsPlugins::OnnxEdgeClassifier::Config{.modelPath = m_edgeClassifierModelPath[i],
                                                 .selectedFeatures = m_edgeClassifierFeatureIndices[i],
-                                                .featureScales    = edgeClassifierScales[i],
-                                                .cut              = m_edgeClassifierCut[i],
+                                                .featureScales = edgeClassifierScales[i],
+                                                .cut = m_edgeClassifierCut[i],
                                                 // The Acts Config defaults to Device::Cuda(); use the configured
                                                 // device (default "cpu") since the onnxruntime build may not have a
                                                 // CUDA execution provider.
@@ -462,9 +460,9 @@ void GNNTrackFinder::buildPipeline(const std::vector<float>&              embedd
   std::shared_ptr<ActsPlugins::TrackBuildingBase> trackBuilder{};
   if (m_trackBuilding.value() == kTrackBuildingCCAndWalk) {
     trackBuilder = std::make_shared<CCAndWalkTrackBuilding>(
-        CCAndWalkTrackBuilding::Config{.rFeatureIndex    = m_radiusFeatureIndex,
-                                       .addScore         = m_walkAddScore.value(),
-                                       .minScore         = m_walkMinScore.value(),
+        CCAndWalkTrackBuilding::Config{.rFeatureIndex = m_radiusFeatureIndex,
+                                       .addScore = m_walkAddScore.value(),
+                                       .minScore = m_walkMinScore.value(),
                                        .minCandidateSize = m_minHitsPerTrk.value()},
         m_logger->clone(name() + ".TrackBuilder"));
   } else {
@@ -477,8 +475,8 @@ void GNNTrackFinder::buildPipeline(const std::vector<float>&              embedd
                                                           m_logger->clone(name() + ".Pipeline"));
 }
 
-edm4hep::TrackCollection GNNTrackFinder::operator()(
-    std::vector<const edm4hep::TrackerHitPlaneCollection*> const& inputTrackerHits) const {
+edm4hep::TrackCollection
+GNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*> const& inputTrackerHits) const {
   const auto allHits = [&inputTrackerHits]() {
     edm4hep::TrackerHitPlaneCollection hits{};
     hits.setSubsetCollection(true);
@@ -491,9 +489,9 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
   debug() << fmt::format("Collected {} hits from {} collections", allHits.size(), inputTrackerHits.size()) << endmsg;
 
   // Split all hits into theta/phi segments
-  const std::size_t                               nThetaBins = m_thetaBins.value();
-  const std::size_t                               nPhiBins   = m_phiBins.value();
-  const std::size_t                               nSegments  = nThetaBins * nPhiBins;
+  const std::size_t nThetaBins = m_thetaBins.value();
+  const std::size_t nPhiBins = m_phiBins.value();
+  const std::size_t nSegments = nThetaBins * nPhiBins;
   std::vector<edm4hep::TrackerHitPlaneCollection> thetaPhiHits(nSegments);
   for (auto& segHits : thetaPhiHits) {
     segHits.setSubsetCollection(true);
@@ -503,15 +501,15 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
   // Make this configurable properties?
   const double thetaMin = 0.0;
   const double thetaMax = M_PI;
-  const double phiMin   = -M_PI;
-  const double phiMax   = M_PI;
+  const double phiMin = -M_PI;
+  const double phiMax = M_PI;
 
   const double invThetaBinWidth = static_cast<double>(nThetaBins) / (thetaMax - thetaMin);
-  const double invPhiBinWidth   = static_cast<double>(nPhiBins) / (phiMax - phiMin);
+  const double invPhiBinWidth = static_cast<double>(nPhiBins) / (phiMax - phiMin);
 
   // Largest representable values that are still inside the binned ranges
   const double thetaUpper = std::nextafter(thetaMax, thetaMin);
-  const double phiUpper   = std::nextafter(phiMax, phiMin);
+  const double phiUpper = std::nextafter(phiMax, phiMin);
 
   int hitIndex = 0;
   for (const auto& hit : allHits) {
@@ -520,7 +518,7 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
     // theta is in [0, pi] and phi in (-pi, pi], i.e. both are already in the
     // binned ranges, the clamping only removes the (closed) upper edge.
     const double theta = std::clamp<double>(position.theta(), thetaMin, thetaUpper);
-    const double phi   = std::clamp<double>(position.phi(), phiMin, phiUpper);
+    const double phi = std::clamp<double>(position.phi(), phiMin, phiUpper);
 
     // With overlapping bins a hit can end up in two adjacent bins per
     // coordinate. In phi those two are not necessarily consecutive indices: the
@@ -528,7 +526,7 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
     // than iterated over as a range.
     std::array<std::size_t, 2> thetaBins{};
     std::array<std::size_t, 2> phiBins{};
-    const std::size_t          numThetaBinsFor =
+    const std::size_t numThetaBinsFor =
         binsFor(theta, thetaMin, invThetaBinWidth, m_thetaBinEdges, /*wrap=*/false, thetaBins);
     const std::size_t numPhiBinsFor = binsFor(phi, phiMin, invPhiBinWidth, m_phiBinEdges, /*wrap=*/true, phiBins);
 
@@ -548,7 +546,7 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
 
   // Run GNN pipeline on all segments and collect the track candidates of all of
   // them in one flat list. The candidates refer to the indices in allHits.
-  const std::size_t             nFeatures = m_resolvedHitFeatures.size();
+  const std::size_t nFeatures = m_resolvedHitFeatures.size();
   std::vector<std::vector<int>> trackCandIdcs;
   for (std::size_t segmentIdx = 0; segmentIdx < nSegments; ++segmentIdx) {
     const auto& segmentHits = thetaPhiHits[segmentIdx];
@@ -557,14 +555,14 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
     // inference. With a fine segmentation most segments are in this case.
     if (segmentHits.size() < m_minHitsPerTrk.value()) {
       const std::size_t thetaBin = segmentIdx / nPhiBins;
-      const std::size_t phiBin   = segmentIdx % nPhiBins;
+      const std::size_t phiBin = segmentIdx % nPhiBins;
       debug() << fmt::format("Segment (thetaBin={}, phiBin={}) has {} hits, fewer than MinHitsPerTrack ({}), skipping",
                              thetaBin, phiBin, segmentHits.size(), m_minHitsPerTrk.value())
               << endmsg;
       continue;
     }
-    auto& segmentHitIdcs  = hitIdcs[segmentIdx];
-    auto  embeddingInputs = ACTSTracking::extractHitInformation(segmentHits, m_resolvedHitFeatures, &*m_cellIDDecoder);
+    auto& segmentHitIdcs = hitIdcs[segmentIdx];
+    auto embeddingInputs = ACTSTracking::extractHitInformation(segmentHits, m_resolvedHitFeatures, &*m_cellIDDecoder);
     assert(embeddingInputs.size() == segmentHits.size() * nFeatures);
 
     // Full detailed output of inputs
@@ -594,15 +592,15 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
   }
 
   // Default-construct ACTS contexts
-  const Acts::GeometryContext      geoCtx = Acts::GeometryContext::dangerouslyDefaultConstruct();
+  const Acts::GeometryContext geoCtx = Acts::GeometryContext::dangerouslyDefaultConstruct();
   const Acts::MagneticFieldContext magCtx{};
-  const Acts::CalibrationContext   calCtx{};
+  const Acts::CalibrationContext calCtx{};
 
   // Build the ACTS measurements / source links for all GNN input hits, keeping the
   // source link of each hit so each candidate can be turned into a fit seed.
-  ACTSTracking::SourceLinkContainer                           sourceLinks;
-  ACTSTracking::MeasurementContainer                          measurements;
-  ACTSTracking::HitContainer                                  hitContainer;
+  ACTSTracking::SourceLinkContainer sourceLinks;
+  ACTSTracking::MeasurementContainer measurements;
+  ACTSTracking::HitContainer hitContainer;
   std::unordered_map<std::uint64_t, ACTSTracking::SourceLink> slByHit;
   slByHit.reserve(allHits.size());
 
@@ -615,12 +613,12 @@ edm4hep::TrackCollection GNNTrackFinder::operator()(
   Acts::MagneticFieldProvider::Cache magCache = m_actsGeoSvc->magneticField()->makeCache(magCtx);
 
   const ACTSTracking::KFRunner kfRunner(*m_actsGeoSvc, geoCtx, magCtx, calCtx, measurements, hitContainer,
-                                        {.propagateBackward  = m_propagateBackward,
-                                         .extrapolateToCalo  = m_extrapolateToCalo,
+                                        {.propagateBackward = m_propagateBackward,
+                                         .extrapolateToCalo = m_extrapolateToCalo,
                                          .addEndcapCaloState = m_addEndcapCaloState});
 
   edm4hep::TrackCollection trackCands{};
-  auto                     histBuffer = m_monitoringHist.buffer();
+  auto histBuffer = m_monitoringHist.buffer();
   for (const auto& candIdcs : trackCandIdcs) {
     ++histBuffer[{allHits.size(), trackCandIdcs.size(), candIdcs.size()}];
     if (candIdcs.size() < m_minHitsPerTrk.value()) {

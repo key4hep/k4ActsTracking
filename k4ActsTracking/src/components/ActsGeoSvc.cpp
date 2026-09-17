@@ -75,76 +75,77 @@
 #include <string>
 #include <unordered_set>
 
-template <> struct fmt::formatter<Acts::GeometryIdentifier> : fmt::ostream_formatter {};
+template <>
+struct fmt::formatter<Acts::GeometryIdentifier> : fmt::ostream_formatter {};
 
 DECLARE_COMPONENT(ActsGeoSvc)
 
 namespace {
-  /// Applies a material decorator to a blueprint-constructed (Gen3) tracking
-  /// geometry, and counts the surfaces that end up carrying material.
-  ///
-  /// @c Acts::Blueprint::construct hands a null decorator to the
-  /// @c Acts::TrackingGeometry constructor and closes the geometry itself, so
-  /// the Gen1 closure path that would normally apply a decorator
-  /// (@c Gen1GeometryClosureVisitor) never runs for a blueprint geometry. This
-  /// visitor is the Gen3 stand-in: it walks the finished geometry and decorates
-  /// volumes, portal surfaces and sensitive surfaces by geometry identifier,
-  /// the same key the map was written with.
-  ///
-  /// Constructed without a decorator it only counts, which reports how many
-  /// material receivers the blueprint designated, i.e. the surfaces the mapping
-  /// step will project material onto.
-  class MaterialDecorationVisitor : public Acts::TrackingGeometryMutableVisitor {
-  public:
-    explicit MaterialDecorationVisitor(const Acts::IMaterialDecorator* decorator) : m_decorator(decorator) {}
+/// Applies a material decorator to a blueprint-constructed (Gen3) tracking
+/// geometry, and counts the surfaces that end up carrying material.
+///
+/// @c Acts::Blueprint::construct hands a null decorator to the
+/// @c Acts::TrackingGeometry constructor and closes the geometry itself, so
+/// the Gen1 closure path that would normally apply a decorator
+/// (@c Gen1GeometryClosureVisitor) never runs for a blueprint geometry. This
+/// visitor is the Gen3 stand-in: it walks the finished geometry and decorates
+/// volumes, portal surfaces and sensitive surfaces by geometry identifier,
+/// the same key the map was written with.
+///
+/// Constructed without a decorator it only counts, which reports how many
+/// material receivers the blueprint designated, i.e. the surfaces the mapping
+/// step will project material onto.
+class MaterialDecorationVisitor : public Acts::TrackingGeometryMutableVisitor {
+public:
+  explicit MaterialDecorationVisitor(const Acts::IMaterialDecorator* decorator) : m_decorator(decorator) {}
 
-    void visitVolume(Acts::TrackingVolume& volume) override {
-      if (m_decorator != nullptr) {
-        m_decorator->decorate(volume);
-      }
+  void visitVolume(Acts::TrackingVolume& volume) override {
+    if (m_decorator != nullptr) {
+      m_decorator->decorate(volume);
+    }
+  }
+
+  void visitPortal(Acts::Portal& portal) override { visit(portal.surface()); }
+
+  void visitSurface(Acts::Surface& surface) override { visit(surface); }
+
+  /// Number of distinct surfaces seen. Portals fused between two volumes are
+  /// visited once per volume, so they are de-duplicated by address.
+  std::size_t nSurfaces() const { return m_seen.size(); }
+
+  /// Number of distinct surfaces carrying material, mapped or proto
+  std::size_t nWithMaterial() const { return m_nWithMaterial; }
+
+  /// Of those, the ones still carrying a proto-material placeholder, i.e. the
+  /// receivers designated by the blueprint that the loaded map did not fill
+  /// in. Everything is proto when no map is loaded.
+  std::size_t nProto() const { return m_nProto; }
+
+private:
+  void visit(Acts::Surface& surface) {
+    if (!m_seen.insert(&surface).second) {
+      return;
+    }
+    if (m_decorator != nullptr) {
+      m_decorator->decorate(surface);
     }
 
-    void visitPortal(Acts::Portal& portal) override { visit(portal.surface()); }
-
-    void visitSurface(Acts::Surface& surface) override { visit(surface); }
-
-    /// Number of distinct surfaces seen. Portals fused between two volumes are
-    /// visited once per volume, so they are de-duplicated by address.
-    std::size_t nSurfaces() const { return m_seen.size(); }
-
-    /// Number of distinct surfaces carrying material, mapped or proto
-    std::size_t nWithMaterial() const { return m_nWithMaterial; }
-
-    /// Of those, the ones still carrying a proto-material placeholder, i.e. the
-    /// receivers designated by the blueprint that the loaded map did not fill
-    /// in. Everything is proto when no map is loaded.
-    std::size_t nProto() const { return m_nProto; }
-
-  private:
-    void visit(Acts::Surface& surface) {
-      if (!m_seen.insert(&surface).second) {
-        return;
-      }
-      if (m_decorator != nullptr) {
-        m_decorator->decorate(surface);
-      }
-
-      const auto* material = surface.surfaceMaterial();
-      if (material == nullptr) {
-        return;
-      }
-      m_nWithMaterial++;
-      if (MaterialSurfaces::isProtoMaterial(material)) {
-        m_nProto++;
-      }
+    const auto* material = surface.surfaceMaterial();
+    if (material == nullptr) {
+      return;
     }
+    m_nWithMaterial++;
+    if (MaterialSurfaces::isProtoMaterial(material)) {
+      m_nProto++;
+    }
+  }
 
-    const Acts::IMaterialDecorator*          m_decorator{nullptr};
-    std::unordered_set<const Acts::Surface*> m_seen{};
-    std::size_t                              m_nWithMaterial{0};
-    std::size_t                              m_nProto{0};
-  };
-}  // namespace
+  const Acts::IMaterialDecorator* m_decorator{nullptr};
+  std::unordered_set<const Acts::Surface*> m_seen{};
+  std::size_t m_nWithMaterial{0};
+  std::size_t m_nProto{0};
+};
+} // namespace
 
 ActsGeoSvc::ActsGeoSvc(const std::string& name, ISvcLocator* svcLoc) : base_class(name, svcLoc) {
   m_bluePrintPopulationFuncs = {{"MAIA_v0", MuColl::MAIA_v0::populateBlueprint},
@@ -172,7 +173,7 @@ StatusCode ActsGeoSvc::initialize() {
     m_magneticField = std::make_shared<ActsPlugins::DD4hepFieldAdapter>(m_geoSvc->getDetector()->field());
   } else {
     std::array<double, 3> magneticFieldVector = {0, 0, 0};
-    std::array<double, 3> position            = {0, 0, 0};
+    std::array<double, 3> position = {0, 0, 0};
     m_geoSvc->getDetector()->field().magneticField(position.data(), magneticFieldVector.data());
     debug() << fmt::format("Retrieved magnetic field at position {}: {}", position, magneticFieldVector) << endmsg;
     m_magneticField = std::make_shared<Acts::ConstantBField>(
@@ -188,7 +189,7 @@ StatusCode ActsGeoSvc::initialize() {
   auto gctxt = Acts::GeometryContext::dangerouslyDefaultConstruct();
 
   const auto* dd4hepDet = m_geoSvc->getDetector();
-  const auto  detName   = dd4hepDet->header().name();
+  const auto detName = dd4hepDet->header().name();
   info() << fmt::format("Constructing detector with name: {}", dd4hepDet->header().name()) << endmsg;
 
   BlueprintBuilder builder{
@@ -254,10 +255,9 @@ StatusCode ActsGeoSvc::initialize() {
         "No surface in the tracking geometry carries material: the blueprint for this detector designates no "
         "material receivers.";
     if (mapRequested) {
-      error() << fmt::format(
-                     "{} The map '{}' therefore has nothing to decorate. Material designation has to be added "
-                     "for this detector before a map can be applied to it.",
-                     reason, m_materialMapFile.value())
+      error() << fmt::format("{} The map '{}' therefore has nothing to decorate. Material designation has to be added "
+                             "for this detector before a map can be applied to it.",
+                             reason, m_materialMapFile.value())
               << endmsg;
       return StatusCode::FAILURE;
     }
@@ -281,11 +281,10 @@ StatusCode ActsGeoSvc::initialize() {
     // Partial match. Not fatal -- a receiver the scan never crossed is a thin
     // scan rather than a wrong map -- but it does mean part of the detector is
     // left without material.
-    warning() << fmt::format(
-                     "{} of {} material receivers were not filled by the map '{}' and still carry a "
-                     "proto-material placeholder. Those surfaces contribute no material; the scan behind the "
-                     "map may be too thin, or may never cross them.",
-                     materialVisitor.nProto(), materialVisitor.nWithMaterial(), m_materialMapFile.value())
+    warning() << fmt::format("{} of {} material receivers were not filled by the map '{}' and still carry a "
+                             "proto-material placeholder. Those surfaces contribute no material; the scan behind the "
+                             "map may be too thin, or may never cross them.",
+                             materialVisitor.nProto(), materialVisitor.nWithMaterial(), m_materialMapFile.value())
               << endmsg;
   }
 
@@ -341,7 +340,7 @@ StatusCode ActsGeoSvc::initialize() {
     // Every face goes into the combined list; the barrel/endcap lists in
     // addition keep the sections apart, so that a client can tell which section
     // an extrapolation reached (see IActsGeoSvc::caloBarrelSurfaceGeoIds).
-    auto collect = [&](const std::shared_ptr<Acts::Surface>&  surface,
+    auto collect = [&](const std::shared_ptr<Acts::Surface>& surface,
                        std::vector<Acts::GeometryIdentifier>* section = nullptr) {
       if (surface) {
         m_caloSurfaceGeoIds.push_back(surface->geometryId());
@@ -384,7 +383,7 @@ StatusCode ActsGeoSvc::makeMaterialDecorator(std::shared_ptr<const Acts::IMateri
     if (mapFile.extension() == ".root") {
       ActsPlugins::RootMaterialDecorator::Config cfg;
       cfg.fileName = mapFile.string();
-      decorator    = std::make_shared<const ActsPlugins::RootMaterialDecorator>(cfg, Acts::Logging::INFO);
+      decorator = std::make_shared<const ActsPlugins::RootMaterialDecorator>(cfg, Acts::Logging::INFO);
     } else {
       decorator = std::make_shared<const Acts::JsonMaterialDecorator>(Acts::MaterialMapJsonConverter::Config{},
                                                                       mapFile.string(), Acts::Logging::INFO);
@@ -421,13 +420,13 @@ void ActsGeoSvc::buildCaloFaceSurfaces() {
   // --- Pass 1: extract the barrel and endcap dimensions --------------------
   // Surfaces are created in pass 2, after a corner-gap correction that needs
   // both the barrel half-length and the endcap inner-face z.
-  bool   haveBarrel         = false;
-  int    nSides             = 0;
-  double apothem            = 0.0;
-  double barrelHalfZRaw     = 0.0;
-  double phi0               = 0.0;
+  bool haveBarrel = false;
+  int nSides = 0;
+  double apothem = 0.0;
+  double barrelHalfZRaw = 0.0;
+  double phi0 = 0.0;
   double barrelCircumradius = 0.0;
-  double halfWidth          = 0.0;
+  double halfWidth = 0.0;
 
   if (ecalBarrel.empty()) {
     warning() << "No electromagnetic barrel calorimeter found via DetType flags; "
@@ -441,24 +440,24 @@ void ActsGeoSvc::buildCaloFaceSurfaces() {
     nSides = caloData->inner_symmetry > 0 ? caloData->inner_symmetry : 0;
     // For a BarrelLayout the calorimeter is centred on z = 0 and extent[] is
     // {rmin, rmax, zmin=0, zmax=half_length}, so the half-length is extent[3].
-    apothem        = caloData->extent[0] * lengthScale;  // perpendicular distance to inner face
-    barrelHalfZRaw = caloData->extent[3] * lengthScale;  // barrel half-length
-    phi0           = caloData->inner_phi0;               // azimuth of first inner-face normal
+    apothem = caloData->extent[0] * lengthScale;        // perpendicular distance to inner face
+    barrelHalfZRaw = caloData->extent[3] * lengthScale; // barrel half-length
+    phi0 = caloData->inner_phi0;                        // azimuth of first inner-face normal
     if (nSides < 3) {
       warning() << fmt::format("ECAL barrel has unusable inner_symmetry={}; skipping barrel faces.",
                                caloData->inner_symmetry)
                 << endmsg;
     } else {
       barrelCircumradius = apothem / std::cos(std::numbers::pi / nSides);
-      halfWidth          = apothem * std::tan(std::numbers::pi / nSides);
-      haveBarrel         = true;
+      halfWidth = apothem * std::tan(std::numbers::pi / nSides);
+      haveBarrel = true;
     }
   }
 
-  bool   haveEndcap = false;
-  double rMin       = 0.0;
-  double rMax       = 0.0;
-  double zEndcap    = 0.0;
+  bool haveEndcap = false;
+  double rMin = 0.0;
+  double rMax = 0.0;
+  double zEndcap = 0.0;
 
   if (ecalEndcap.empty()) {
     warning() << "No electromagnetic endcap calorimeter found via DetType flags; "
@@ -469,16 +468,15 @@ void ActsGeoSvc::buildCaloFaceSurfaces() {
                  "skipping endcap calo-face surfaces."
               << endmsg;
   } else {
-    rMin    = caloData->extent[0] * lengthScale;
-    rMax    = caloData->extent[1] * lengthScale;
-    zEndcap = caloData->extent[2] * lengthScale;  // inner-face z (zmin)
+    rMin = caloData->extent[0] * lengthScale;
+    rMax = caloData->extent[1] * lengthScale;
+    zEndcap = caloData->extent[2] * lengthScale; // inner-face z (zmin)
     // Guarantee the disc reaches at least the barrel corner radius so there is
     // no gap at the barrel/endcap junction.
     if (barrelCircumradius > rMax) {
-      warning() << fmt::format(
-                       "ECAL endcap rMax ({:.1f} mm) is smaller than the barrel circumradius ({:.1f} mm); "
-                       "extending the endcap disc to close the hermeticity gap.",
-                       rMax / UC::mm, barrelCircumradius / UC::mm)
+      warning() << fmt::format("ECAL endcap rMax ({:.1f} mm) is smaller than the barrel circumradius ({:.1f} mm); "
+                               "extending the endcap disc to close the hermeticity gap.",
+                               rMax / UC::mm, barrelCircumradius / UC::mm)
                 << endmsg;
       rMax = barrelCircumradius;
     }
@@ -492,8 +490,8 @@ void ActsGeoSvc::buildCaloFaceSurfaces() {
   // barrel face slightly so the endcap disc sits clearly beyond the barrel
   // (z-)extent; tracks crossing the trimmed corner strip are still caught by the
   // endcap disc.
-  constexpr double cornerGap   = 5.0 * UC::mm;
-  double           barrelHalfZ = barrelHalfZRaw;
+  constexpr double cornerGap = 5.0 * UC::mm;
+  double barrelHalfZ = barrelHalfZRaw;
   if (haveBarrel && haveEndcap && (zEndcap - barrelHalfZRaw) < cornerGap) {
     barrelHalfZ = std::max(0.0, zEndcap - cornerGap);
     info() << fmt::format(
@@ -508,47 +506,46 @@ void ActsGeoSvc::buildCaloFaceSurfaces() {
     const double dPhi = 2 * std::numbers::pi / nSides;
     m_caloFaceSurfaces.barrelFaces.reserve(nSides);
     for (int i = 0; i < nSides; ++i) {
-      const double  phi  = phi0 + i * dPhi;
-      const double  cphi = std::cos(phi);
-      const double  sphi = std::sin(phi);
-      Acts::Vector3 normal{cphi, sphi, 0};      // local z (surface normal, radial)
-      Acts::Vector3 localX{-sphi, cphi, 0};     // tangential
-      Acts::Vector3 localY{0, 0, 1};            // along global z
-      Acts::Vector3 center = apothem * normal;  // barrel centred on z = 0
+      const double phi = phi0 + i * dPhi;
+      const double cphi = std::cos(phi);
+      const double sphi = std::sin(phi);
+      Acts::Vector3 normal{cphi, sphi, 0};     // local z (surface normal, radial)
+      Acts::Vector3 localX{-sphi, cphi, 0};    // tangential
+      Acts::Vector3 localY{0, 0, 1};           // along global z
+      Acts::Vector3 center = apothem * normal; // barrel centred on z = 0
 
       Acts::Transform3 transform = Acts::Transform3::Identity();
-      transform.linear().col(0)  = localX;
-      transform.linear().col(1)  = localY;
-      transform.linear().col(2)  = normal;
-      transform.translation()    = center;
+      transform.linear().col(0) = localX;
+      transform.linear().col(1) = localY;
+      transform.linear().col(2) = normal;
+      transform.translation() = center;
 
       auto bounds = std::make_shared<Acts::RectangleBounds>(halfWidth, barrelHalfZ);
       m_caloFaceSurfaces.barrelFaces.push_back(Acts::Surface::makeShared<Acts::PlaneSurface>(transform, bounds));
     }
     // Bounding cylinder for the barrel calo volume: from the inner face
     // (apothem) out to the polygon corners (circumradius), trimmed half-length.
-    m_caloFaceSurfaces.barrelRMin  = apothem;
-    m_caloFaceSurfaces.barrelRMax  = barrelCircumradius;
+    m_caloFaceSurfaces.barrelRMin = apothem;
+    m_caloFaceSurfaces.barrelRMax = barrelCircumradius;
     m_caloFaceSurfaces.barrelHalfZ = barrelHalfZ;
-    info() << fmt::format(
-                  "Built ECAL barrel calo face: {} planar faces, apothem={:.1f} mm, circumradius={:.1f} mm, "
-                  "halfZ={:.1f} mm, phi0={:.4f}",
-                  nSides, apothem / UC::mm, barrelCircumradius / UC::mm, barrelHalfZ / UC::mm, phi0)
+    info() << fmt::format("Built ECAL barrel calo face: {} planar faces, apothem={:.1f} mm, circumradius={:.1f} mm, "
+                          "halfZ={:.1f} mm, phi0={:.4f}",
+                          nSides, apothem / UC::mm, barrelCircumradius / UC::mm, barrelHalfZ / UC::mm, phi0)
            << endmsg;
   }
 
   if (haveEndcap) {
     Acts::Transform3 tPos = Acts::Transform3::Identity();
-    tPos.translation()    = Acts::Vector3{0, 0, zEndcap};
+    tPos.translation() = Acts::Vector3{0, 0, zEndcap};
     Acts::Transform3 tNeg = Acts::Transform3::Identity();
-    tNeg.translation()    = Acts::Vector3{0, 0, -zEndcap};
+    tNeg.translation() = Acts::Vector3{0, 0, -zEndcap};
 
     m_caloFaceSurfaces.endcapPos = Acts::Surface::makeShared<Acts::DiscSurface>(tPos, rMin, rMax);
     m_caloFaceSurfaces.endcapNeg = Acts::Surface::makeShared<Acts::DiscSurface>(tNeg, rMin, rMax);
 
     m_caloFaceSurfaces.endcapRMin = rMin;
     m_caloFaceSurfaces.endcapRMax = rMax;
-    m_caloFaceSurfaces.endcapZ    = zEndcap;
+    m_caloFaceSurfaces.endcapZ = zEndcap;
 
     info() << fmt::format("Built ECAL endcap calo faces: discs at z=+/-{:.1f} mm, rMin={:.1f} mm, rMax={:.1f} mm",
                           zEndcap / UC::mm, rMin / UC::mm, rMax / UC::mm)
@@ -606,15 +603,14 @@ void ActsGeoSvc::buildPlanarCaloFace(const dd4hep::DetElement& ecal, double leng
   // beam / tracking direction). Warn if the placement carries a rotation.
   // Copy the matrix by value: ecal.nominal() is a temporary handle, so a
   // reference into its worldTransformation() would dangle.
-  const TGeoHMatrix world       = ecal.nominal().worldTransformation();
-  const Double_t*   t           = world.GetTranslation();
-  const Double_t*   r           = world.GetRotationMatrix();
-  const bool        axisAligned = std::abs(r[0] - 1) < 1e-6 && std::abs(r[4] - 1) < 1e-6 && std::abs(r[8] - 1) < 1e-6;
+  const TGeoHMatrix world = ecal.nominal().worldTransformation();
+  const Double_t* t = world.GetTranslation();
+  const Double_t* r = world.GetRotationMatrix();
+  const bool axisAligned = std::abs(r[0] - 1) < 1e-6 && std::abs(r[4] - 1) < 1e-6 && std::abs(r[8] - 1) < 1e-6;
   if (!axisAligned) {
-    warning() << fmt::format(
-                     "Planar EM calorimeter '{}' has a rotated placement; the calo face is built assuming a "
-                     "z-normal axis-aligned slab and may be misoriented.",
-                     ecal.name())
+    warning() << fmt::format("Planar EM calorimeter '{}' has a rotated placement; the calo face is built assuming a "
+                             "z-normal axis-aligned slab and may be misoriented.",
+                             ecal.name())
               << endmsg;
   }
   const double cx = t[0] * lengthScale;
@@ -623,18 +619,17 @@ void ActsGeoSvc::buildPlanarCaloFace(const dd4hep::DetElement& ecal, double leng
 
   // The inner (upstream) face is the -z side of the slab. Build a rectangular
   // plane there with its normal (local z) along global +z.
-  Acts::Transform3 transform    = Acts::Transform3::Identity();
-  transform.translation()       = Acts::Vector3{cx, cy, cz - halfZ};
-  auto bounds                   = std::make_shared<Acts::RectangleBounds>(halfX, halfY);
+  Acts::Transform3 transform = Acts::Transform3::Identity();
+  transform.translation() = Acts::Vector3{cx, cy, cz - halfZ};
+  auto bounds = std::make_shared<Acts::RectangleBounds>(halfX, halfY);
   m_caloFaceSurfaces.planarFace = Acts::Surface::makeShared<Acts::PlaneSurface>(transform, bounds);
 
-  m_caloFaceSurfaces.planarVolumeCenter  = {cx, cy, cz};
+  m_caloFaceSurfaces.planarVolumeCenter = {cx, cy, cz};
   m_caloFaceSurfaces.planarVolumeHalfLen = {halfX, halfY, halfZ};
 
-  info() << fmt::format(
-                "Built planar ECAL calo face for '{}': center=({:.1f}, {:.1f}, {:.1f}) mm, "
-                "halfLengths=({:.1f}, {:.1f}, {:.1f}) mm, inner face at z={:.1f} mm",
-                ecal.name(), cx / UC::mm, cy / UC::mm, cz / UC::mm, halfX / UC::mm, halfY / UC::mm, halfZ / UC::mm,
-                (cz - halfZ) / UC::mm)
+  info() << fmt::format("Built planar ECAL calo face for '{}': center=({:.1f}, {:.1f}, {:.1f}) mm, "
+                        "halfLengths=({:.1f}, {:.1f}, {:.1f}) mm, inner face at z={:.1f} mm",
+                        ecal.name(), cx / UC::mm, cy / UC::mm, cz / UC::mm, halfX / UC::mm, halfY / UC::mm,
+                        halfZ / UC::mm, (cz - halfZ) / UC::mm)
          << endmsg;
 }

@@ -70,12 +70,12 @@ struct MaterialMappingAlg final : public Gaudi::Algorithm {
 
   Gaudi::Property<std::vector<std::string>> m_inputFiles{
       this, "InputFiles", {}, "ROOT files holding the recorded material tracks from the geantino scan."};
-  Gaudi::Property<std::string>  m_treeName{this, "TreeName", "material_tracks",
+  Gaudi::Property<std::string> m_treeName{this, "TreeName", "material_tracks",
                                           "Name of the TTree holding the recorded material tracks. Must match the "
-                                           "treeName the recording job's RootMaterialTrackWriter used."};
-  Gaudi::Property<std::string>  m_outputFile{this, "OutputFile", "material-map.json",
+                                          "treeName the recording job's RootMaterialTrackWriter used."};
+  Gaudi::Property<std::string> m_outputFile{this, "OutputFile", "material-map.json",
                                             "Path of the material map to write. Feed this back to "
-                                             "ActsGeoSvc.MaterialMapFile for reconstruction."};
+                                            "ActsGeoSvc.MaterialMapFile for reconstruction."};
   Gaudi::Property<std::int64_t> m_maxTracks{
       this, "MaxTracks", -1, "Stop after this many recorded tracks. Negative (default) processes the whole input."};
   Gaudi::Property<bool> m_emptyBinCorrection{
@@ -95,18 +95,18 @@ struct MaterialMappingAlg final : public Gaudi::Algorithm {
 private:
   SmartIF<IActsGeoSvc> m_actsGeoSvc;
 
-  std::unique_ptr<const Acts::Logger>               m_actsLogger{nullptr};
-  std::unique_ptr<Acts::MaterialMapper>             m_mapper{nullptr};
-  std::unique_ptr<TChain>                           m_chain{nullptr};
+  std::unique_ptr<const Acts::Logger> m_actsLogger{nullptr};
+  std::unique_ptr<Acts::MaterialMapper> m_mapper{nullptr};
+  std::unique_ptr<TChain> m_chain{nullptr};
   std::unique_ptr<ActsPlugins::RootMaterialTrackIo> m_trackIo{nullptr};
 
   // Mutated from the const execute(); the algorithm is a one-shot job and is
   // not meant to be run concurrently.
   mutable std::unique_ptr<Acts::MaterialMapper::State> m_state{nullptr};
-  mutable std::size_t                                  m_nProcessed{0};
-  mutable bool                                         m_done{false};
+  mutable std::size_t m_nProcessed{0};
+  mutable bool m_done{false};
 
-  Acts::GeometryContext      m_gctx = Acts::GeometryContext::dangerouslyDefaultConstruct();
+  Acts::GeometryContext m_gctx = Acts::GeometryContext::dangerouslyDefaultConstruct();
   Acts::MagneticFieldContext m_mctx{};
 };
 
@@ -149,7 +149,7 @@ StatusCode MaterialMappingAlg::initialize() {
   assignerCfg.surfaces = materialSurfaces;
 
   Acts::BinnedSurfaceMaterialAccumulator::Config accumulatorCfg;
-  accumulatorCfg.materialSurfaces   = materialSurfaces;
+  accumulatorCfg.materialSurfaces = materialSurfaces;
   accumulatorCfg.emptyBinCorrection = m_emptyBinCorrection.value();
 
   Acts::MaterialMapper::Config mapperCfg;
@@ -159,7 +159,7 @@ StatusCode MaterialMappingAlg::initialize() {
       accumulatorCfg, m_actsLogger->cloneWithSuffix("|Accumulator"));
 
   m_mapper = std::make_unique<Acts::MaterialMapper>(mapperCfg, m_actsLogger->cloneWithSuffix("|Mapper"));
-  m_state  = m_mapper->createState(m_gctx);
+  m_state = m_mapper->createState(m_gctx);
 
   m_chain = std::make_unique<TChain>(m_treeName.value().c_str());
   for (const auto& file : m_inputFiles.value()) {
@@ -178,8 +178,8 @@ StatusCode MaterialMappingAlg::initialize() {
   // RootMaterialTrackWriter, otherwise the branches do not line up.
   ActsPlugins::RootMaterialTrackIo::Config ioCfg;
   ioCfg.prePostStepInfo = m_prePostStepInfo.value();
-  ioCfg.surfaceInfo     = m_surfaceInfo.value();
-  ioCfg.volumeInfo      = m_volumeInfo.value();
+  ioCfg.surfaceInfo = m_surfaceInfo.value();
+  ioCfg.volumeInfo = m_volumeInfo.value();
 
   m_trackIo = std::make_unique<ActsPlugins::RootMaterialTrackIo>(ioCfg);
   m_trackIo->connectForRead(*m_chain);
@@ -232,12 +232,12 @@ StatusCode MaterialMappingAlg::finalize() {
   // material, and there is no volume material, so the writer only needs to
   // handle boundaries.
   Acts::MaterialMapJsonConverter::Config converterCfg;
-  converterCfg.context             = m_gctx;
-  converterCfg.processSensitives   = false;
-  converterCfg.processApproaches   = false;
+  converterCfg.context = m_gctx;
+  converterCfg.processSensitives = false;
+  converterCfg.processApproaches = false;
   converterCfg.processRepresenting = false;
-  converterCfg.processBoundaries   = true;
-  converterCfg.processVolumes      = false;
+  converterCfg.processBoundaries = true;
+  converterCfg.processVolumes = false;
 
   Acts::MaterialMapJsonConverter converter{converterCfg, Acts::Logging::INFO};
 

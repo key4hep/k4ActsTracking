@@ -35,17 +35,17 @@
 #include <unordered_map>
 
 namespace Acts {
-  class TrackingGeometry;
-  class MagneticFieldProvider;
-  class Surface;
-  class Blueprint;
-  class IMaterialDecorator;
-}  // namespace Acts
+class TrackingGeometry;
+class MagneticFieldProvider;
+class Surface;
+class Blueprint;
+class IMaterialDecorator;
+} // namespace Acts
 
 namespace dd4hep {
-  class Detector;
-  class DetElement;
-}  // namespace dd4hep
+class Detector;
+class DetElement;
+} // namespace dd4hep
 
 class ActsGeoSvc : public extends<Service, IActsGeoSvc> {
 public:
@@ -73,7 +73,7 @@ public:
 
   Gaudi::Property<std::string> m_objDumpFileName{this, "ObjVisFileName", "dump_acts_geo.obj",
                                                  "Name of the 3D visualization file"};
-  Gaudi::Property<bool>        m_dumpVisualization{this, "DumpVisualization", false,
+  Gaudi::Property<bool> m_dumpVisualization{this, "DumpVisualization", false,
                                             "Whether or not to create a 3D visualization dump"};
   Gaudi::Property<std::string> m_encodingStringConstant{
       this, "EncodingStringVariable", "GlobalTrackerReadoutID",
@@ -95,7 +95,7 @@ public:
       "dipole; the default (false) preserves the constant-field behaviour of the collider/barrel clients."};
 
   const CellIDSurfaceMap& cellIdToSurfaceMap() const override { return m_cellIDToSurface; }
-  std::string             cellIDEncodingString() const override { return m_cellIDEncodingString; }
+  std::string cellIDEncodingString() const override { return m_cellIDEncodingString; }
 
 private:
   using BlueprintBuilder = ActsPlugins::DD4hep::BlueprintBuilder;
@@ -124,20 +124,20 @@ private:
   /// fails when the configured file does not exist.
   StatusCode makeMaterialDecorator(std::shared_ptr<const Acts::IMaterialDecorator>& decorator) const;
 
-  SmartIF<IGeoSvc>                                          m_geoSvc;
-  std::shared_ptr<const Acts::TrackingGeometry>             m_trackingGeo{nullptr};
-  std::shared_ptr<const Acts::MagneticFieldProvider>        m_magneticField{nullptr};
-  std::unordered_map<dd4hep::CellID, const Acts::Surface*>  m_cellIDToSurface{};
+  SmartIF<IGeoSvc> m_geoSvc;
+  std::shared_ptr<const Acts::TrackingGeometry> m_trackingGeo{nullptr};
+  std::shared_ptr<const Acts::MagneticFieldProvider> m_magneticField{nullptr};
+  std::unordered_map<dd4hep::CellID, const Acts::Surface*> m_cellIDToSurface{};
   std::unordered_map<std::string, BlueprintPopulationFunc*> m_bluePrintPopulationFuncs{};
-  std::string                                               m_cellIDEncodingString{};
-  CaloFaceSurfaces                                          m_caloFaceSurfaces{};
-  std::vector<Acts::GeometryIdentifier>                     m_caloSurfaceGeoIds{};
-  std::vector<Acts::GeometryIdentifier>                     m_caloBarrelSurfaceGeoIds{};
-  std::vector<Acts::GeometryIdentifier>                     m_caloEndcapSurfaceGeoIds{};
+  std::string m_cellIDEncodingString{};
+  CaloFaceSurfaces m_caloFaceSurfaces{};
+  std::vector<Acts::GeometryIdentifier> m_caloSurfaceGeoIds{};
+  std::vector<Acts::GeometryIdentifier> m_caloBarrelSurfaceGeoIds{};
+  std::vector<Acts::GeometryIdentifier> m_caloEndcapSurfaceGeoIds{};
 };
 
 inline std::shared_ptr<const Acts::TrackingGeometry> ActsGeoSvc::trackingGeometry() const { return m_trackingGeo; }
 
 inline std::shared_ptr<const Acts::MagneticFieldProvider> ActsGeoSvc::magneticField() const { return m_magneticField; }
 
-#endif  // K4ACTSTRACKING_ACTSGEOSVC_H
+#endif // K4ACTSTRACKING_ACTSGEOSVC_H

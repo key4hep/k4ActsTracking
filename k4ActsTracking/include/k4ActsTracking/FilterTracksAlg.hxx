@@ -42,29 +42,29 @@ namespace TrackPerf {}
 struct FilterTracksAlg final : k4FWCore::Transformer<edm4hep::TrackCollection(const edm4hep::TrackCollection&)> {
 public:
   /**
-         	* @brief Constructor for FilterTracksAlg
-         	* @param name unique string identifier for this instance
-         	* @param svcLoc a Service Locator passed by the Gaudi AlgManager
-         	*/
+   * @brief Constructor for FilterTracksAlg
+   * @param name unique string identifier for this instance
+   * @param svcLoc a Service Locator passed by the Gaudi AlgManager
+   */
   FilterTracksAlg(const std::string& name, ISvcLocator* pSvcLocator);
 
   /**
-		 * @brief Sets up the Magnetic Field of the detector
-		 */
+   * @brief Sets up the Magnetic Field of the detector
+   */
   StatusCode initialize();
 
   /**
-         	* @brief FilterTracksAlg operation. The workhorse of this Transformer.
-         	* @param trackCollection A collection of deduped tracks.
-         	* @return A Track Collection with filters applied
-         	*/
+   * @brief FilterTracksAlg operation. The workhorse of this Transformer.
+   * @param trackCollection A collection of deduped tracks.
+   * @return A Track Collection with filters applied
+   */
   edm4hep::TrackCollection operator()(const edm4hep::TrackCollection& tracks) const;
 
 private:
   /**
-		 * @brief Sets up the Magnetic Field of the Detector from dd4hep
-		 * @TODO: This can be done better with a GeoSvc.
-		 */
+   * @brief Sets up the Magnetic Field of the Detector from dd4hep
+   * @TODO: This can be done better with a GeoSvc.
+   */
   void buildBfield();
 
   //! Cut off for total number of hits
@@ -80,10 +80,10 @@ private:
   //! Cut off for Z0
   Gaudi::Property<float> m_MaxZ0{this, "MaxZ0", 5, "Maximum Z0 value for a track"};
   //! Cut off for momentum
-  Gaudi::Property<float> m_MinPt{this, "MinPt", 1.0, "Minimum transverse momentum"};  // units GeV
+  Gaudi::Property<float> m_MinPt{this, "MinPt", 1.0, "Minimum transverse momentum"}; // units GeV
   //! Cut off for number of holes on the track (< 0 disables the cut)
   Gaudi::Property<int> m_MaxHoles{this, "MaxHoles", 0, "Maximum number of holes on track"};
 
   //! Default magnetic field value
-  float m_Bz = 3.57;  // units Tesla
+  float m_Bz = 3.57; // units Tesla
 };
