@@ -93,6 +93,7 @@ def _get_compact_file():
         "--compactFile",
         help="The geometry compact file to use for reconstruction",
         type=str,
+        required=True,
     )
     args = parser.parse_known_args()[0]
     return args.compactFile
