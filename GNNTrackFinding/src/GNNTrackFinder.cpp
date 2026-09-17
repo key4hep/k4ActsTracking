@@ -89,10 +89,11 @@ constexpr const char* kTrackBuildingCC = "connected-components";
 /// Track building that additionally walks the components that are not paths
 constexpr const char* kTrackBuildingCCAndWalk = "cc-and-walk";
 
-/// The hit feature the "cc-and-walk" track building orders the two hits of an
-/// edge by, to give the graph a direction. Not configurable: any other choice
-/// would not be a radius.
-const std::array<std::string, 1> kRadiusFeature{"r"};
+/// The hit features the distance from the interaction point (r^2 + z^2) is
+/// computed from. Both the edge ordering of the graph construction and the
+/// "cc-and-walk" track building direct their edges by it. Not configurable:
+/// any other choice would not be that distance.
+const std::array<std::string, OnnxMetricLearning::kNumRadiusFeatures> kRadiusFeatures{"r", "z"};
 
 /// Lower-case an (ASCII) configuration string, so that the device
 /// specification can be given in any case.
@@ -369,8 +370,8 @@ StatusCode GNNTrackFinder::initialize() {
   if (computeEdgeFeatures) {
     addFeatures(kEdgeFeatureInputs);
   }
-  if (ccAndWalk) {
-    addFeatures(kRadiusFeature);
+  if (m_sortEdges.value() || ccAndWalk) {
+    addFeatures(kRadiusFeatures);
   }
   for (const auto& edgeClassifierFeatures : edgeClassifierFeaturesList) {
     addFeatures(edgeClassifierFeatures);
@@ -390,7 +391,7 @@ StatusCode GNNTrackFinder::initialize() {
   };
   m_embeddingFeatureIndices = featureIndices(embeddingFeatures);
   m_edgeFeatureIndices = computeEdgeFeatures ? featureIndices(kEdgeFeatureInputs) : std::vector<int>{};
-  m_radiusFeatureIndex = ccAndWalk ? featureIndices(kRadiusFeature).front() : -1;
+  m_radiusFeatureIndices = (m_sortEdges.value() || ccAndWalk) ? featureIndices(kRadiusFeatures) : std::vector<int>{};
   m_edgeClassifierFeatureIndices.clear();
   m_edgeClassifierFeatureIndices.reserve(nEdgeClassifiers);
   for (const auto& edgeClassifierFeatures : edgeClassifierFeaturesList) {
@@ -428,6 +429,10 @@ void GNNTrackFinder::buildPipeline(const std::vector<float>& embeddingScales,
                                  .featureScales = embeddingScales,
                                  .edgeFeatureIndices = m_edgeFeatureIndices,
                                  .edgeFeatureScales = edgeFeatureScales,
+                                 // Empty unless the ordering is switched on, which is what
+                                 // OnnxMetricLearning takes as "leave the edges as they are"
+                                 .radiusFeatureIndices =
+                                     m_sortEdges.value() ? m_radiusFeatureIndices : std::vector<int>{},
                                  .fixedInputLength = m_embeddingFixedInputLength.value(),
                                  .keepPadding = m_keepEmbeddingPadding.value(),
                                  .fixedEdgeLength = m_edgeClassifierFixedInputLength.value(),
@@ -460,7 +465,8 @@ void GNNTrackFinder::buildPipeline(const std::vector<float>& embeddingScales,
   std::shared_ptr<ActsPlugins::TrackBuildingBase> trackBuilder{};
   if (m_trackBuilding.value() == kTrackBuildingCCAndWalk) {
     trackBuilder = std::make_shared<CCAndWalkTrackBuilding>(
-        CCAndWalkTrackBuilding::Config{.rFeatureIndex = m_radiusFeatureIndex,
+        CCAndWalkTrackBuilding::Config{.rFeatureIndex = m_radiusFeatureIndices.at(0),
+                                       .zFeatureIndex = m_radiusFeatureIndices.at(1),
                                        .addScore = m_walkAddScore.value(),
                                        .minScore = m_walkMinScore.value(),
                                        .minCandidateSize = m_minHitsPerTrk.value()},
