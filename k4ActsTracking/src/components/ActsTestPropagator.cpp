@@ -168,7 +168,7 @@ std::vector<podio::UserDataCollection<double>> ActsTestPropagator::operator()() 
 
     auto state = propagator.makeState(options);
 
-    auto initResult = propagator.initialize(state, startParameters);
+    auto initResult = propagator.initialize(state, startParameters, nullptr);
     if (!initResult.ok()) {
       warning() << "Failed to initialize propagator for track " << i << ": " << initResult.error() << endmsg;
       continue;
