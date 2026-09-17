@@ -116,6 +116,4 @@ ckf_tracking = make_ckf_tracking(
 )
 algList.append(ckf_tracking)
 
-ApplicationMgr(
-    TopAlg=algList, ExtSvc=svcList, OutputLevel=INFO, EvtSel="NONE", EvtMax=-1
-)
+ApplicationMgr(TopAlg=algList, ExtSvc=svcList, OutputLevel=INFO, EvtSel="NONE", EvtMax=-1)

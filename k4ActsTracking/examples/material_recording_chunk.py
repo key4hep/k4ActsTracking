@@ -157,9 +157,7 @@ def main():
         flush=True,
     )
 
-    sequencer = acts.examples.Sequencer(
-        events=args.events, skip=args.skip, numThreads=1
-    )
+    sequencer = acts.examples.Sequencer(events=args.events, skip=args.skip, numThreads=1)
 
     acts_material_recording.runMaterialRecording(
         detector=acts.examples.geant4.GdmlDetector(path=str(gdml)),

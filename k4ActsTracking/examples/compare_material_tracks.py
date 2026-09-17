@@ -130,8 +130,13 @@ def main():
     p.add_argument("-o", "--output-dir", default="material_validation")
     p.add_argument("--tree-name", default="material_tracks")
     p.add_argument("--bins", type=int, default=50)
-    p.add_argument("--eta-range", nargs=2, type=float, default=None,
-                   help="defaults to the range present in the scan")
+    p.add_argument(
+        "--eta-range",
+        nargs=2,
+        type=float,
+        default=None,
+        help="defaults to the range present in the scan",
+    )
     p.add_argument("--max-tracks", type=int, default=-1)
     args = p.parse_args()
 
@@ -174,9 +179,7 @@ def main():
         (eta_s, eta_p, lo, hi, r"$\eta$", "x0_vs_eta.png"),
         (phi_s, phi_p, -math.pi, math.pi, r"$\phi$ [rad]", "x0_vs_phi.png"),
     ]:
-        fig, (a, b) = plt.subplots(
-            2, 1, sharex=True, height_ratios=[3, 1], figsize=(7, 6)
-        )
+        fig, (a, b) = plt.subplots(2, 1, sharex=True, height_ratios=[3, 1], figsize=(7, 6))
         plot_profile(a, b, None, var_s, var_p, x0_s, x0_p, args.bins, lo_, hi_, xlabel)
         a.set_title("Material: Geant4 scan vs mapped geometry")
         fig.tight_layout()
@@ -201,10 +204,12 @@ def main():
     # 2D map of where material is missing
     fig, ax = plt.subplots(figsize=(7.5, 5))
     nb = max(10, args.bins // 2)
-    sum_p, xe, ye = np.histogram2d(eta_s, phi_s, bins=[nb, nb],
-                                   range=[[lo, hi], [-math.pi, math.pi]], weights=x0_p)
-    sum_s, _, _ = np.histogram2d(eta_s, phi_s, bins=[nb, nb],
-                                 range=[[lo, hi], [-math.pi, math.pi]], weights=x0_s)
+    sum_p, xe, ye = np.histogram2d(
+        eta_s, phi_s, bins=[nb, nb], range=[[lo, hi], [-math.pi, math.pi]], weights=x0_p
+    )
+    sum_s, _, _ = np.histogram2d(
+        eta_s, phi_s, bins=[nb, nb], range=[[lo, hi], [-math.pi, math.pi]], weights=x0_s
+    )
     with np.errstate(divide="ignore", invalid="ignore"):
         ratio2d = np.where(sum_s > 0, sum_p / sum_s, np.nan)
     im = ax.pcolormesh(xe, ye, ratio2d.T, vmin=0.0, vmax=2.0, cmap="RdBu_r")
