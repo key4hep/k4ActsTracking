@@ -74,7 +74,8 @@ jobs:
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DACTS_BUILD_PLUGIN_DD4HEP=ON \
             -DACTS_BUILD_PLUGIN_ROOT=ON \
-            -DACTS_BUILD_PLUGIN_JSON=ON
+            -DACTS_BUILD_PLUGIN_JSON=ON \ 
+            -DACTS_BUILD_PLUGIN_EDM4HEP=ON
           cmake --build build -- -j$(nproc)
           cmake --install build
           k4_local_repo
