@@ -26,7 +26,7 @@ from Configurables import ActsGeoSvc, GeoSvc, ActsTestPropagator, EventDataSvc
 from k4FWCore import ApplicationMgr, IOSvc
 from k4FWCore.parseArgs import parser
 
-parser.add_argument("--compactFile", help="Compact file")
+parser.add_argument("--compactFile", help="Compact file", required=True)
 parser.add_argument(
     "--test-propagation",
     help="Test propagation through the geometry using an ACTS particle gun",
