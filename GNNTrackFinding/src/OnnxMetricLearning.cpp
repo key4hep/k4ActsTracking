@@ -392,9 +392,7 @@ torch::Tensor OnnxMetricLearning::orderEdgesByRadius(const std::vector<float>& i
   }
 
   // The metric is the squared distance from the interaction point, computed
-  // from the unscaled node values (this is what ACORN orders the edges by).
-  // Squaring keeps the ordering and saves the square roots, and it is only ever
-  // compared, never handed to a model. Note that this makes
+  // from the unscaled node values. Note that this makes
   // Config::shuffleDirections moot: whatever direction the edge building left,
   // the edges end up pointing outwards.
   enum RadiusFeatureInput { eR = 0, eZ };

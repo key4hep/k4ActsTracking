@@ -106,9 +106,7 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
   Gaudi::Property<bool> m_sortEdges{
       this, "SortEdges", true,
       "If true, orient every built edge from the hit closer to the interaction point (by r^2 + z^2) to the one "
-      "further out, before the edge features are computed. This is what the ACORN pipeline does, and the edge "
-      "features are signed differences along the edge, so the models expect that convention. False leaves the "
-      "edges oriented the way the edge building produced them."};
+      "further out, before the edge features are computed. "};
   Gaudi::Property<bool> m_computeEdgeFeatures{
       this, "ComputeEdgeFeatures", false,
       "If true, compute the six edge features (dr, dphi, dz, deta, phislope, rphislope) for every built edge, which "
