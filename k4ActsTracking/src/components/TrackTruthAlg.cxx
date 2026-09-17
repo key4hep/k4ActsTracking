@@ -44,9 +44,9 @@ TrackTruthAlg::TrackTruthAlg(const std::string& name, ISvcLocator* svcLoc)
                         KeyValues("InputTrackerHit2SimTrackerHitRelationName", {"TrackMCRelation"})},
                        {KeyValues("OutputParticle2TrackRelationName", {"Particle2TrackRelationName"})}) {}
 
-std::tuple<edm4hep::TrackMCParticleLinkCollection> TrackTruthAlg::operator()(
-    const edm4hep::TrackCollection&                       tracks,
-    const edm4hep::TrackerHitSimTrackerHitLinkCollection& trackerHitRelations) const {
+std::tuple<edm4hep::TrackMCParticleLinkCollection>
+TrackTruthAlg::operator()(const edm4hep::TrackCollection& tracks,
+                          const edm4hep::TrackerHitSimTrackerHitLinkCollection& trackerHitRelations) const {
   // Map TrackerHits to SimTrackerHits
   std::map<edm4hep::TrackerHit, edm4hep::SimTrackerHit> trackerHit2SimHit;
   for (const auto& hitRel : trackerHitRelations) {
@@ -58,7 +58,7 @@ std::tuple<edm4hep::TrackMCParticleLinkCollection> TrackTruthAlg::operator()(
   // Best match ifo for each MCParticle
   struct MatchInfo {
     edm4hep::Track track;
-    float          frac = 0.f;
+    float frac = 0.f;
   };
 
   // Thread-local best maps
@@ -70,8 +70,8 @@ std::tuple<edm4hep::TrackMCParticleLinkCollection> TrackTruthAlg::operator()(
     std::map<edm4hep::MCParticle, uint32_t> trackHit2Mc;
 
     for (std::size_t iTrack = r.begin(); iTrack != r.end(); ++iTrack) {
-      const auto& track      = tracks[iTrack];
-      const auto& trackHits  = track.getTrackerHits();
+      const auto& track = tracks[iTrack];
+      const auto& trackHits = track.getTrackerHits();
       const auto& nTrackHits = trackHits.size();
 
       if (nTrackHits == 0) {
@@ -84,13 +84,13 @@ std::tuple<edm4hep::TrackMCParticleLinkCollection> TrackTruthAlg::operator()(
       for (const auto& hit : trackHits) {
         auto it = trackerHit2SimHit.find(hit);
         if (it == trackerHit2SimHit.end()) {
-          continue;  // No sim hit found for this tracker hit
+          continue; // No sim hit found for this tracker hit
         }
 
-        const auto& simHit   = it->second;
-        auto        particle = simHit.getParticle();
+        const auto& simHit = it->second;
+        auto particle = simHit.getParticle();
         if (particle.isAvailable()) {
-          ++trackHit2Mc[particle];  //Increment MC Particle counter
+          ++trackHit2Mc[particle]; // Increment MC Particle counter
         }
       }
 
@@ -98,23 +98,23 @@ std::tuple<edm4hep::TrackMCParticleLinkCollection> TrackTruthAlg::operator()(
       for (const auto& [mcParticle, hitCount] : trackHit2Mc) {
         const float frac = static_cast<float>(hitCount) / static_cast<float>(nTrackHits);
 
-        auto       matchIt = localBest.find(mcParticle);
-        const bool better  = (matchIt == localBest.end()) ||  // no best matches exist
-                            ((matchIt->second).frac < frac);  // this match is better (more hits on track)
+        auto matchIt = localBest.find(mcParticle);
+        const bool better = (matchIt == localBest.end()) ||  // no best matches exist
+                            ((matchIt->second).frac < frac); // this match is better (more hits on track)
         if (better) {
           auto& matchInfo = (matchIt == localBest.end()) ? localBest[mcParticle] : matchIt->second;
           matchInfo.track = track;
-          matchInfo.frac  = frac;
+          matchInfo.frac = frac;
         }
       }
-    }  // for each track
-  };  // parallelTrackSearching
+    } // for each track
+  }; // parallelTrackSearching
 
   // Run in parallel if more than one thread is requested
   if (m_numThreads > 1) {
     tbb::task_arena arena(m_numThreads.value());
     arena.execute([&] { tbb::parallel_for(tbb::blocked_range<size_t>(0, tracks.size()), parallelTrackSearching); });
-  } else {  // Serial execution
+  } else { // Serial execution
     parallelTrackSearching(tbb::blocked_range<size_t>(0, tracks.size()));
   }
 
@@ -122,9 +122,9 @@ std::tuple<edm4hep::TrackMCParticleLinkCollection> TrackTruthAlg::operator()(
   std::map<edm4hep::MCParticle, MatchInfo> mcBestMatch;
   tlsBestMaps.combine_each([&](const std::map<edm4hep::MCParticle, MatchInfo>& localBest) {
     for (const auto& [mcParticle, matchInfo] : localBest) {
-      auto       matchIt = mcBestMatch.find(mcParticle);
-      const bool better  = (matchIt == mcBestMatch.end()) ||          // no best matches exist
-                          ((matchIt->second).frac < matchInfo.frac);  // this match is better (more hits on track)
+      auto matchIt = mcBestMatch.find(mcParticle);
+      const bool better = (matchIt == mcBestMatch.end()) ||          // no best matches exist
+                          ((matchIt->second).frac < matchInfo.frac); // this match is better (more hits on track)
       if (better) {
         mcBestMatch[mcParticle] = matchInfo;
       }

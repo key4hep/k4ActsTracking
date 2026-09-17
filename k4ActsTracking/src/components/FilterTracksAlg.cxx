@@ -50,10 +50,10 @@ StatusCode FilterTracksAlg::initialize() {
 // Build magnetic field
 void FilterTracksAlg::buildBfield() {
   // Get magnetic field
-  dd4hep::Detector& lcdd                   = dd4hep::Detector::getInstance();
-  const double      position[3]            = {0, 0, 0};       // position to calculate magnetic field (here, the origin)
-  double            magneticFieldVector[3] = {0, 0, 0};       // initialise object to hold magnetic field
-  lcdd.field().magneticField(position, magneticFieldVector);  // get the magnetic field vector from DD4hep
+  dd4hep::Detector& lcdd = dd4hep::Detector::getInstance();
+  const double position[3] = {0, 0, 0};                      // position to calculate magnetic field (here, the origin)
+  double magneticFieldVector[3] = {0, 0, 0};                 // initialise object to hold magnetic field
+  lcdd.field().magneticField(position, magneticFieldVector); // get the magnetic field vector from DD4hep
   m_Bz = magneticFieldVector[2] / dd4hep::tesla;
 }
 
@@ -67,7 +67,7 @@ edm4hep::TrackCollection FilterTracksAlg::operator()(const edm4hep::TrackCollect
   for (const auto& trk : tracks) {
     int nhittotal = trk.trackerHits_size();
     if (m_NHitsTotal > 0 && nhittotal <= m_NHitsTotal)
-      continue;  // Hit count check
+      continue; // Hit count check
 
     if (m_NHitsVertex > 0) {
       int nhitvertex = trk.getSubdetectorHitNumbers(1) + trk.getSubdetectorHitNumbers(2);
@@ -103,10 +103,10 @@ edm4hep::TrackCollection FilterTracksAlg::operator()(const edm4hep::TrackCollect
 
     float pt = fabs(0.3 * m_Bz / ipState->omega / 1000);
     if (m_MinPt > 0 && pt < m_MinPt)
-      continue;  // pT check
+      continue; // pT check
 
     if (m_MaxHoles >= 0 && trk.getNholes() > m_MaxHoles)
-      continue;  // hole count check
+      continue; // hole count check
 
     // add tracks that pass all tests
     outputTracks.push_back(trk);

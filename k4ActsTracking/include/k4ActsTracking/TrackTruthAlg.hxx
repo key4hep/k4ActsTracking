@@ -50,21 +50,21 @@ struct TrackTruthAlg final
           const edm4hep::TrackCollection&, const edm4hep::TrackerHitSimTrackerHitLinkCollection&)> {
 public:
   /**
-         * @brief Constructor for TrackTruthAlg
-         * @param name unique string identifier for this instance
-         * @param svcLoc a Service Locator passed by the Gaudi AlgManager
-         */
+   * @brief Constructor for TrackTruthAlg
+   * @param name unique string identifier for this instance
+   * @param svcLoc a Service Locator passed by the Gaudi AlgManager
+   */
   TrackTruthAlg(const std::string& name, ISvcLocator* svcLoc);
 
   /**
-         * @brief TrackTruthAlg operation. The workhorse of this MultiTransformer.
-         * @param track A collection of reconstructed, deduped, filtered tracks
-	  * @param trackerHitRelations A merged collection of associations between tracker hits and sim tracker hits
-         * @return An association collection connecting Tracks to MCParticles
-         */
-  std::tuple<edm4hep::TrackMCParticleLinkCollection> operator()(
-      const edm4hep::TrackCollection&                       tracks,
-      const edm4hep::TrackerHitSimTrackerHitLinkCollection& trackerHitRelations) const;
+   * @brief TrackTruthAlg operation. The workhorse of this MultiTransformer.
+   * @param track A collection of reconstructed, deduped, filtered tracks
+   * @param trackerHitRelations A merged collection of associations between tracker hits and sim tracker hits
+   * @return An association collection connecting Tracks to MCParticles
+   */
+  std::tuple<edm4hep::TrackMCParticleLinkCollection>
+  operator()(const edm4hep::TrackCollection& tracks,
+             const edm4hep::TrackerHitSimTrackerHitLinkCollection& trackerHitRelations) const;
 
 protected:
   /**

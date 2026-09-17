@@ -36,7 +36,7 @@
 
 namespace ACTSTracking {
 
-  /**
+/**
  * @brief Maps DD4hep cell ID's to ACTS geometry ID's
  *
  * Lots of hardcoded values that match up to mod5 geometry
@@ -46,85 +46,86 @@ namespace ACTSTracking {
  * @author Samuel Ferraro
  * @version $Id$
  */
-  class GeometryIdMappingTool {
-  public:
-    enum class DetSchema : char { MuColl_v1, MAIA_v0, MuSIC_v1, MuSIC_v2 };
+class GeometryIdMappingTool {
+public:
+  enum class DetSchema : char { MuColl_v1, MAIA_v0, MuSIC_v1, MuSIC_v2 };
 
-    using modules_map = std::unordered_map<uint32_t, uint32_t>;
-    using det_mod_map = std::unordered_map<DetSchema, modules_map>;
+  using modules_map = std::unordered_map<uint32_t, uint32_t>;
+  using det_mod_map = std::unordered_map<DetSchema, modules_map>;
 
-    /**
- 	 * @brief Create a mapping tool using the provided encoderString to interpret cell ID's.
- 	 * @param encoderString string used to encode CellIDs
-	 */
-    GeometryIdMappingTool(const std::string& encoderString, DetSchema dType = DetSchema::MuColl_v1);
+  /**
+   * @brief Create a mapping tool using the provided encoderString to interpret cell ID's.
+   * @param encoderString string used to encode CellIDs
+   */
+  GeometryIdMappingTool(const std::string& encoderString, DetSchema dType = DetSchema::MuColl_v1);
 
-    // /**
-    // * @brief Decode any (EDM4hep) Tracker Hit Cell ID
-    // * @param hit an EDM4hep hit
-    // * @return decoded Cell ID ready to be passed to ACTS
-    // */
-    template <typename Hit> Acts::GeometryIdentifier getGeometryID(const Hit& hit) const {
-      const auto cellID = hit.getCellID();
-      return getGeometryID(m_decoder.get(cellID, m_systemIdx), m_decoder.get(cellID, m_layerIdx),
-                           m_decoder.get(cellID, m_sideIdx), m_decoder.get(cellID, m_moduleIdx),
-                           m_decoder.get(cellID, m_sensorIdx));
-    }
+  // /**
+  // * @brief Decode any (EDM4hep) Tracker Hit Cell ID
+  // * @param hit an EDM4hep hit
+  // * @return decoded Cell ID ready to be passed to ACTS
+  // */
+  template <typename Hit>
+  Acts::GeometryIdentifier getGeometryID(const Hit& hit) const {
+    const auto cellID = hit.getCellID();
+    return getGeometryID(m_decoder.get(cellID, m_systemIdx), m_decoder.get(cellID, m_layerIdx),
+                         m_decoder.get(cellID, m_sideIdx), m_decoder.get(cellID, m_moduleIdx),
+                         m_decoder.get(cellID, m_sensorIdx));
+  }
 
-  private:
-    /**
-	 * @brief Takes decoded Cell ID and turns it into ACTS format
-	 * @param *ID the IDs specific to each part of the detector
-	 * @return Cell ID ready to be passed to ACTS
-	 */
-    Acts::GeometryIdentifier getGeometryID(uint32_t systemID, uint32_t layerID, int32_t sideID, uint32_t ladderID,
-                                           uint32_t moduleID) const;
+private:
+  /**
+   * @brief Takes decoded Cell ID and turns it into ACTS format
+   * @param *ID the IDs specific to each part of the detector
+   * @return Cell ID ready to be passed to ACTS
+   */
+  Acts::GeometryIdentifier getGeometryID(uint32_t systemID, uint32_t layerID, int32_t sideID, uint32_t ladderID,
+                                         uint32_t moduleID) const;
 
-    /// Tool used to decode Cell IDs with encoder string
-    dd4hep::DDSegmentation::BitFieldCoder m_decoder;
-    // The field indices in the decoder, cached for quicker lookups
-    size_t m_systemIdx{};
-    size_t m_sideIdx{};
-    size_t m_layerIdx{};
-    size_t m_moduleIdx{};
-    size_t m_sensorIdx{};
+  /// Tool used to decode Cell IDs with encoder string
+  dd4hep::DDSegmentation::BitFieldCoder m_decoder;
+  // The field indices in the decoder, cached for quicker lookups
+  size_t m_systemIdx{};
+  size_t m_sideIdx{};
+  size_t m_layerIdx{};
+  size_t m_moduleIdx{};
+  size_t m_sensorIdx{};
 
-    const DetSchema det_type;
+  const DetSchema det_type;
 
-    /// Volume map to detector sections
-    static const std::unordered_map<int32_t, uint32_t> VolumeMap;
+  /// Volume map to detector sections
+  static const std::unordered_map<int32_t, uint32_t> VolumeMap;
 
-    /// IDs for each part of the detector
-    ///@{
-    static const int32_t VertexEndCapNegative;
-    static const int32_t VertexBarrel;
-    static const int32_t VertexEndCapPositive;
-    static const int32_t InnerTrackerEndCapNegative;
-    static const int32_t InnerTrackerBarrel;
-    static const int32_t InnerTrackerEndCapPositive;
-    static const int32_t OuterInnerTrackerEndCapNegative;
-    static const int32_t OuterInnerTrackerBarrel;
-    static const int32_t OuterInnerTrackerEndCapPositive;
-    static const int32_t OuterTrackerEndCapNegative;
-    static const int32_t OuterTrackerBarrel;
-    static const int32_t OuterTrackerEndCapPositive;
-    ///@}
+  /// IDs for each part of the detector
+  ///@{
+  static const int32_t VertexEndCapNegative;
+  static const int32_t VertexBarrel;
+  static const int32_t VertexEndCapPositive;
+  static const int32_t InnerTrackerEndCapNegative;
+  static const int32_t InnerTrackerBarrel;
+  static const int32_t InnerTrackerEndCapPositive;
+  static const int32_t OuterInnerTrackerEndCapNegative;
+  static const int32_t OuterInnerTrackerBarrel;
+  static const int32_t OuterInnerTrackerEndCapPositive;
+  static const int32_t OuterTrackerEndCapNegative;
+  static const int32_t OuterTrackerBarrel;
+  static const int32_t OuterTrackerEndCapPositive;
+  ///@}
 
-    /// Modules in phi ladder per layer
-    ///@{
-    static const det_mod_map NLad_VertexBarrel;
-    static const det_mod_map NLad_InnerTrackerBarrel;
-    static const det_mod_map NLad_OuterInnerTrackerBarrel;
-    static const det_mod_map NLad_OuterTrackerBarrel;
-    ///@}
+  /// Modules in phi ladder per layer
+  ///@{
+  static const det_mod_map NLad_VertexBarrel;
+  static const det_mod_map NLad_InnerTrackerBarrel;
+  static const det_mod_map NLad_OuterInnerTrackerBarrel;
+  static const det_mod_map NLad_OuterTrackerBarrel;
+  ///@}
 
-    /// Modules in ring per layer
-    ///@{
-    static const det_mod_map NRng_VertexEndCap;
-    static const det_mod_map NRng_InnerTrackerEndCap;
-    static const det_mod_map NRng_OuterInnerTrackerEndCap;
-    static const det_mod_map NRng_OuterTrackerEndCap;
-    ///@}
-  };
+  /// Modules in ring per layer
+  ///@{
+  static const det_mod_map NRng_VertexEndCap;
+  static const det_mod_map NRng_InnerTrackerEndCap;
+  static const det_mod_map NRng_OuterInnerTrackerEndCap;
+  static const det_mod_map NRng_OuterTrackerEndCap;
+  ///@}
+};
 
-}  // namespace ACTSTracking
+} // namespace ACTSTracking

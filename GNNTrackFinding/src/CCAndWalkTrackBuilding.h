@@ -26,10 +26,10 @@
 #include <Acts/Plugins/Gnn/Stages.hpp>
 #include <Acts/Plugins/Gnn/Tensor.hpp>
 namespace ActsPlugins {
-  using Device           = Acts::Device;
-  using ExecutionContext = Acts::ExecutionContext;
-  using PipelineTensors  = Acts::PipelineTensors;
-}  // namespace ActsPlugins
+using Device = Acts::Device;
+using ExecutionContext = Acts::ExecutionContext;
+using PipelineTensors = Acts::PipelineTensors;
+} // namespace ActsPlugins
 #endif
 
 #include <cstddef>
@@ -92,7 +92,7 @@ public:
 private:
   /// One outgoing edge of a node, pointing at the hit at the larger radius
   struct OutEdge {
-    int   target{};
+    int target{};
     float score{};
   };
 
@@ -101,7 +101,7 @@ private:
   std::vector<int> longestPathFrom(int start, const std::vector<std::vector<OutEdge>>& outEdges,
                                    const std::vector<bool>& used) const;
 
-  Config                              m_cfg;
-  const auto&                         logger() const { return *m_logger; }
+  Config m_cfg;
+  const auto& logger() const { return *m_logger; }
   std::unique_ptr<const Acts::Logger> m_logger{nullptr};
 };

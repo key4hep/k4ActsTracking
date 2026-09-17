@@ -72,38 +72,38 @@ struct ACTSSeededCKFTrackingAlg final : ACTSAlgBase {
   using TrackContainer = Acts::TrackContainer<Acts::VectorTrackContainer, Acts::VectorMultiTrajectory, std::shared_ptr>;
   using TrackFinderOptions = Acts::CombinatorialKalmanFilterOptions<TrackContainer>;
 
-  using Stepper    = Acts::EigenStepper<>;
-  using Navigator  = Acts::Navigator;
+  using Stepper = Acts::EigenStepper<>;
+  using Navigator = Acts::Navigator;
   using Propagator = Acts::Propagator<Stepper, Navigator>;
-  using CKF        = Acts::CombinatorialKalmanFilter<Propagator, TrackContainer>;
+  using CKF = Acts::CombinatorialKalmanFilter<Propagator, TrackContainer>;
 
 public:
   /**
-         * @brief Constructor for ACTSSeededCKFTracking
-         * @param name unique string identifier for this instance
-         * @param svcLoc a Service Locator passed by the Gaudi AlgManager
-         */
+   * @brief Constructor for ACTSSeededCKFTracking
+   * @param name unique string identifier for this instance
+   * @param svcLoc a Service Locator passed by the Gaudi AlgManager
+   */
   ACTSSeededCKFTrackingAlg(const std::string& name, ISvcLocator* svcLoc);
 
   /**
-         * @brief Initializes the geometry for the detector
-         */
+   * @brief Initializes the geometry for the detector
+   */
   StatusCode initialize();
   /**
-         * @brief ACTSSeededCKFTracking operation. The workhorse of this MultiTransformer.
-         * @param trackerHitCollection A merged collection of all the tracker hits in the detector
-         * @return A tuple of Track Collections: The reconstructed tracks and the seeds that led to those tracks
-         */
-  std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection> operator()(
-      const edm4hep::TrackerHitPlaneCollection& trackerHitCollection) const;
+   * @brief ACTSSeededCKFTracking operation. The workhorse of this MultiTransformer.
+   * @param trackerHitCollection A merged collection of all the tracker hits in the detector
+   * @return A tuple of Track Collections: The reconstructed tracks and the seeds that led to those tracks
+   */
+  std::tuple<edm4hep::TrackCollection, edm4hep::TrackCollection>
+  operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitCollection) const;
 
   /// Convert the seeds found by the triplet seeder into ACTS bound track
   /// parameters and create the corresponding edm4hep seed tracks. The space
   /// point indices stored in @p seeds reference @p spacePoints.
-  std::vector<Acts::BoundTrackParameters> seedsToParameters(const Acts::SeedContainer&          seeds,
-                                                            const Acts::SpacePointContainer&    spacePoints,
-                                                            const ACTSTracking::HitContainer&   hits,
-                                                            edm4hep::TrackCollection&           seedCollection,
+  std::vector<Acts::BoundTrackParameters> seedsToParameters(const Acts::SeedContainer& seeds,
+                                                            const Acts::SpacePointContainer& spacePoints,
+                                                            const ACTSTracking::HitContainer& hits,
+                                                            edm4hep::TrackCollection& seedCollection,
                                                             Acts::MagneticFieldProvider::Cache& magCache) const;
 
   StatusCode tracking(const std::vector<Acts::BoundTrackParameters>& paramseeds, const CKF& trackFinder,
@@ -114,8 +114,8 @@ public:
 
 protected:
   /**
-	 * @brief Run Specifc Settings
-	 */
+   * @brief Run Specifc Settings
+   */
   ///@{
   Gaudi::Property<bool> m_runCKF{this, "RunCKF", true,
                                  "Run tracking using CKF. False means stop at the seeding stage."};
@@ -123,8 +123,8 @@ protected:
   ///@}
 
   /**
-	 * @brief Seed finding configuration
-	 */
+   * @brief Seed finding configuration
+   */
   ///@{
   Gaudi::Property<float> m_seedFinding_rMax{this, "SeedFinding_RMax", 150, "Maximum radius of hits to consider."};
   Gaudi::Property<float> m_seedFinding_deltaRMin{this, "SeedFinding_DeltaRMin", 5,
@@ -150,7 +150,7 @@ protected:
   Gaudi::Property<float> m_seedFinding_impactMax{this, "SeedFinding_ImpactMax", 3.0 * Acts::UnitConstants::mm,
                                                  "Maximum d0 of tracks to seed."};
 
-  std::vector<std::string> default_value;  // Not sure if this is a needed step, but this broke when I did it inline.
+  std::vector<std::string> default_value; // Not sure if this is a needed step, but this broke when I did it inline.
   Gaudi::Property<std::vector<std::string>> m_seedFinding_zBinEdges{this, "SeedFinding_zBinEdges", default_value,
                                                                     "Bins placement along Z for seeding."};
   Gaudi::Property<int> m_zTopBinLen{this, "SeedFinding_zTopBinLen", 1, "Number of top bins along Z for seeding."};
@@ -162,31 +162,31 @@ protected:
   ///@}
 
   /**
-	 * @brief Track fit parameters
-	 */
+   * @brief Track fit parameters
+   */
   ///@{
-  Gaudi::Property<double>  m_initialTrackError_pos{this, "InitialTrackError_Pos", 10 * Acts::UnitConstants::um,
+  Gaudi::Property<double> m_initialTrackError_pos{this, "InitialTrackError_Pos", 10 * Acts::UnitConstants::um,
                                                   "Track error estimate, local position (mm)."};
-  Gaudi::Property<double>  m_initialTrackError_phi{this, "InitialTrackError_Phi", 1 * Acts::UnitConstants::degree,
+  Gaudi::Property<double> m_initialTrackError_phi{this, "InitialTrackError_Phi", 1 * Acts::UnitConstants::degree,
                                                   "Track error estimate, phi (radians)."};
-  Gaudi::Property<double>  m_initialTrackError_relP{this, "InitialTrackError_RelP", 0.25,
+  Gaudi::Property<double> m_initialTrackError_relP{this, "InitialTrackError_RelP", 0.25,
                                                    "Track error estimate, momentum component (relative)."};
-  Gaudi::Property<double>  m_initialTrackError_lambda{this, "InitialTrackError_Lambda", 1 * Acts::UnitConstants::degree,
+  Gaudi::Property<double> m_initialTrackError_lambda{this, "InitialTrackError_Lambda", 1 * Acts::UnitConstants::degree,
                                                      "Track error estimate, lambda (radians)."};
-  Gaudi::Property<double>  m_initialTrackError_time{this, "InitialTrackError_Time", 100 * Acts::UnitConstants::ns,
+  Gaudi::Property<double> m_initialTrackError_time{this, "InitialTrackError_Time", 100 * Acts::UnitConstants::ns,
                                                    "Track error estimate, time (sec)."};
-  Gaudi::Property<double>  m_CKF_chi2CutOff{this, "CKF_Chi2CutOff", 15, "Maximum local chi2 contribution."};
+  Gaudi::Property<double> m_CKF_chi2CutOff{this, "CKF_Chi2CutOff", 15, "Maximum local chi2 contribution."};
   Gaudi::Property<int32_t> m_CKF_numMeasurementsCutOff{
       this, "CKF_NumMeasurementsCutOff", 10, "Maximum number of associated measurements on a single surface."};
   ///@}
 
   /**
-	 * @brief Seeding configuration
-	 */
+   * @brief Seeding configuration
+   */
   ///@{
   Gaudi::Property<std::vector<std::string>> m_seedingLayers{this, "SeedingLayers", default_value,
                                                             "Layers to use for seeding in vector."};
-  ACTSTracking::GeometryIdSelector          m_seedGeometrySelection;
+  ACTSTracking::GeometryIdSelector m_seedGeometrySelection;
   ///@}
 
   /**

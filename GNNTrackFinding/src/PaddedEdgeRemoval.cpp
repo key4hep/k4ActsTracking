@@ -30,7 +30,7 @@ using ActsPlugins::Tensor;
 
 PaddedEdgeRemoval::PaddedEdgeRemoval(std::unique_ptr<const Acts::Logger> logger) : m_logger(std::move(logger)) {}
 
-PipelineTensors PaddedEdgeRemoval::operator()(PipelineTensors                      tensors,
+PipelineTensors PaddedEdgeRemoval::operator()(PipelineTensors tensors,
                                               const ActsPlugins::ExecutionContext& execContext) {
   const std::size_t numEdges = tensors.edgeIndex.shape()[1];
 
@@ -45,9 +45,9 @@ PipelineTensors PaddedEdgeRemoval::operator()(PipelineTensors                   
 
   // The edge index is a (2 x numEdges) row-major tensor, so the source of edge i
   // is at i and its target at numEdges + i.
-  auto        maskCpu  = Tensor<bool>::Create({numEdges, 1ul}, ActsPlugins::ExecutionContext{});
-  bool*       maskData = maskCpu.data();
-  std::size_t numKept  = 0;
+  auto maskCpu = Tensor<bool>::Create({numEdges, 1ul}, ActsPlugins::ExecutionContext{});
+  bool* maskData = maskCpu.data();
+  std::size_t numKept = 0;
   for (std::size_t i = 0; i < numEdges; ++i) {
     maskData[i] = edgeData[i] != edgeData[numEdges + i];
     numKept += static_cast<std::size_t>(maskData[i]);
@@ -60,7 +60,7 @@ PipelineTensors PaddedEdgeRemoval::operator()(PipelineTensors                   
 
   Tensor<bool> mask = tensors.edgeIndex.device().isCpu() ? std::move(maskCpu) : maskCpu.clone(execContext);
 
-  auto                         newEdgeIndex = selectCols(tensors.edgeIndex, mask, execContext);
+  auto newEdgeIndex = selectCols(tensors.edgeIndex, mask, execContext);
   std::optional<Tensor<float>> newEdgeFeatures{};
   if (tensors.edgeFeatures.has_value()) {
     newEdgeFeatures.emplace(selectRows(*tensors.edgeFeatures, mask, execContext));

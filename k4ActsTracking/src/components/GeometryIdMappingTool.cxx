@@ -28,18 +28,18 @@ using namespace ACTSTracking;
 using det_mod_map = GeometryIdMappingTool::det_mod_map;
 
 // Dector part identifications
-const int32_t GeometryIdMappingTool::VertexEndCapNegative            = -2;
-const int32_t GeometryIdMappingTool::VertexBarrel                    = 1;
-const int32_t GeometryIdMappingTool::VertexEndCapPositive            = 2;
-const int32_t GeometryIdMappingTool::InnerTrackerEndCapNegative      = -4;
-const int32_t GeometryIdMappingTool::InnerTrackerBarrel              = 3;
-const int32_t GeometryIdMappingTool::InnerTrackerEndCapPositive      = 4;
+const int32_t GeometryIdMappingTool::VertexEndCapNegative = -2;
+const int32_t GeometryIdMappingTool::VertexBarrel = 1;
+const int32_t GeometryIdMappingTool::VertexEndCapPositive = 2;
+const int32_t GeometryIdMappingTool::InnerTrackerEndCapNegative = -4;
+const int32_t GeometryIdMappingTool::InnerTrackerBarrel = 3;
+const int32_t GeometryIdMappingTool::InnerTrackerEndCapPositive = 4;
 const int32_t GeometryIdMappingTool::OuterInnerTrackerEndCapNegative = -8;
-const int32_t GeometryIdMappingTool::OuterInnerTrackerBarrel         = 7;
+const int32_t GeometryIdMappingTool::OuterInnerTrackerBarrel = 7;
 const int32_t GeometryIdMappingTool::OuterInnerTrackerEndCapPositive = 8;
-const int32_t GeometryIdMappingTool::OuterTrackerEndCapNegative      = -6;
-const int32_t GeometryIdMappingTool::OuterTrackerBarrel              = 5;
-const int32_t GeometryIdMappingTool::OuterTrackerEndCapPositive      = 6;
+const int32_t GeometryIdMappingTool::OuterTrackerEndCapNegative = -6;
+const int32_t GeometryIdMappingTool::OuterTrackerBarrel = 5;
+const int32_t GeometryIdMappingTool::OuterTrackerEndCapPositive = 6;
 
 const det_mod_map GeometryIdMappingTool::NLad_VertexBarrel = {
     {GeometryIdMappingTool::DetSchema::MuColl_v1, {{0, 5}, {1, 5}, {2, 5}, {3, 5}, {4, 5}, {5, 5}, {6, 5}, {7, 5}}},
@@ -114,8 +114,8 @@ const std::unordered_map<int32_t, uint32_t> GeometryIdMappingTool::VolumeMap = {
 GeometryIdMappingTool::GeometryIdMappingTool(const std::string& encoderString, DetSchema dType)
     : m_decoder(encoderString), det_type(dType) {
   m_systemIdx = m_decoder.index("system");
-  m_sideIdx   = m_decoder.index("side");
-  m_layerIdx  = m_decoder.index("layer");
+  m_sideIdx = m_decoder.index("side");
+  m_layerIdx = m_decoder.index("layer");
   m_moduleIdx = m_decoder.index("module");
   m_sensorIdx = m_decoder.index("sensor");
 }
@@ -147,156 +147,156 @@ Acts::GeometryIdentifier GeometryIdMappingTool::getGeometryID(uint32_t systemID,
   // sub detector
   uint64_t layer_id{0};
   switch (signSystemID) {
-    case VertexEndCapNegative:
-      switch (det_type) {
-        case GeometryIdMappingTool::DetSchema::MuColl_v1:
-          layer_id = 2 * (7 - layerID) + 2;
-          break;
-        case GeometryIdMappingTool::DetSchema::MAIA_v0:
-          layer_id = 2 * (7 - layerID) + 2;
-          break;
-        case GeometryIdMappingTool::DetSchema::MuSIC_v1:
-          layer_id = (0 - layerID) + 8;
-          break;
-        case GeometryIdMappingTool::DetSchema::MuSIC_v2:
-          layer_id = (0 - layerID) + 8;
-          break;
-      }
+  case VertexEndCapNegative:
+    switch (det_type) {
+    case GeometryIdMappingTool::DetSchema::MuColl_v1:
+      layer_id = 2 * (7 - layerID) + 2;
       break;
-    case VertexEndCapPositive:
-      switch (det_type) {
-        case GeometryIdMappingTool::DetSchema::MuColl_v1:
-          layer_id = 2 * (layerID) + 2;
-          break;
-        case GeometryIdMappingTool::DetSchema::MAIA_v0:
-          layer_id = 2 * (layerID) + 2;
-          break;
-        case GeometryIdMappingTool::DetSchema::MuSIC_v1:
-          layer_id = layerID + 2;
-          break;
-        case GeometryIdMappingTool::DetSchema::MuSIC_v2:
-          layer_id = layerID + 2;
-          break;
-      }
+    case GeometryIdMappingTool::DetSchema::MAIA_v0:
+      layer_id = 2 * (7 - layerID) + 2;
       break;
-    case VertexBarrel:
+    case GeometryIdMappingTool::DetSchema::MuSIC_v1:
+      layer_id = (0 - layerID) + 8;
+      break;
+    case GeometryIdMappingTool::DetSchema::MuSIC_v2:
+      layer_id = (0 - layerID) + 8;
+      break;
+    }
+    break;
+  case VertexEndCapPositive:
+    switch (det_type) {
+    case GeometryIdMappingTool::DetSchema::MuColl_v1:
+      layer_id = 2 * (layerID) + 2;
+      break;
+    case GeometryIdMappingTool::DetSchema::MAIA_v0:
+      layer_id = 2 * (layerID) + 2;
+      break;
+    case GeometryIdMappingTool::DetSchema::MuSIC_v1:
       layer_id = layerID + 2;
-      if (det_type == GeometryIdMappingTool::DetSchema::MuColl_v1)
-        layer_id = 2 * (layerID + 1);
-      if (det_type == GeometryIdMappingTool::DetSchema::MAIA_v0) {
-        if (layerID == 0)
-          layer_id = 2;
-        if (layerID == 1)
-          layer_id = 4;
-        if (layerID == 2)
-          layer_id = 6;
-        if (layerID == 4)
-          layer_id = 8;
-        if (layerID == 6)
-          layer_id = 10;
-      }
       break;
-    case InnerTrackerBarrel:
-    case OuterTrackerBarrel: {
-      layer_id = 2 * layerID + 2;
-    } break;
-    case OuterInnerTrackerBarrel: {
-      layer_id = 2 * (2 - layerID) + 2;
-    } break;
-
-    case InnerTrackerEndCapNegative: {
-      layer_id = 2 * (0 - layerID) + 2;
-    } break;
-    case InnerTrackerEndCapPositive: {
-      layer_id = 2 * layerID + 2;
-    } break;
-
-      // OuterInner tracker layer counting starts at layer 1
-      // as it is layer 1 of the original Inner tracker.
-    case OuterInnerTrackerEndCapNegative: {
-      layer_id = 2 * (7 - layerID) + 0;
-    } break;
-    case OuterInnerTrackerEndCapPositive: {
-      layer_id = 2 * layerID + 0;
-    } break;
-
-    case OuterTrackerEndCapNegative: {
-      layer_id = 2 * (3 - layerID) + 2;
-    } break;
-    case OuterTrackerEndCapPositive: {
-      layer_id = 2 * layerID + 2;
-    } break;
-
-    default:
-      layer_id = layerID;
+    case GeometryIdMappingTool::DetSchema::MuSIC_v2:
+      layer_id = layerID + 2;
       break;
+    }
+    break;
+  case VertexBarrel:
+    layer_id = layerID + 2;
+    if (det_type == GeometryIdMappingTool::DetSchema::MuColl_v1)
+      layer_id = 2 * (layerID + 1);
+    if (det_type == GeometryIdMappingTool::DetSchema::MAIA_v0) {
+      if (layerID == 0)
+        layer_id = 2;
+      if (layerID == 1)
+        layer_id = 4;
+      if (layerID == 2)
+        layer_id = 6;
+      if (layerID == 4)
+        layer_id = 8;
+      if (layerID == 6)
+        layer_id = 10;
+    }
+    break;
+  case InnerTrackerBarrel:
+  case OuterTrackerBarrel: {
+    layer_id = 2 * layerID + 2;
+  } break;
+  case OuterInnerTrackerBarrel: {
+    layer_id = 2 * (2 - layerID) + 2;
+  } break;
+
+  case InnerTrackerEndCapNegative: {
+    layer_id = 2 * (0 - layerID) + 2;
+  } break;
+  case InnerTrackerEndCapPositive: {
+    layer_id = 2 * layerID + 2;
+  } break;
+
+    // OuterInner tracker layer counting starts at layer 1
+    // as it is layer 1 of the original Inner tracker.
+  case OuterInnerTrackerEndCapNegative: {
+    layer_id = 2 * (7 - layerID) + 0;
+  } break;
+  case OuterInnerTrackerEndCapPositive: {
+    layer_id = 2 * layerID + 0;
+  } break;
+
+  case OuterTrackerEndCapNegative: {
+    layer_id = 2 * (3 - layerID) + 2;
+  } break;
+  case OuterTrackerEndCapPositive: {
+    layer_id = 2 * layerID + 2;
+  } break;
+
+  default:
+    layer_id = layerID;
+    break;
   }
   geometry_id |= layer_id << (9 * 4);
 
   // Module ID counting depends on sub detector and layer
   uint64_t sensitive_id;
   switch (signSystemID) {
-    case VertexBarrel:
-      if (det_type == GeometryIdMappingTool::DetSchema::MAIA_v0) {
-        uint32_t my_layer_ID = 0;
-        switch (layerID) {
-          case 0:
-            my_layer_ID = 0;
-            break;
-          case 1:
-            my_layer_ID = 1;
-            break;
-          case 2:
-            my_layer_ID = 2;
-            break;
-          case 4:
-            my_layer_ID = 3;
-            break;
-          case 6:
-            my_layer_ID = 4;
-            break;
-        }
-        sensitive_id = NLad_VertexBarrel.at(det_type).at(my_layer_ID) * ladderID + moduleID + 1;
+  case VertexBarrel:
+    if (det_type == GeometryIdMappingTool::DetSchema::MAIA_v0) {
+      uint32_t my_layer_ID = 0;
+      switch (layerID) {
+      case 0:
+        my_layer_ID = 0;
         break;
-      } else {
-        sensitive_id = NLad_VertexBarrel.at(det_type).at(layerID) * ladderID + moduleID + 1;
+      case 1:
+        my_layer_ID = 1;
+        break;
+      case 2:
+        my_layer_ID = 2;
+        break;
+      case 4:
+        my_layer_ID = 3;
+        break;
+      case 6:
+        my_layer_ID = 4;
         break;
       }
-    case InnerTrackerBarrel:
-      sensitive_id = NLad_InnerTrackerBarrel.at(det_type).at(layerID) * ladderID + moduleID + 1;
+      sensitive_id = NLad_VertexBarrel.at(det_type).at(my_layer_ID) * ladderID + moduleID + 1;
       break;
-    case OuterInnerTrackerBarrel:
-      sensitive_id = NLad_OuterInnerTrackerBarrel.at(det_type).at(layerID) * ladderID + moduleID + 1;
+    } else {
+      sensitive_id = NLad_VertexBarrel.at(det_type).at(layerID) * ladderID + moduleID + 1;
       break;
-    case OuterTrackerBarrel:
-      sensitive_id = NLad_OuterTrackerBarrel.at(det_type).at(layerID) * ladderID + moduleID + 1;
-      break;
+    }
+  case InnerTrackerBarrel:
+    sensitive_id = NLad_InnerTrackerBarrel.at(det_type).at(layerID) * ladderID + moduleID + 1;
+    break;
+  case OuterInnerTrackerBarrel:
+    sensitive_id = NLad_OuterInnerTrackerBarrel.at(det_type).at(layerID) * ladderID + moduleID + 1;
+    break;
+  case OuterTrackerBarrel:
+    sensitive_id = NLad_OuterTrackerBarrel.at(det_type).at(layerID) * ladderID + moduleID + 1;
+    break;
 
-    case VertexEndCapNegative:
-      sensitive_id = 16 - moduleID;
-      break;
-    case VertexEndCapPositive:
-      sensitive_id = moduleID + 1;
-      break;
+  case VertexEndCapNegative:
+    sensitive_id = 16 - moduleID;
+    break;
+  case VertexEndCapPositive:
+    sensitive_id = moduleID + 1;
+    break;
 
-    case InnerTrackerEndCapNegative:
-    case InnerTrackerEndCapPositive:
-      sensitive_id = NRng_InnerTrackerEndCap.at(det_type).at(layerID) * ladderID + moduleID + 1;
-      break;
+  case InnerTrackerEndCapNegative:
+  case InnerTrackerEndCapPositive:
+    sensitive_id = NRng_InnerTrackerEndCap.at(det_type).at(layerID) * ladderID + moduleID + 1;
+    break;
 
-    case OuterInnerTrackerEndCapNegative:
-    case OuterInnerTrackerEndCapPositive:
-      sensitive_id = NRng_OuterInnerTrackerEndCap.at(det_type).at(layerID) * ladderID + moduleID + 1;
-      break;
+  case OuterInnerTrackerEndCapNegative:
+  case OuterInnerTrackerEndCapPositive:
+    sensitive_id = NRng_OuterInnerTrackerEndCap.at(det_type).at(layerID) * ladderID + moduleID + 1;
+    break;
 
-    case OuterTrackerEndCapNegative:
-    case OuterTrackerEndCapPositive:
-      sensitive_id = NRng_OuterTrackerEndCap.at(det_type).at(layerID) * ladderID + moduleID + 1;
-      break;
+  case OuterTrackerEndCapNegative:
+  case OuterTrackerEndCapPositive:
+    sensitive_id = NRng_OuterTrackerEndCap.at(det_type).at(layerID) * ladderID + moduleID + 1;
+    break;
 
-    default:
-      sensitive_id = ladderID;
-      break;
+  default:
+    sensitive_id = ladderID;
+    break;
   }
   geometry_id |= sensitive_id << (2 * 4);
 

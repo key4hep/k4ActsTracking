@@ -74,7 +74,6 @@ jobs:
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DACTS_BUILD_PLUGIN_DD4HEP=ON \
             -DACTS_BUILD_PLUGIN_ROOT=ON \
-            -DACTS_BUILD_PLUGIN_TGEO=ON \
             -DACTS_BUILD_PLUGIN_JSON=ON
           cmake --build build -- -j$(nproc)
           cmake --install build

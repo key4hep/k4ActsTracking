@@ -33,40 +33,40 @@ using ActsPlugins::PipelineTensors;
 using ActsPlugins::Tensor;
 
 namespace {
-  /// Union-find over the node indices, to group the graph into its weakly
-  /// connected components in one pass over the edges.
-  class UnionFind {
-  public:
-    explicit UnionFind(std::size_t n) : m_parent(n), m_rank(n, 0) { std::iota(m_parent.begin(), m_parent.end(), 0); }
+/// Union-find over the node indices, to group the graph into its weakly
+/// connected components in one pass over the edges.
+class UnionFind {
+public:
+  explicit UnionFind(std::size_t n) : m_parent(n), m_rank(n, 0) { std::iota(m_parent.begin(), m_parent.end(), 0); }
 
-    int find(int x) {
-      while (m_parent[x] != x) {
-        m_parent[x] = m_parent[m_parent[x]];  // path halving
-        x           = m_parent[x];
-      }
-      return x;
+  int find(int x) {
+    while (m_parent[x] != x) {
+      m_parent[x] = m_parent[m_parent[x]]; // path halving
+      x = m_parent[x];
     }
+    return x;
+  }
 
-    void unite(int a, int b) {
-      a = find(a);
-      b = find(b);
-      if (a == b) {
-        return;
-      }
-      if (m_rank[a] < m_rank[b]) {
-        std::swap(a, b);
-      }
-      m_parent[b] = a;
-      if (m_rank[a] == m_rank[b]) {
-        ++m_rank[a];
-      }
+  void unite(int a, int b) {
+    a = find(a);
+    b = find(b);
+    if (a == b) {
+      return;
     }
+    if (m_rank[a] < m_rank[b]) {
+      std::swap(a, b);
+    }
+    m_parent[b] = a;
+    if (m_rank[a] == m_rank[b]) {
+      ++m_rank[a];
+    }
+  }
 
-  private:
-    std::vector<int> m_parent;
-    std::vector<int> m_rank;
-  };
-}  // namespace
+private:
+  std::vector<int> m_parent;
+  std::vector<int> m_rank;
+};
+} // namespace
 
 CCAndWalkTrackBuilding::CCAndWalkTrackBuilding(const Config& cfg, std::unique_ptr<const Acts::Logger> logger)
     : m_cfg(cfg), m_logger(std::move(logger)) {
@@ -82,7 +82,7 @@ std::vector<int> CCAndWalkTrackBuilding::longestPathFrom(int start, const std::v
                                                          const std::vector<bool>& used) const {
   std::vector<int> best{};
   std::vector<int> path{};
-  std::size_t      steps = 0;
+  std::size_t steps = 0;
 
   // Iterative depth first search over the branches. The graph is acyclic by
   // construction (see the header), so a path can never revisit a node and no
@@ -97,7 +97,7 @@ std::vector<int> CCAndWalkTrackBuilding::longestPathFrom(int start, const std::v
       // Neighbours that scored above addScore are all followed; if none did,
       // the single best one is, provided it clears minScore.
       std::vector<int> next{};
-      const OutEdge*   bestEdge = nullptr;
+      const OutEdge* bestEdge = nullptr;
       for (const auto& edge : outEdges[node]) {
         if (used[edge.target]) {
           continue;
@@ -125,8 +125,8 @@ std::vector<int> CCAndWalkTrackBuilding::longestPathFrom(int start, const std::v
   return best;
 }
 
-std::vector<std::vector<int>> CCAndWalkTrackBuilding::operator()(PipelineTensors                      tensors,
-                                                                 std::vector<int>&                    spacePointIDs,
+std::vector<std::vector<int>> CCAndWalkTrackBuilding::operator()(PipelineTensors tensors,
+                                                                 std::vector<int>& spacePointIDs,
                                                                  const ActsPlugins::ExecutionContext& execContext) {
   const std::size_t numNodes = spacePointIDs.size();
   const std::size_t numEdges = tensors.edgeIndex.shape()[1];
@@ -148,13 +148,13 @@ std::vector<std::vector<int>> CCAndWalkTrackBuilding::operator()(PipelineTensors
     }
     return tensor.clone(cpuCtx);
   };
-  const auto hostEdgeIndex    = toHost(tensors.edgeIndex);
-  const auto hostScores       = toHost(*tensors.edgeScores);
+  const auto hostEdgeIndex = toHost(tensors.edgeIndex);
+  const auto hostScores = toHost(*tensors.edgeScores);
   const auto hostNodeFeatures = toHost(tensors.nodeFeatures);
 
-  const std::int64_t* edgeData  = hostEdgeIndex ? hostEdgeIndex->data() : tensors.edgeIndex.data();
-  const float*        scoreData = hostScores ? hostScores->data() : tensors.edgeScores->data();
-  const float*        nodeData  = hostNodeFeatures ? hostNodeFeatures->data() : tensors.nodeFeatures.data();
+  const std::int64_t* edgeData = hostEdgeIndex ? hostEdgeIndex->data() : tensors.edgeIndex.data();
+  const float* scoreData = hostScores ? hostScores->data() : tensors.edgeScores->data();
+  const float* nodeData = hostNodeFeatures ? hostNodeFeatures->data() : tensors.nodeFeatures.data();
 
   const std::size_t numNodeFeatures = tensors.nodeFeatures.shape()[1];
   if (m_cfg.rFeatureIndex < 0 || static_cast<std::size_t>(m_cfg.rFeatureIndex) >= numNodeFeatures) {
@@ -208,8 +208,8 @@ std::vector<std::vector<int>> CCAndWalkTrackBuilding::operator()(PipelineTensors
   directed.erase(std::ranges::unique(directed, {}, [](const auto& e) { return e.first; }).begin(), directed.end());
 
   std::vector<std::vector<OutEdge>> outEdges(numNodes);
-  std::vector<int>                  inDegree(numNodes, 0);
-  UnionFind                         components(numNodes);
+  std::vector<int> inDegree(numNodes, 0);
+  UnionFind components(numNodes);
   for (const auto& [edge, score] : directed) {
     const auto [u, v] = edge;
     outEdges[u].push_back({v, score});
@@ -238,13 +238,13 @@ std::vector<std::vector<int>> CCAndWalkTrackBuilding::operator()(PipelineTensors
   }
 
   std::vector<std::vector<int>> candidates{};
-  std::vector<bool>             used(numNodes, false);
-  std::size_t                   numSimple = 0;
-  std::size_t                   numWalked = 0;
+  std::vector<bool> used(numNodes, false);
+  std::size_t numSimple = 0;
+  std::size_t numWalked = 0;
 
   for (auto& nodes : componentNodes) {
     if (nodes.size() < m_cfg.minCandidateSize) {
-      continue;  // includes the isolated hits, which are their own component
+      continue; // includes the isolated hits, which are their own component
     }
 
     // A component whose hits all have at most one edge in and one out is
@@ -285,10 +285,9 @@ std::vector<std::vector<int>> CCAndWalkTrackBuilding::operator()(PipelineTensors
     }
   }
 
-  ACTS_DEBUG(
-      fmt::format("Built {} track candidates from {} hits and {} edges: {} components were already paths, {} "
-                  "came out of walking the rest",
-                  candidates.size(), numNodes, directed.size(), numSimple, numWalked));
+  ACTS_DEBUG(fmt::format("Built {} track candidates from {} hits and {} edges: {} components were already paths, {} "
+                         "came out of walking the rest",
+                         candidates.size(), numNodes, directed.size(), numSimple, numWalked));
 
   return candidates;
 }

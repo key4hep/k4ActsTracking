@@ -52,86 +52,85 @@
 #include <vector>
 
 namespace {
-  /// Conver the Acts log level into an ONNX one
-  constexpr OrtLoggingLevel getOnnxLogLevel(Acts::Logging::Level lvl) {
-    switch (lvl) {
-      case Acts::Logging::VERBOSE:
-        return ORT_LOGGING_LEVEL_VERBOSE;
-      case Acts::Logging::DEBUG:
-        return ORT_LOGGING_LEVEL_INFO;
-      case Acts::Logging::INFO:
-      case Acts::Logging::WARNING:
-        return ORT_LOGGING_LEVEL_WARNING;
-      case Acts::Logging::ERROR:
-        return ORT_LOGGING_LEVEL_ERROR;
-      case Acts::Logging::FATAL:
-        return ORT_LOGGING_LEVEL_FATAL;
-      case Acts::Logging::MAX:
-        return ORT_LOGGING_LEVEL_WARNING;
-    }
+/// Conver the Acts log level into an ONNX one
+constexpr OrtLoggingLevel getOnnxLogLevel(Acts::Logging::Level lvl) {
+  switch (lvl) {
+  case Acts::Logging::VERBOSE:
+    return ORT_LOGGING_LEVEL_VERBOSE;
+  case Acts::Logging::DEBUG:
+    return ORT_LOGGING_LEVEL_INFO;
+  case Acts::Logging::INFO:
+  case Acts::Logging::WARNING:
+    return ORT_LOGGING_LEVEL_WARNING;
+  case Acts::Logging::ERROR:
+    return ORT_LOGGING_LEVEL_ERROR;
+  case Acts::Logging::FATAL:
+    return ORT_LOGGING_LEVEL_FATAL;
+  case Acts::Logging::MAX:
     return ORT_LOGGING_LEVEL_WARNING;
   }
+  return ORT_LOGGING_LEVEL_WARNING;
+}
 
-  /// Convert ONNX element type to torch scalar type
-  constexpr torch::ScalarType toTorchType(ONNXTensorElementDataType elementType) {
-    switch (elementType) {
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-        return torch::kFloat32;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
-        return torch::kFloat64;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
-        return torch::kInt32;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
-        return torch::kInt64;
-      default:
-        throw std::runtime_error("Unsupported ONNX tensor element type");
-    }
+/// Convert ONNX element type to torch scalar type
+constexpr torch::ScalarType toTorchType(ONNXTensorElementDataType elementType) {
+  switch (elementType) {
+  case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+    return torch::kFloat32;
+  case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
+    return torch::kFloat64;
+  case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
+    return torch::kInt32;
+  case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
+    return torch::kInt64;
+  default:
+    throw std::runtime_error("Unsupported ONNX tensor element type");
+  }
+}
+
+/// Convert the Onnx tensor into a torch Tensor.
+/// @note: This doesn't take ownership, it essentially just "re-skins" the data
+/// owned by the Onnx tensor
+torch::Tensor toTorchTensor(const Ort::Value& onnxTensor, bool targetCuda, std::size_t cudaDeviceIndex = 0) {
+  auto tensorInfo = onnxTensor.GetTensorTypeAndShapeInfo();
+  auto memoryInfo = onnxTensor.GetTensorMemoryInfo();
+  auto shape = tensorInfo.GetShape();
+  auto elementType = tensorInfo.GetElementType();
+
+  const void* data = onnxTensor.GetTensorData<void>();
+  const auto torchType = toTorchType(elementType);
+
+  // ONNX Runtime may place the output either in CPU or CUDA memory depending
+  // on the execution provider and which nodes were assigned to it. Create the
+  // wrapper tensor on the matching device so that clone() performs a valid
+  // copy before the Ort::Value goes out of scope.
+  const bool onCudaMemory = memoryInfo.GetDeviceType() == OrtMemoryInfoDeviceType_GPU;
+  auto options = torch::TensorOptions().dtype(torchType);
+  if (onCudaMemory) {
+    options = options.device(torch::Device(torch::kCUDA, static_cast<int64_t>(memoryInfo.GetDeviceId())));
   }
 
-  /// Convert the Onnx tensor into a torch Tensor.
-  /// @note: This doesn't take ownership, it essentially just "re-skins" the data
-  /// owned by the Onnx tensor
-  torch::Tensor toTorchTensor(const Ort::Value& onnxTensor, bool targetCuda, std::size_t cudaDeviceIndex = 0) {
-    auto tensorInfo  = onnxTensor.GetTensorTypeAndShapeInfo();
-    auto memoryInfo  = onnxTensor.GetTensorMemoryInfo();
-    auto shape       = tensorInfo.GetShape();
-    auto elementType = tensorInfo.GetElementType();
+  auto torchTensor = torch::from_blob(const_cast<void*>(data), shape, options);
 
-    const void* data      = onnxTensor.GetTensorData<void>();
-    const auto  torchType = toTorchType(elementType);
-
-    // ONNX Runtime may place the output either in CPU or CUDA memory depending
-    // on the execution provider and which nodes were assigned to it. Create the
-    // wrapper tensor on the matching device so that clone() performs a valid
-    // copy before the Ort::Value goes out of scope.
-    const bool onCudaMemory = memoryInfo.GetDeviceType() == OrtMemoryInfoDeviceType_GPU;
-    auto       options      = torch::TensorOptions().dtype(torchType);
-    if (onCudaMemory) {
-      options = options.device(torch::Device(torch::kCUDA, static_cast<int64_t>(memoryInfo.GetDeviceId())));
-    }
-
-    auto torchTensor = torch::from_blob(const_cast<void*>(data), shape, options);
-
-    if (targetCuda && memoryInfo.GetDeviceId() != static_cast<int>(cudaDeviceIndex)) {
-      // not on target CUDA device
-      const auto targetDevice = torch::Device(torch::kCUDA, static_cast<int64_t>(cudaDeviceIndex));
-      return torchTensor.to(targetDevice);
-    }
-
-    if (onCudaMemory && !targetCuda) {
-      // not on target CPU
-      return torchTensor.to(torch::kCPU);
-    }
-
-    // on target device (Host or CUDA), clone for ownership
-    return torchTensor.clone();
+  if (targetCuda && memoryInfo.GetDeviceId() != static_cast<int>(cudaDeviceIndex)) {
+    // not on target CUDA device
+    const auto targetDevice = torch::Device(torch::kCUDA, static_cast<int64_t>(cudaDeviceIndex));
+    return torchTensor.to(targetDevice);
   }
 
-}  // namespace
+  if (onCudaMemory && !targetCuda) {
+    // not on target CPU
+    return torchTensor.to(torch::kCPU);
+  }
+
+  // on target device (Host or CUDA), clone for ownership
+  return torchTensor.clone();
+}
+
+} // namespace
 
 OnnxMetricLearning::OnnxMetricLearning(const Config& cfg, std::unique_ptr<const Acts::Logger> lggr)
-    : m_model("MetricLearning", getOnnxLogLevel(lggr->level()), cfg.device.isCuda(), cfg.device.index),
-      m_config(cfg),
+    : m_model("MetricLearning", getOnnxLogLevel(lggr->level()), cfg.device.isCuda(), cfg.device.index), m_config(cfg),
       m_logger(std::move(lggr)) {
   ACTS_INFO(fmt::format("Loading model from {}", config().modelPath));
   if (!m_model.loadModel(config().modelPath)) {
@@ -149,10 +148,9 @@ OnnxMetricLearning::OnnxMetricLearning(const Config& cfg, std::unique_ptr<const 
   if (m_embeddingDim > 0) {
     ACTS_INFO(fmt::format("Model declares an embedding dimension of {}", m_embeddingDim));
   } else {
-    ACTS_INFO(
-        fmt::format("Model '{}' does not declare a fixed embedding dimension (output shape [{}]), taking it from "
-                    "the inference output",
-                    config().modelPath, fmt::join(outputShape, ", ")));
+    ACTS_INFO(fmt::format("Model '{}' does not declare a fixed embedding dimension (output shape [{}]), taking it from "
+                          "the inference output",
+                          config().modelPath, fmt::join(outputShape, ", ")));
   }
 
   // A model exported with a fixed-size input pins its node axis instead of
@@ -200,9 +198,9 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
                                                             const ActsPlugins::ExecutionContext& execContext) {
   assert(inputValues.size() % numNodes == 0);
 
-  const std::size_t         fullNumFeatures  = inputValues.size() / numNodes;
-  const std::vector<int>&   selectedFeatures = config().selectedFeatures;
-  const std::vector<float>& featureScales    = config().featureScales;
+  const std::size_t fullNumFeatures = inputValues.size() / numNodes;
+  const std::vector<int>& selectedFeatures = config().selectedFeatures;
+  const std::vector<float>& featureScales = config().featureScales;
 
   // The model only sees the selected features (all of them if no selection is
   // configured)
@@ -222,7 +220,7 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
         fixedInputLength, numNodes));
   }
   const std::size_t paddedNumNodes = std::max(fixedInputLength, numNodes);
-  const std::vector inputShape     = {static_cast<int64_t>(paddedNumNodes), static_cast<int64_t>(numFeatures)};
+  const std::vector inputShape = {static_cast<int64_t>(paddedNumNodes), static_cast<int64_t>(numFeatures)};
 
   // Fail with a message that names the padding knob rather than letting
   // onnxruntime reject the tensor with a bare shape mismatch.
@@ -258,8 +256,8 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
     preparedValues.assign(paddedNumNodes * numFeatures, 0.f);
     for (std::size_t n = 0; n < numNodes; ++n) {
       for (std::size_t f = 0; f < numFeatures; ++f) {
-        const std::size_t idx   = selectedFeatures.empty() ? f : static_cast<std::size_t>(selectedFeatures[f]);
-        const float       value = inputValues[n * fullNumFeatures + idx];
+        const std::size_t idx = selectedFeatures.empty() ? f : static_cast<std::size_t>(selectedFeatures[f]);
+        const float value = inputValues[n * fullNumFeatures + idx];
         preparedValues[n * numFeatures + f] = featureScales.empty() ? value : value / featureScales[f];
       }
     }
@@ -278,7 +276,7 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
   const auto outputs = m_model.runInference(inferenceValues, inputShape, execContext.device);
 
   auto embeddedPoints = toTorchTensor(outputs[0], execContext.device.isCuda(), execContext.device.index);
-  assert(embeddedPoints.size(0) == inputShape[0]);  // Do not change the number of points
+  assert(embeddedPoints.size(0) == inputShape[0]); // Do not change the number of points
   // A model that declares its embedding dimension has to stick to it. This is
   // checked (rather than asserted) because a mismatch here means the loaded
   // model is not the one its own metadata describes.
@@ -347,8 +345,8 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
   }
   if (fixedEdgeLength > numEdges) {
     const int64_t numPadEdges = static_cast<int64_t>(fixedEdgeLength - numEdges);
-    const int64_t padNode     = static_cast<int64_t>(paddedNumNodes) - 1;
-    edgeList                  = torch::cat({edgeList, torch::full({2, numPadEdges}, padNode, edgeList.options())}, 1);
+    const int64_t padNode = static_cast<int64_t>(paddedNumNodes) - 1;
+    edgeList = torch::cat({edgeList, torch::full({2, numPadEdges}, padNode, edgeList.options())}, 1);
     if (edgeFeatures.has_value()) {
       // All six features of a self loop on an all-zero node are zero anyway, so
       // this is the same thing buildEdgeFeatures() would have produced for them.
@@ -431,7 +429,7 @@ std::optional<torch::Tensor> OnnxMetricLearning::buildEdgeFeatures(const std::ve
   constexpr float pi = static_cast<float>(M_PI);
 
   const auto& indices = config().edgeFeatureIndices;
-  const auto& scales  = config().edgeFeatureScales;
+  const auto& scales = config().edgeFeatureScales;
 
   // (numNodes x 4) buffer of the scaled r, phi, z and eta of every node
   std::vector<float> nodeValues(numNodes * kNumEdgeFeatureInputs);
@@ -449,21 +447,21 @@ std::optional<torch::Tensor> OnnxMetricLearning::buildEdgeFeatures(const std::ve
   const auto srcValues = nodeTensor.index_select(0, edgeList.select(0, 0).contiguous());
   const auto tgtValues = nodeTensor.index_select(0, edgeList.select(0, 1).contiguous());
 
-  const auto dr   = tgtValues.select(1, eR) - srcValues.select(1, eR);
-  const auto dz   = tgtValues.select(1, eZ) - srcValues.select(1, eZ);
+  const auto dr = tgtValues.select(1, eR) - srcValues.select(1, eR);
+  const auto dz = tgtValues.select(1, eZ) - srcValues.select(1, eZ);
   const auto deta = tgtValues.select(1, eEta) - srcValues.select(1, eEta);
 
   // phi is scaled by pi, so the difference is unscaled to wrap it back into
   // [-pi, pi] and then scaled again. A single wrap is enough since the unscaled
   // difference cannot leave [-2pi, 2pi].
   auto dphi = pi * (tgtValues.select(1, ePhi) - srcValues.select(1, ePhi));
-  dphi      = torch::where(dphi > pi, dphi - 2.f * pi, dphi);
-  dphi      = torch::where(dphi < -pi, dphi + 2.f * pi, dphi);
-  dphi      = dphi / pi;
+  dphi = torch::where(dphi > pi, dphi - 2.f * pi, dphi);
+  dphi = torch::where(dphi < -pi, dphi + 2.f * pi, dphi);
+  dphi = dphi / pi;
 
   // Doublets on the same radius have no defined slope and get a flat zero. The
   // substitute denominator only keeps the discarded branch from producing infs.
-  const auto hasDr    = dr != 0.f;
+  const auto hasDr = dr != 0.f;
   const auto phislope = torch::where(
       hasDr, torch::clamp(dphi / torch::where(hasDr, dr, torch::ones_like(dr)), -100.f, 100.f), torch::zeros_like(dr));
   const auto rphislope = 0.5f * (tgtValues.select(1, eR) + srcValues.select(1, eR)) * phislope;

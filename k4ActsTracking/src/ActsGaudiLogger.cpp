@@ -28,35 +28,35 @@
 #include <type_traits>
 
 namespace {
-  constexpr MSG::Level getGaudiLevel(Acts::Logging::Level lvl) {
-    // All Acts logging levels are available in Gaudi, we can simply map them
-    // one-to-one
-    constexpr std::array gaudiLevels = {MSG::VERBOSE, MSG::DEBUG, MSG::INFO, MSG::WARNING, MSG::ERROR, MSG::FATAL};
+constexpr MSG::Level getGaudiLevel(Acts::Logging::Level lvl) {
+  // All Acts logging levels are available in Gaudi, we can simply map them
+  // one-to-one
+  constexpr std::array gaudiLevels = {MSG::VERBOSE, MSG::DEBUG, MSG::INFO, MSG::WARNING, MSG::ERROR, MSG::FATAL};
 
-    return gaudiLevels[static_cast<std::underlying_type_t<Acts::Logging::Level>>(lvl)];
-  }
+  return gaudiLevels[static_cast<std::underlying_type_t<Acts::Logging::Level>>(lvl)];
+}
 
-  constexpr Acts::Logging::Level getActsLevel(MSG::Level lvl) {
-    // MSG::NIL and MSG::ALWAYS are not available in ACTS, so we have to remap
-    // them accordingly.
-    constexpr std::array actsLevels = {
-        Acts::Logging::Level::FATAL,  // MSG::NIL
-        Acts::Logging::Level::VERBOSE, Acts::Logging::Level::DEBUG, Acts::Logging::Level::INFO,
-        Acts::Logging::Level::WARNING, Acts::Logging::Level::ERROR, Acts::Logging::Level::FATAL,
-        Acts::Logging::Level::VERBOSE,  // MSG::ALWAYS
-    };
-    return actsLevels[static_cast<std::underlying_type_t<MSG::Level>>(lvl)];
-  }
+constexpr Acts::Logging::Level getActsLevel(MSG::Level lvl) {
+  // MSG::NIL and MSG::ALWAYS are not available in ACTS, so we have to remap
+  // them accordingly.
+  constexpr std::array actsLevels = {
+      Acts::Logging::Level::FATAL, // MSG::NIL
+      Acts::Logging::Level::VERBOSE, Acts::Logging::Level::DEBUG, Acts::Logging::Level::INFO,
+      Acts::Logging::Level::WARNING, Acts::Logging::Level::ERROR, Acts::Logging::Level::FATAL,
+      Acts::Logging::Level::VERBOSE, // MSG::ALWAYS
+  };
+  return actsLevels[static_cast<std::underlying_type_t<MSG::Level>>(lvl)];
+}
 
-  // Very minor testing here
-  static_assert(getGaudiLevel(Acts::Logging::Level::DEBUG) == MSG::DEBUG);
-  static_assert(getGaudiLevel(Acts::Logging::Level::INFO) == MSG::INFO);
+// Very minor testing here
+static_assert(getGaudiLevel(Acts::Logging::Level::DEBUG) == MSG::DEBUG);
+static_assert(getGaudiLevel(Acts::Logging::Level::INFO) == MSG::INFO);
 
-  static_assert(getActsLevel(MSG::NIL) == Acts::Logging::Level::FATAL);
-  static_assert(getActsLevel(MSG::INFO) == Acts::Logging::Level::INFO);
-  static_assert(getActsLevel(MSG::DEBUG) == Acts::Logging::Level::DEBUG);
-  static_assert(getActsLevel(MSG::ALWAYS) == Acts::Logging::Level::VERBOSE);
-}  // namespace
+static_assert(getActsLevel(MSG::NIL) == Acts::Logging::Level::FATAL);
+static_assert(getActsLevel(MSG::INFO) == Acts::Logging::Level::INFO);
+static_assert(getActsLevel(MSG::DEBUG) == Acts::Logging::Level::DEBUG);
+static_assert(getActsLevel(MSG::ALWAYS) == Acts::Logging::Level::VERBOSE);
+} // namespace
 
 void ActsGaudiPrintPolicy::flush(const Acts::Logging::Level& lvl, const std::string& input) {
   const auto msgLevel = getGaudiLevel(lvl);
@@ -85,7 +85,7 @@ std::unique_ptr<const Acts::Logger> makeActsGaudiLogger(IMessageSvc* svc, const 
                                                         std::optional<std::string> parentName) {
   auto msg = std::make_shared<MsgStream>(svc, name);
   msg->setLevel(level);
-  auto       filter   = std::make_unique<ActsGaudiFilterPolicy>(msg);
+  auto filter = std::make_unique<ActsGaudiFilterPolicy>(msg);
   const auto fullName = [&parentName, &name]() {
     if (parentName) {
       return parentName.value() + "." + name;

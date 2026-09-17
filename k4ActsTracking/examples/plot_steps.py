@@ -26,9 +26,7 @@ import sys
 def main():
     parser = argparse.ArgumentParser(description="Plot step_r vs step_z from ROOT file")
     parser.add_argument("input_file", help="Input ROOT file")
-    parser.add_argument(
-        "-o", "--output", default="step_plot.png", help="Output plot file"
-    )
+    parser.add_argument("-o", "--output", default="step_plot.png", help="Output plot file")
     args = parser.parse_args()
 
     # Enable multi-threading for RDataFrame

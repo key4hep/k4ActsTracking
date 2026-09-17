@@ -39,9 +39,7 @@ parser.add_argument(
     help="The geometry compact file that is used to build the ACTS geometry",
     type=str,
 )
-parser.add_argument(
-    "--modelBase", help="The base directory for the model", default=".", type=Path
-)
+parser.add_argument("--modelBase", help="The base directory for the model", default=".", type=Path)
 parser.add_argument(
     "--device",
     help="Device to run the GNN pipeline on: 'cpu' or 'cuda' (optionally 'cuda:<index>')",
@@ -51,9 +49,7 @@ parser.add_argument(
 parser.add_argument(
     "--inputFile", help="The input file with the tracker hits", default="edm4hep.root"
 )
-parser.add_argument(
-    "--outputFile", help="The output file", default="track_candidates.root"
-)
+parser.add_argument("--outputFile", help="The output file", default="track_candidates.root")
 parser.add_argument(
     "--monitoring",
     help="Fill (and write out) the monitoring histograms",
@@ -80,9 +76,7 @@ acts_geo_svc = ActsGeoSvc("ActsGeoSvc")
 TrackFinder = GNNTrackFinder(
     "GNNTrackFinder",
     # --- Graph construction (metric learning) --------------------------------
-    NodeEmbeddingModelPath=str(
-        args.modelBase / "graph_construction-MetricLearning.onnx"
-    ),
+    NodeEmbeddingModelPath=str(args.modelBase / "graph_construction-MetricLearning.onnx"),
     # The features (and their scales) the embedding model has been trained with.
     # Supported names: x, y, z, r, phi, theta, eta, t (time), E (energy),
     # module_id, layer_id, system_id
@@ -96,9 +90,7 @@ TrackFinder = GNNTrackFinder(
     # --- Edge classification -------------------------------------------------
     # All four properties below are parallel lists with one entry per model, so
     # that several edge classifiers can be chained.
-    EdgeClassifierModelPath=[
-        str(args.modelBase / "edge_classifier-InteractionGNN.onnx")
-    ],
+    EdgeClassifierModelPath=[str(args.modelBase / "edge_classifier-InteractionGNN.onnx")],
     InputFeaturesEdgeClassifier=["r,phi,z,t"],
     InputScalesEdgeClassifier=["1,1,1,1"],
     EdgeClassifierCut=[0.5],
