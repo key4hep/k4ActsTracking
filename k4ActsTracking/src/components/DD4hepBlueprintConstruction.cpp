@@ -260,13 +260,11 @@ const auto UngroupedNestedInnerTrackerSpec = NestedInnerTrackerSpec{
 /// Binning of the material projected onto a cylindrical face. The axes use
 /// deferred equidistant binning, so only the bin counts matter here.
 const auto kCylinderMaterialBinning =
-    std::pair{Acts::AxisSpec::DeferredEquidistant(20, AxisRPhi),
-              Acts::AxisSpec::DeferredEquidistant(200, AxisZ)};
+    std::pair{Acts::AxisSpec::DeferredEquidistant(20, AxisRPhi), Acts::AxisSpec::DeferredEquidistant(200, AxisZ)};
 
 /// Binning of the material projected onto a disc face
 const auto kDiscMaterialBinning =
-    std::pair{Acts::AxisSpec::DeferredEquidistant(50, AxisR),
-              Acts::AxisSpec::DeferredEquidistant(20, AxisPhi)};
+    std::pair{Acts::AxisSpec::DeferredEquidistant(50, AxisR), Acts::AxisSpec::DeferredEquidistant(20, AxisPhi)};
 
 /// Wrap @p child in a material designator marking @p face of the child's
 /// volume as a receiver for the projected material.
