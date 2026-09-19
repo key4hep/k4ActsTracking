@@ -17,7 +17,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ]]
 
-set(ACTS_LIBRARY_TARGETS "Acts::Core")
+set(ACTS_LIBRARY_TARGETS "Acts::Core" "Acts::PluginEDM4hep")
 gaudi_add_library(k4ActsTracking
   SOURCES
     src/ActsGaudiLogger.cpp
@@ -65,6 +65,7 @@ gaudi_add_module(k4ActsTrackingPlugins
   k4ActsTracking
   Acts::Core
   Acts::PluginDD4hep
+  Acts::PluginEDM4hep
   Acts::PluginJson
   Acts::PluginRoot
 )
