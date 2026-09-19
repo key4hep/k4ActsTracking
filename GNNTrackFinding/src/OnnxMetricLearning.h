@@ -70,6 +70,14 @@ public:
     /// was trained with. Must be the same size as edgeFeatureIndices, or empty
     /// for no scaling.
     std::vector<float> edgeFeatureScales{};
+    /// Indices of the (unscaled) r and z node features, in that order, in the
+    /// full per-hit feature vector. Every built edge is oriented by the shared
+    /// ordering of EdgeDirection.h, i.e. from the hit closer to the interaction
+    /// point to the one further out, which is the convention the models are
+    /// trained with - the six edge features are signed differences, so the
+    /// orientation decides their sign. Empty leaves the edges oriented the way
+    /// the edge building produced them.
+    std::vector<int> radiusFeatureIndices{};
     /// If > 0, the model input is padded with all-zero rows up to this many
     /// nodes, for models exported with a fixed-size input. The embedding of the
     /// padding rows is discarded before the edge building. 0 disables it.
@@ -115,6 +123,18 @@ public:
   int64_t inputLength() const { return m_inputLength; }
 
 private:
+  /// @p edgeList with every edge oriented from the hit closer to the
+  /// interaction point to the one further out, and with the columns
+  /// deduplicated. The ordering is gnntracking::pointsOutward() over the
+  /// unscaled node values selected by Config::radiusFeatureIndices, the same
+  /// one CCAndWalkTrackBuilding directs the classified graph by. Returns
+  /// @p edgeList unchanged if no radius features are configured.
+  ///
+  /// @param inputValues the flat (numNodes x fullNumFeatures) hit feature buffer
+  /// @param edgeList the (2 x numEdges) edge index tensor, on the pipeline device
+  torch::Tensor orderEdgesByRadius(const std::vector<float>& inputValues, std::size_t numNodes,
+                                   std::size_t fullNumFeatures, torch::Tensor edgeList) const;
+
   /// The six edge features (dr, dphi, dz, deta, phislope, rphislope) of every
   /// edge in @p edgeList, computed from the scaled node values selected by
   /// Config::edgeFeatureIndices, as a (numEdges x 6) tensor on the same device

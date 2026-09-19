@@ -18,6 +18,8 @@
  */
 #include "CCAndWalkTrackBuilding.h"
 
+#include "EdgeDirection.h"
+
 #include <fmt/format.h>
 
 #include <algorithm>
@@ -156,23 +158,16 @@ std::vector<std::vector<int>> CCAndWalkTrackBuilding::operator()(PipelineTensors
   const float* scoreData = hostScores ? hostScores->data() : tensors.edgeScores->data();
   const float* nodeData = hostNodeFeatures ? hostNodeFeatures->data() : tensors.nodeFeatures.data();
 
+  // Direct every edge from the hit closer to the interaction point to the one
+  // further out, by the shared ordering of EdgeDirection.h - the one the graph
+  // construction already oriented its edges by. It is a strict total order, so
+  // this cannot produce a cycle and sorting the nodes by it gives a topological
+  // order for free. Only the real hits are looked at; any padding rows the edge
+  // classifiers were given sit past them and have no edges.
   const std::size_t numNodeFeatures = tensors.nodeFeatures.shape()[1];
-  if (m_cfg.rFeatureIndex < 0 || static_cast<std::size_t>(m_cfg.rFeatureIndex) >= numNodeFeatures) {
-    throw std::runtime_error(fmt::format("Radius feature index {} is out of range for {} node features",
-                                         m_cfg.rFeatureIndex, numNodeFeatures));
-  }
-  const auto radiusOf = [&](int node) {
-    return nodeData[static_cast<std::size_t>(node) * numNodeFeatures + static_cast<std::size_t>(m_cfg.rFeatureIndex)];
-  };
-
-  // Direct every edge from the hit at the smaller radius to the one at the
-  // larger. (radius, index) is a strict total order, so this cannot produce a
-  // cycle and sorting the nodes by it gives a topological order for free.
-  const auto pointsOutward = [&](int a, int b) {
-    const float ra = radiusOf(a);
-    const float rb = radiusOf(b);
-    return ra != rb ? ra < rb : a < b;
-  };
+  const std::vector<float> distancesSq =
+      gnntracking::nodeDistancesSq(nodeData, numNodes, numNodeFeatures, m_cfg.radiusFeatureIndices);
+  const auto pointsOutward = [&distancesSq](int a, int b) { return gnntracking::pointsOutward(distancesSq, a, b); };
 
   std::vector<std::pair<std::pair<int, int>, float>> directed{};
   directed.reserve(numEdges);
@@ -227,13 +222,13 @@ std::vector<std::vector<int>> CCAndWalkTrackBuilding::operator()(PipelineTensors
   }
 
   // Group the nodes by component, each already in topological order because the
-  // node indices are visited in increasing radius.
-  std::vector<int> byRadius(numNodes);
-  std::iota(byRadius.begin(), byRadius.end(), 0);
-  std::ranges::sort(byRadius, pointsOutward);
+  // node indices are visited in increasing distance from the interaction point.
+  std::vector<int> byDistance(numNodes);
+  std::iota(byDistance.begin(), byDistance.end(), 0);
+  std::ranges::sort(byDistance, pointsOutward);
 
   std::vector<std::vector<int>> componentNodes(numNodes);
-  for (const int node : byRadius) {
+  for (const int node : byDistance) {
     componentNodes[components.find(node)].push_back(node);
   }
 

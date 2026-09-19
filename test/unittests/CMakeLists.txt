@@ -91,13 +91,13 @@ catch_discover_tests(unittest_k4ActsTracking
   DL_PATHS $<TARGET_FILE_DIR:k4ActsTracking> # see the shadowing note above
 )
 
-# GNN track finding: unit tests for the mlutils helpers in ONNXInferenceModel.h.
-# The GNNTrackingONNXInferenceModels usage requirements provide the
-# GNNTrackFinding/include directory, so no extra include path is needed here.
+# GNN track finding: unit tests for the header-only helpers in
+# GNNTrackFinding/include. The GNNTrackingONNXInferenceModels usage
+# requirements provide that directory, so no extra include path is needed here.
 # Only built when the GNN track finding code is enabled (it provides the
 # GNNTrackingONNXInferenceModels target this test links against).
 if(K4ACTSTRACKING_BUILD_GNN)
-  add_executable(unittest_gnntrackfinding ONNXInferenceModelTests.cpp)
+  add_executable(unittest_gnntrackfinding ONNXInferenceModelTests.cpp EdgeDirectionTests.cpp)
   target_link_libraries(unittest_gnntrackfinding
     PUBLIC GNNTrackingONNXInferenceModels
     PRIVATE Catch2::Catch2WithMain)
