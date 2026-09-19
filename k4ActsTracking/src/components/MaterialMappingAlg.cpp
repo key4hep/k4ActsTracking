@@ -249,7 +249,15 @@ StatusCode MaterialMappingAlg::finalize() {
   out << converter.materialMapsToJson(maps).dump(2) << std::endl;
   out.close();
 
-  info() << fmt::format("Wrote material for {} surfaces to '{}'.", maps.first.size(), m_outputFile.value()) << endmsg;
+  const auto nSurfaces = [](const auto& material) {
+    // ACTS #6123 replaces the pair with named fields; support both APIs.
+    if constexpr (requires { material.surfaceMaterials; }) {
+      return material.surfaceMaterials.size();
+    } else {
+      return material.first.size();
+    }
+  }(maps);
+  info() << fmt::format("Wrote material for {} surfaces to '{}'.", nSurfaces, m_outputFile.value()) << endmsg;
 
   return Gaudi::Algorithm::finalize();
 }
