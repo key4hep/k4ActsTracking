@@ -36,7 +36,7 @@
 #include <Acts/Navigation/TryAllNavigationPolicy.hpp>
 #include <Acts/Surfaces/Surface.hpp>
 #include <Acts/Utilities/AxisDefinitions.hpp>
-#include <Acts/Utilities/ProtoAxis.hpp>
+#include <Acts/Utilities/AxisSpec.hpp>
 #include <ActsPlugins/DD4hep/BlueprintBuilder.hpp>
 #include <ActsPlugins/Root/TGeoAxes.hpp>
 
@@ -257,14 +257,14 @@ const auto UngroupedNestedInnerTrackerSpec = NestedInnerTrackerSpec{
 /// merged higher up the tree -- see @c LayerMaterial::skipInnermost.
 /// @{
 
-/// Binning of the material projected onto a cylindrical face. The proto axes
-/// use auto-range equidistant binning, so only the bin counts matter here.
-const auto kCylinderMaterialBinning = std::pair{Acts::DirectedProtoAxis{AxisRPhi, Acts::AxisBoundaryType::Closed, 20},
-                                                Acts::DirectedProtoAxis{AxisZ, Acts::AxisBoundaryType::Bound, 200}};
+/// Binning of the material projected onto a cylindrical face. The axes use
+/// deferred equidistant binning, so only the bin counts matter here.
+const auto kCylinderMaterialBinning =
+    std::pair{Acts::AxisSpec::DeferredEquidistant(20, AxisRPhi), Acts::AxisSpec::DeferredEquidistant(200, AxisZ)};
 
 /// Binning of the material projected onto a disc face
-const auto kDiscMaterialBinning = std::pair{Acts::DirectedProtoAxis{AxisR, Acts::AxisBoundaryType::Bound, 50},
-                                            Acts::DirectedProtoAxis{AxisPhi, Acts::AxisBoundaryType::Closed, 20}};
+const auto kDiscMaterialBinning =
+    std::pair{Acts::AxisSpec::DeferredEquidistant(50, AxisR), Acts::AxisSpec::DeferredEquidistant(20, AxisPhi)};
 
 /// Wrap @p child in a material designator marking @p face of the child's
 /// volume as a receiver for the projected material.
