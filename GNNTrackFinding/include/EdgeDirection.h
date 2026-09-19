@@ -25,13 +25,6 @@
 
 /// The one convention by which an edge of the GNN graph gets a direction: it
 /// points from the hit closer to the interaction point to the one further out.
-///
-/// Two stages of the pipeline direct their edges, and they have to agree. The
-/// graph construction (OnnxMetricLearning) orients the edges it builds before
-/// the signed edge features are computed from them, and the track building
-/// (CCAndWalkTrackBuilding) orients them again to know what "incoming",
-/// "outgoing" and "walking outwards" mean. Both take the metric and the tie
-/// break from here, so that they cannot drift apart.
 namespace gnntracking {
 
 /// Number of node features the direction is computed from: r and z, in that
