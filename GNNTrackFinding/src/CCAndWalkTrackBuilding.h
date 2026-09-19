@@ -58,19 +58,18 @@ using PipelineTensors = Acts::PipelineTensors;
 /// followed, and only if it scores above Config::minScore.
 ///
 /// The graph is directed by ordering the two hits of every edge by their
-/// distance from the interaction point (r^2 + z^2, the same metric the graph
-/// construction orders its edges by), which is what makes
-/// "incoming"/"outgoing" and "walking outwards" meaningful. Ties are broken by
-/// node index, so the ordering is strict and the directed graph is acyclic by
-/// construction.
+/// distance from the interaction point, which is what makes
+/// "incoming"/"outgoing" and "walking outwards" meaningful. That ordering is
+/// the shared one of EdgeDirection.h, the same the graph construction orients
+/// its edges by.
 class CCAndWalkTrackBuilding final : public ActsPlugins::TrackBuildingBase {
 public:
   struct Config {
-    /// Columns of the radius and of z in the node feature tensor. The edges are
-    /// directed by the distance from the interaction point (r^2 + z^2) these
-    /// two form, see the class documentation.
-    int rFeatureIndex{0};
-    int zFeatureIndex{0};
+    /// Columns of the radius and of z, in that order, in the node feature
+    /// tensor. The edges are directed by the distance from the interaction
+    /// point these two form, see the class documentation. Same convention (and
+    /// same value) as OnnxMetricLearning::Config::radiusFeatureIndices.
+    std::vector<int> radiusFeatureIndices{};
     /// A neighbour scoring above this is always followed, and the walk branches
     /// if several do ("edge addition" in the paper).
     float addScore{0.6f};

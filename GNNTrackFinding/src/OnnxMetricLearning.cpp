@@ -17,6 +17,7 @@
  * limitations under the License.
  */
 #include "OnnxMetricLearning.h"
+#include "EdgeDirection.h"
 #include "ONNXInferenceModel.h"
 
 #if __has_include("ActsPlugins/Gnn/detail/TensorVectorConversion.hpp")
@@ -167,10 +168,10 @@ OnnxMetricLearning::OnnxMetricLearning(const Config& cfg, std::unique_ptr<const 
   // The edge ordering needs exactly the two node features its metric is defined
   // in terms of, or none at all if it is switched off.
   if (!config().radiusFeatureIndices.empty()) {
-    if (config().radiusFeatureIndices.size() != kNumRadiusFeatures) {
+    if (config().radiusFeatureIndices.size() != gnntracking::kNumRadiusFeatures) {
       throw std::invalid_argument(
           fmt::format("The edge ordering needs exactly {} node features (r, z), but {} are configured",
-                      kNumRadiusFeatures, config().radiusFeatureIndices.size()));
+                      gnntracking::kNumRadiusFeatures, config().radiusFeatureIndices.size()));
     }
     ACTS_INFO("Orienting every built edge from the hit closer to the interaction point to the one further out");
   } else {
@@ -226,10 +227,8 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
       throw std::runtime_error("Edge feature input index out of range");
     }
   }
-  for (const int idx : config().radiusFeatureIndices) {
-    if (idx < 0 || static_cast<std::size_t>(idx) >= fullNumFeatures) {
-      throw std::runtime_error("Edge ordering feature index out of range");
-    }
+  if (!config().radiusFeatureIndices.empty()) {
+    gnntracking::checkRadiusFeatureIndices(config().radiusFeatureIndices, fullNumFeatures);
   }
   if (!featureScales.empty() && featureScales.size() != numFeatures) {
     throw std::runtime_error("featureScales size must match the number of input features");
@@ -391,19 +390,13 @@ torch::Tensor OnnxMetricLearning::orderEdgesByRadius(const std::vector<float>& i
     return edgeList;
   }
 
-  // The metric is the squared distance from the interaction point, computed
-  // from the unscaled node values. Note that this makes
-  // Config::shuffleDirections moot: whatever direction the edge building left,
-  // the edges end up pointing outwards.
-  enum RadiusFeatureInput { eR = 0, eZ };
+  // The metric is the squared distance from the interaction point of
+  // EdgeDirection.h, computed from the unscaled node values. Note that this
+  // makes Config::shuffleDirections moot: whatever direction the edge building
+  // left, the edges end up pointing outwards.
   const auto& indices = config().radiusFeatureIndices;
-
-  std::vector<float> distances(numNodes);
-  for (std::size_t n = 0; n < numNodes; ++n) {
-    const float r = inputValues[n * fullNumFeatures + static_cast<std::size_t>(indices[eR])];
-    const float z = inputValues[n * fullNumFeatures + static_cast<std::size_t>(indices[eZ])];
-    distances[n] = r * r + z * z;
-  }
+  // Not const: vectorToTensor2D() wraps the buffer without copying it
+  std::vector<float> distances = gnntracking::nodeDistancesSq(inputValues.data(), numNodes, fullNumFeatures, indices);
 
   // Gathering with torch ops keeps this on whichever device the edge building
   // ran on.
@@ -413,9 +406,10 @@ torch::Tensor OnnxMetricLearning::orderEdgesByRadius(const std::vector<float>& i
   const auto srcDistance = nodeDistances.index_select(0, src);
   const auto dstDistance = nodeDistances.index_select(0, dst);
 
-  // The node index breaks ties, so that the two hits of an edge are ordered
-  // even if they sit at the same distance and the orientation stays a strict
-  // total order.
+  // An edge is flipped unless it already points outwards, which is
+  // gnntracking::pointsOutward() written in tensor ops: the node index breaks
+  // ties, so that the two hits of an edge are ordered even if they sit at the
+  // same distance. A self loop compares equal on both and is left alone.
   const auto flipMask = (srcDistance > dstDistance).logical_or((srcDistance == dstDistance).logical_and(src > dst));
   const auto numFlipped = flipMask.sum().item<int64_t>();
 
@@ -429,8 +423,8 @@ torch::Tensor OnnxMetricLearning::orderEdgesByRadius(const std::vector<float>& i
     ACTS_DEBUG(fmt::format(
         "Distance from the interaction point over {} nodes (features {} and {} of {}): {} to {} mm, {} of {} edges "
         "connect two hits at the same distance",
-        numNodes, indices[eR], indices[eZ], fullNumFeatures, std::sqrt(*minDistance), std::sqrt(*maxDistance),
-        (srcDistance == dstDistance).sum().item<int64_t>(), edgeList.size(1)));
+        numNodes, indices[gnntracking::eR], indices[gnntracking::eZ], fullNumFeatures, std::sqrt(*minDistance),
+        std::sqrt(*maxDistance), (srcDistance == dstDistance).sum().item<int64_t>(), edgeList.size(1)));
   }
 
   using torch::indexing::Slice;

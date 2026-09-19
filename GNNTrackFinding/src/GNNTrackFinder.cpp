@@ -19,6 +19,7 @@
 #include "GNNTrackFinder.h"
 
 #include "CCAndWalkTrackBuilding.h"
+#include "EdgeDirection.h"
 #include "OnnxMetricLearning.h"
 #include "PaddedEdgeRemoval.h"
 
@@ -89,11 +90,11 @@ constexpr const char* kTrackBuildingCC = "connected-components";
 /// Track building that additionally walks the components that are not paths
 constexpr const char* kTrackBuildingCCAndWalk = "cc-and-walk";
 
-/// The hit features the distance from the interaction point (r^2 + z^2) is
-/// computed from. Both the edge ordering of the graph construction and the
-/// "cc-and-walk" track building direct their edges by it. Not configurable:
-/// any other choice would not be that distance.
-const std::array<std::string, OnnxMetricLearning::kNumRadiusFeatures> kRadiusFeatures{"r", "z"};
+/// The hit features the distance from the interaction point is computed from.
+/// Both the edge ordering of the graph construction and the "cc-and-walk"
+/// track building direct their edges by it, see EdgeDirection.h. Not
+/// configurable: any other choice would not be that distance.
+const std::array<std::string, gnntracking::kNumRadiusFeatures> kRadiusFeatures{"r", "z"};
 
 /// Lower-case an (ASCII) configuration string, so that the device
 /// specification can be given in any case.
@@ -465,8 +466,7 @@ void GNNTrackFinder::buildPipeline(const std::vector<float>& embeddingScales,
   std::shared_ptr<ActsPlugins::TrackBuildingBase> trackBuilder{};
   if (m_trackBuilding.value() == kTrackBuildingCCAndWalk) {
     trackBuilder = std::make_shared<CCAndWalkTrackBuilding>(
-        CCAndWalkTrackBuilding::Config{.rFeatureIndex = m_radiusFeatureIndices.at(0),
-                                       .zFeatureIndex = m_radiusFeatureIndices.at(1),
+        CCAndWalkTrackBuilding::Config{.radiusFeatureIndices = m_radiusFeatureIndices,
                                        .addScore = m_walkAddScore.value(),
                                        .minScore = m_walkMinScore.value(),
                                        .minCandidateSize = m_minHitsPerTrk.value()},
