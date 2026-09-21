@@ -19,36 +19,36 @@
 #pragma once
 
 #include <cstddef>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
-/// The one convention by which an edge of the GNN graph gets a direction: it
-/// points from the hit closer to the interaction point to the one further out.
 namespace gnntracking {
 
-/// Number of node features the direction is computed from: r and z, in that
+/// Number of node features the distance is computed from: r and z, in that
 /// order, see nodeDistancesSq()
-inline constexpr std::size_t kNumRadiusFeatures = 2;
+inline constexpr std::size_t kNumDistanceFeatures = 2;
 
-/// Positions of r and z in a radius feature index vector
-enum RadiusFeature : std::size_t { eR = 0, eZ };
+/// Positions of r and z in a distance feature index vector
+enum DistanceFeature : std::size_t { eR = 0, eZ };
 
 /// The metric: the squared distance of a hit from the interaction point.
 /// Squaring keeps the ordering and the value is only ever compared, so the
 /// square root would be wasted.
 [[nodiscard]] inline float distanceSq(float r, float z) { return r * r + z * z; }
 
-/// Throws unless @p radiusFeatureIndices are the indices of the r and of the z
-/// node feature, in that order, in a node feature row of @p numFeatures values
-inline void checkRadiusFeatureIndices(const std::vector<int>& radiusFeatureIndices, std::size_t numFeatures) {
-  if (radiusFeatureIndices.size() != kNumRadiusFeatures) {
-    throw std::invalid_argument("Directing the edges needs exactly " + std::to_string(kNumRadiusFeatures) +
-                                " node features (r, z), but " + std::to_string(radiusFeatureIndices.size()) +
+/// Throws unless @p distanceFeatureIndices are the indices of the r and of the
+/// z node feature, in that order, in a node feature row of @p numFeatures values
+inline void checkDistanceFeatureIndices(const std::vector<std::size_t>& distanceFeatureIndices,
+                                        std::size_t numFeatures) {
+  if (distanceFeatureIndices.size() != kNumDistanceFeatures) {
+    throw std::invalid_argument("Directing the edges needs exactly " + std::to_string(kNumDistanceFeatures) +
+                                " node features (r, z), but " + std::to_string(distanceFeatureIndices.size()) +
                                 " are configured");
   }
-  for (const int index : radiusFeatureIndices) {
-    if (index < 0 || static_cast<std::size_t>(index) >= numFeatures) {
+  for (const std::size_t index : distanceFeatureIndices) {
+    if (index >= numFeatures) {
       throw std::invalid_argument("Edge direction feature index " + std::to_string(index) + " is out of range for " +
                                   std::to_string(numFeatures) + " node features");
     }
@@ -57,17 +57,23 @@ inline void checkRadiusFeatureIndices(const std::vector<int>& radiusFeatureIndic
 
 /// distanceSq() of the first @p numNodes rows of the flat, row-major
 /// (numRows x @p numFeatures) node feature buffer @p nodeFeatures, taking r and
-/// z from the columns @p radiusFeatureIndices names. Rows past @p numNodes (the
-/// zero padding some models are exported with) are not looked at.
+/// z from the columns @p distanceFeatureIndices names. Rows past @p numNodes
+/// (the zero padding some models are exported with) are not looked at.
 ///
-/// @throws std::invalid_argument if @p radiusFeatureIndices does not name two
-///         columns of the buffer
-[[nodiscard]] inline std::vector<float> nodeDistancesSq(const float* nodeFeatures, std::size_t numNodes,
+/// @throws std::invalid_argument if @p distanceFeatureIndices does not name two
+///         columns of the buffer, or if the buffer holds fewer than @p numNodes
+///         rows
+[[nodiscard]] inline std::vector<float> nodeDistancesSq(std::span<const float> nodeFeatures, std::size_t numNodes,
                                                         std::size_t numFeatures,
-                                                        const std::vector<int>& radiusFeatureIndices) {
-  checkRadiusFeatureIndices(radiusFeatureIndices, numFeatures);
-  const auto rIndex = static_cast<std::size_t>(radiusFeatureIndices[eR]);
-  const auto zIndex = static_cast<std::size_t>(radiusFeatureIndices[eZ]);
+                                                        const std::vector<std::size_t>& distanceFeatureIndices) {
+  checkDistanceFeatureIndices(distanceFeatureIndices, numFeatures);
+  if (numNodes * numFeatures > nodeFeatures.size()) {
+    throw std::invalid_argument("A node feature buffer of " + std::to_string(nodeFeatures.size()) +
+                                " values does not hold " + std::to_string(numNodes) + " nodes of " +
+                                std::to_string(numFeatures) + " features");
+  }
+  const std::size_t rIndex = distanceFeatureIndices[eR];
+  const std::size_t zIndex = distanceFeatureIndices[eZ];
 
   std::vector<float> distancesSq(numNodes);
   for (std::size_t n = 0; n < numNodes; ++n) {

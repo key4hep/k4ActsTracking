@@ -158,15 +158,11 @@ std::vector<std::vector<int>> CCAndWalkTrackBuilding::operator()(PipelineTensors
   const float* scoreData = hostScores ? hostScores->data() : tensors.edgeScores->data();
   const float* nodeData = hostNodeFeatures ? hostNodeFeatures->data() : tensors.nodeFeatures.data();
 
-  // Direct every edge from the hit closer to the interaction point to the one
-  // further out, by the shared ordering of EdgeDirection.h - the one the graph
-  // construction already oriented its edges by. It is a strict total order, so
-  // this cannot produce a cycle and sorting the nodes by it gives a topological
-  // order for free. Only the real hits are looked at; any padding rows the edge
-  // classifiers were given sit past them and have no edges.
+  // Direct every edge outwards (see EdgeDirection.h). Only the real hits are
+  // looked at: any padding rows the edge classifiers were given sit past them.
   const std::size_t numNodeFeatures = tensors.nodeFeatures.shape()[1];
-  const std::vector<float> distancesSq =
-      gnntracking::nodeDistancesSq(nodeData, numNodes, numNodeFeatures, m_cfg.radiusFeatureIndices);
+  const std::vector<float> distancesSq = gnntracking::nodeDistancesSq({nodeData, tensors.nodeFeatures.size()}, numNodes,
+                                                                      numNodeFeatures, m_cfg.distanceFeatureIndices);
   const auto pointsOutward = [&distancesSq](int a, int b) { return gnntracking::pointsOutward(distancesSq, a, b); };
 
   std::vector<std::pair<std::pair<int, int>, float>> directed{};

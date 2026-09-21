@@ -197,7 +197,7 @@ private:
   std::vector<std::pair<double, double>> m_phiBinEdges{};
   std::vector<int> m_embeddingFeatureIndices{};
   std::vector<int> m_edgeFeatureIndices{};
-  std::vector<int> m_radiusFeatureIndices{};
+  std::vector<std::size_t> m_distanceFeatureIndices{};
   std::vector<std::vector<int>> m_edgeClassifierFeatureIndices{};
   std::unique_ptr<ActsPlugins::GnnPipeline> m_pipeline{nullptr};
   std::unique_ptr<const Acts::Logger> m_logger{nullptr};

@@ -21,6 +21,8 @@
 
 #include "EdgeDirection.h"
 
+#include <cstddef>
+#include <span>
 #include <stdexcept>
 #include <vector>
 
@@ -28,7 +30,7 @@
 // with r in column 1 and z in column 3 and two filler columns in between, so
 // that a wrong stride or a swapped index cannot pass unnoticed.
 namespace {
-const std::vector<int> kIndices{1, 3};
+const std::vector<std::size_t> kIndices{1, 3};
 const std::vector<float> kNodes{
     // filler   r      filler   z
     -1.f, 30.f, -1.f, 40.f, // node 0: distance 50
@@ -41,42 +43,44 @@ constexpr std::size_t kNumFeatures = 4;
 
 TEST_CASE("nodeDistancesSq") {
   SECTION("r and z are taken from the configured columns") {
-    REQUIRE_THAT(gnntracking::nodeDistancesSq(kNodes.data(), kNumNodes, kNumFeatures, kIndices),
+    REQUIRE_THAT(gnntracking::nodeDistancesSq(kNodes, kNumNodes, kNumFeatures, kIndices),
                  Catch::Matchers::Equals(std::vector<float>{2500.f, 100.f, 2500.f}));
   }
 
   SECTION("padding rows past the real nodes are not looked at") {
-    REQUIRE_THAT(gnntracking::nodeDistancesSq(kNodes.data(), kNumNodes - 1, kNumFeatures, kIndices),
+    REQUIRE_THAT(gnntracking::nodeDistancesSq(kNodes, kNumNodes - 1, kNumFeatures, kIndices),
                  Catch::Matchers::Equals(std::vector<float>{2500.f, 100.f}));
   }
 
   SECTION("no nodes is not an error") {
-    REQUIRE(gnntracking::nodeDistancesSq(kNodes.data(), 0, kNumFeatures, kIndices).empty());
+    REQUIRE(gnntracking::nodeDistancesSq(kNodes, 0, kNumFeatures, kIndices).empty());
   }
 
   SECTION("the feature indices have to name two columns of the buffer") {
     // Built at run time, so that the compiler cannot see the short vector being
     // indexed on the (unreachable) path past the check and warn about it
-    std::vector<int> indices{kIndices};
+    std::vector<std::size_t> indices{kIndices};
     indices.pop_back();
-    REQUIRE_THROWS_AS(gnntracking::nodeDistancesSq(kNodes.data(), kNumNodes, kNumFeatures, indices),
-                      std::invalid_argument);
+    REQUIRE_THROWS_AS(gnntracking::nodeDistancesSq(kNodes, kNumNodes, kNumFeatures, indices), std::invalid_argument);
 
     indices = kIndices;
     indices.push_back(0);
-    REQUIRE_THROWS_AS(gnntracking::nodeDistancesSq(kNodes.data(), kNumNodes, kNumFeatures, indices),
-                      std::invalid_argument);
+    REQUIRE_THROWS_AS(gnntracking::nodeDistancesSq(kNodes, kNumNodes, kNumFeatures, indices), std::invalid_argument);
 
-    REQUIRE_THROWS_AS(
-        gnntracking::nodeDistancesSq(kNodes.data(), kNumNodes, kNumFeatures, {1, static_cast<int>(kNumFeatures)}),
-        std::invalid_argument);
-    REQUIRE_THROWS_AS(gnntracking::nodeDistancesSq(kNodes.data(), kNumNodes, kNumFeatures, {-1, 3}),
+    REQUIRE_THROWS_AS(gnntracking::nodeDistancesSq(kNodes, kNumNodes, kNumFeatures, {1, kNumFeatures}),
                       std::invalid_argument);
+  }
+
+  SECTION("the buffer has to hold all the nodes that are asked for") {
+    const std::span<const float> twoNodes{kNodes.data(), 2 * kNumFeatures};
+    REQUIRE_THAT(gnntracking::nodeDistancesSq(twoNodes, 2, kNumFeatures, kIndices),
+                 Catch::Matchers::Equals(std::vector<float>{2500.f, 100.f}));
+    REQUIRE_THROWS_AS(gnntracking::nodeDistancesSq(twoNodes, kNumNodes, kNumFeatures, kIndices), std::invalid_argument);
   }
 }
 
 TEST_CASE("pointsOutward") {
-  const auto distancesSq = gnntracking::nodeDistancesSq(kNodes.data(), kNumNodes, kNumFeatures, kIndices);
+  const auto distancesSq = gnntracking::nodeDistancesSq(kNodes, kNumNodes, kNumFeatures, kIndices);
 
   SECTION("an edge points outward when it ends further from the interaction point") {
     REQUIRE(gnntracking::pointsOutward(distancesSq, 1, 0));

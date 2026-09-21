@@ -68,8 +68,8 @@ public:
     /// Columns of the radius and of z, in that order, in the node feature
     /// tensor. The edges are directed by the distance from the interaction
     /// point these two form, see the class documentation. Same convention (and
-    /// same value) as OnnxMetricLearning::Config::radiusFeatureIndices.
-    std::vector<int> radiusFeatureIndices{};
+    /// same value) as OnnxMetricLearning::Config::distanceFeatureIndices.
+    std::vector<std::size_t> distanceFeatureIndices{};
     /// A neighbour scoring above this is always followed, and the walk branches
     /// if several do ("edge addition" in the paper).
     float addScore{0.6f};
