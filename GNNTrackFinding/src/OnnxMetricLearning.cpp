@@ -17,6 +17,7 @@
  * limitations under the License.
  */
 #include "OnnxMetricLearning.h"
+#include "EdgeDirection.h"
 #include "ONNXInferenceModel.h"
 
 #if __has_include("ActsPlugins/Gnn/detail/TensorVectorConversion.hpp")
@@ -163,6 +164,19 @@ OnnxMetricLearning::OnnxMetricLearning(const Config& cfg, std::unique_ptr<const 
   } else {
     ACTS_DEBUG("No edge features are computed, the edge classifiers have to be two-input models");
   }
+
+  // The edge ordering needs exactly the two node features its metric is defined
+  // in terms of, or none at all if it is switched off.
+  if (!config().distanceFeatureIndices.empty()) {
+    if (config().distanceFeatureIndices.size() != gnntracking::kNumDistanceFeatures) {
+      throw std::invalid_argument(
+          fmt::format("The edge ordering needs exactly {} node features (r, z), but {} are configured",
+                      gnntracking::kNumDistanceFeatures, config().distanceFeatureIndices.size()));
+    }
+    ACTS_INFO("Orienting every built edge from the hit closer to the interaction point to the one further out");
+  } else {
+    ACTS_DEBUG("Edges keep the orientation the edge building gave them");
+  }
 }
 
 ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& inputValues, std::size_t numNodes,
@@ -212,6 +226,9 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
     if (idx < 0 || static_cast<std::size_t>(idx) >= fullNumFeatures) {
       throw std::runtime_error("Edge feature input index out of range");
     }
+  }
+  if (!config().distanceFeatureIndices.empty()) {
+    gnntracking::checkDistanceFeatureIndices(config().distanceFeatureIndices, fullNumFeatures);
   }
   if (!featureScales.empty() && featureScales.size() != numFeatures) {
     throw std::runtime_error("featureScales size must match the number of input features");
@@ -279,6 +296,11 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
 
   ACTS_VERBOSE(fmt::format("Shape of built edges: ({}, {})", edgeList.size(0), edgeList.size(1)));
   ACTS_VERBOSE(fmt::format("Slice of edgeList: {}", fmt::streamed(edgeList.slice(1, 0, 5))));
+
+  // Point every edge away from the interaction point. This runs before the
+  // guard below because it can only ever remove edges, and before the edge
+  // features because those are signed differences along the edge.
+  edgeList = orderEdgesByDistance(inputValues, numNodes, fullNumFeatures, std::move(edgeList));
 
   // A graph this small has no tracks in it, and handing it to the edge
   // classifier would not end well either: Acts builds the score tensor for a
@@ -360,6 +382,66 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
               ActsPlugins::detail::vectorToTensor2D(downstreamValues, fullNumFeatures), execContext),
           ActsPlugins::detail::torchToActsTensor<int64_t>(edgeList, execContext), std::move(actsEdgeFeatures),
           std::nullopt};
+}
+
+torch::Tensor OnnxMetricLearning::orderEdgesByDistance(const std::vector<float>& inputValues, std::size_t numNodes,
+                                                       std::size_t fullNumFeatures, torch::Tensor edgeList) const {
+  if (config().distanceFeatureIndices.empty()) {
+    return edgeList;
+  }
+
+  // The metric is the squared distance from the interaction point of
+  // EdgeDirection.h, computed from the unscaled node values. Note that this
+  // makes Config::shuffleDirections moot: whatever direction the edge building
+  // left, the edges end up pointing outwards.
+  const auto& indices = config().distanceFeatureIndices;
+  // Not const: vectorToTensor2D() wraps the buffer without copying it
+  std::vector<float> distances = gnntracking::nodeDistancesSq(inputValues, numNodes, fullNumFeatures, indices);
+
+  // Gathering with torch ops keeps this on whichever device the edge building
+  // ran on.
+  const auto nodeDistances = ActsPlugins::detail::vectorToTensor2D(distances, 1).squeeze(1).to(edgeList.device());
+  const auto src = edgeList.select(0, 0).contiguous();
+  const auto dst = edgeList.select(0, 1).contiguous();
+  const auto srcDistance = nodeDistances.index_select(0, src);
+  const auto dstDistance = nodeDistances.index_select(0, dst);
+
+  // An edge is flipped unless it already points outwards, which is
+  // gnntracking::pointsOutward() written in tensor ops: the node index breaks
+  // ties, so that the two hits of an edge are ordered even if they sit at the
+  // same distance. A self loop compares equal on both and is left alone.
+  const auto flipMask = (srcDistance > dstDistance).logical_or((srcDistance == dstDistance).logical_and(src > dst));
+
+  // Zero flipped edges is a perfectly normal outcome - it just means the edge
+  // building already numbered the hits outwards - but it is also what a
+  // degenerate metric looks like, so report what the metric actually saw: the
+  // range it spans over the nodes, and how many edges connect two hits it
+  // cannot tell apart.
+  if (logger().doPrint(Acts::Logging::DEBUG) && !distances.empty()) {
+    const auto [minDistance, maxDistance] = std::minmax_element(distances.begin(), distances.end());
+    ACTS_DEBUG(fmt::format(
+        "Distance from the interaction point over {} nodes (features {} and {} of {}): {} to {} mm, {} of {} edges "
+        "connect two hits at the same distance",
+        numNodes, indices[gnntracking::eR], indices[gnntracking::eZ], fullNumFeatures, std::sqrt(*minDistance),
+        std::sqrt(*maxDistance), (srcDistance == dstDistance).sum().item<int64_t>(), edgeList.size(1)));
+  }
+
+  using torch::indexing::Slice;
+  edgeList.index_put_({Slice(), flipMask}, edgeList.index({Slice(), flipMask}).flip(0));
+
+  // Collapse a pair of hits that ended up in the graph in both directions, as
+  // Acts' postprocessEdgeTensor() does after its own orientation. That one
+  // already deduplicated, so this normally only gives the columns a canonical
+  // order, which keeps the graph reproducible from run to run.
+  const int64_t numEdges = edgeList.size(1);
+  edgeList = std::get<0>(torch::unique_dim(edgeList, -1, false));
+
+  // The flips are only counted when this is printed: .item() waits for the
+  // device. flipMask is a tensor of its own, so the flip above left it intact.
+  ACTS_DEBUG(fmt::format("Oriented {} of {} edges outwards, {} duplicate(s) collapsed", flipMask.sum().item<int64_t>(),
+                         numEdges, numEdges - edgeList.size(1)));
+
+  return edgeList;
 }
 
 std::optional<torch::Tensor> OnnxMetricLearning::buildEdgeFeatures(const std::vector<float>& inputValues,
