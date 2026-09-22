@@ -57,7 +57,7 @@ inline void checkDistanceFeatureIndices(const std::vector<std::size_t>& distance
 
 /// distanceSq() of the first @p numNodes rows of the flat, row-major
 /// (numRows x @p numFeatures) node feature buffer @p nodeFeatures, taking r and
-/// z from the columns @p distanceFeatureIndices names. Rows past @p numNodes
+/// z from the columns @p distanceFeatureIndices. Rows past @p numNodes
 /// (the zero padding some models are exported with) are not looked at.
 ///
 /// @throws std::invalid_argument if @p distanceFeatureIndices does not name two
