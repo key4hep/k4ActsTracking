@@ -291,6 +291,25 @@ The edge classifier scales its *node* input (`InputScalesEdgeClassifier`) but
 passes the edge input through as it is, so these have to be the scaling the
 classifier was trained with — it is what the edge features are computed from.
 
+With `OutputLevel=DEBUG` the computed features are printed per edge, together
+with the two hits the edge connects, which is how a mismatch with the training
+scales shows up. They are printed twice: once for the graph as it was built,
+and once per edge classifier for the edges that survived its cut — that second
+one also carries the score the classifier gave the edge.
+
+```
+GNNTrackFinder.MetricLearning        DEBUG Edge features (dr, dphi, dz, deta, phislope, rphislope) of 5 of 3412 built edges:
+GNNTrackFinder.MetricLearning        DEBUG   edge 0 (0 -> 7): 0.0123, -0.0007, 0.0041, 0.0032, -0.0569, 0.0021
+GNNTrackFinder.EdgeClassifier0Edges  DEBUG 5 of 268 classified edges (dr, dphi, dz, deta, phislope, rphislope):
+GNNTrackFinder.EdgeClassifier0Edges  DEBUG   edge 0 (0 -> 7): score 0.982, features 0.0123, -0.0007, 0.0041, 0.0032, -0.0569, 0.0021
+```
+
+Both show the first five edges; `DetailedDebugOut=True` prints all of them,
+which for a real event is a *lot* of output. The classified-edge printing is a
+pass-through stage (`ClassifiedEdgePrinting`) that is only added to the pipeline
+when the algorithm runs at `DEBUG` or below, and it prints the score alone if no
+edge features are computed.
+
 Leaving `ComputeEdgeFeatures` off (the default) computes no edge features, which
 is what a two-input classifier expects. Configuring a three-input model without
 it fails with *"ONNX edge classifier model has three inputs, but no edge features

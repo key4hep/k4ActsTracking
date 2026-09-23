@@ -499,5 +499,28 @@ std::optional<torch::Tensor> OnnxMetricLearning::buildEdgeFeatures(const std::ve
 
   // Left as a torch tensor so that the caller can still pad it before it is
   // handed over to the pipeline.
-  return torch::stack({dr, dphi, dz, deta, phislope, rphislope}, 1).contiguous();
+  auto edgeFeatures = torch::stack({dr, dphi, dz, deta, phislope, rphislope}, 1).contiguous();
+
+  // The features go to the classifier unscaled, so this is what the model
+  // actually sees. Printing a handful of them (all of them with
+  // Config::printAllEdgeFeatures) is the way to spot a mismatch with the scales
+  // the model was trained with.
+  if (logger().doPrint(Acts::Logging::DEBUG)) {
+    const int64_t numEdges = edgeFeatures.size(0);
+    const int64_t numShown = config().printAllEdgeFeatures ? numEdges : std::min<int64_t>(kNumEdgesShown, numEdges);
+    // Pulling the shown rows over in one go, so that a CUDA run does not
+    // synchronise once per printed value.
+    const auto shownFeatures = edgeFeatures.slice(0, 0, numShown).to(torch::kCPU).contiguous();
+    const auto shownEdges = edgeList.slice(1, 0, numShown).to(torch::kCPU).contiguous();
+
+    ACTS_DEBUG(fmt::format("Edge features (dr, dphi, dz, deta, phislope, rphislope) of {} of {} built edges:", numShown,
+                           numEdges));
+    for (int64_t e = 0; e < numShown; ++e) {
+      const float* values = shownFeatures[e].data_ptr<float>();
+      ACTS_DEBUG(fmt::format("  edge {} ({} -> {}): {}", e, shownEdges[0][e].item<int64_t>(),
+                             shownEdges[1][e].item<int64_t>(), fmt::join(std::span(values, kNumEdgeFeatures), ", ")));
+    }
+  }
+
+  return edgeFeatures;
 }
