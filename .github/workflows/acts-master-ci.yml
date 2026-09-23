@@ -76,6 +76,7 @@ jobs:
             -DACTS_BUILD_PLUGIN_DD4HEP=ON \
             -DACTS_BUILD_PLUGIN_ROOT=ON \
             -DACTS_BUILD_PLUGIN_JSON=ON \
+            -DACTS_USE_SYSTEM_NLOHMANN_JSON=ON \
             -DACTS_BUILD_PLUGIN_EDM4HEP=ON
           cmake --build build -- -j$(nproc)
           cmake --install build
