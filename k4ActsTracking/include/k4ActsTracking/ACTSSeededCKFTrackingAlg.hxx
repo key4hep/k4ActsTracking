@@ -107,9 +107,10 @@ public:
                                                             Acts::MagneticFieldProvider::Cache& magCache) const;
 
   StatusCode tracking(const std::vector<Acts::BoundTrackParameters>& paramseeds, const CKF& trackFinder,
-                      const TrackFinderOptions& ckfOptions, const Propagator& extrapPropagator,
-                      const Acts::PerigeeSurface& perigeeSurface, Propagator::Options<>& extrapOptions,
-                      const ACTSTracking::HitContainer& hits, edm4hep::TrackCollection& trackCollection) const;
+                      const TrackFinderOptions& ckfOptions, const TrackFinderOptions& secondOptions,
+                      const Propagator& extrapPropagator, const Acts::PerigeeSurface& perigeeSurface,
+                      Propagator::Options<>& extrapOptions, const ACTSTracking::HitContainer& hits,
+                      edm4hep::TrackCollection& trackCollection) const;
 
 protected:
   /**
@@ -119,6 +120,16 @@ protected:
   Gaudi::Property<bool> m_runCKF{this, "RunCKF", true,
                                  "Run tracking using CKF. False means stop at the seeding stage."};
   Gaudi::Property<bool> m_propagateBackward{this, "PropagateBackward", false, "Extrapolates tracks towards beamline."};
+  Gaudi::Property<bool> m_doTwoWayCKF{this, "DoTwoWayCKF", false,
+                                      "Run two-way CKF: first pass + smooth + second pass in opposite direction."};
+  Gaudi::Property<bool> m_doOutsideInCKF{this, "DoOutsideInCKF", false,
+                                         "Reverse first-pass direction: backward (outside-in) from outermost seed SP "
+                                         "toward IP; combined with DoTwoWayCKF the second (forward) pass extends "
+                                         "outward into the outer tracker."};
+  Gaudi::Property<bool> m_inflateCovarianceTwoWay{this, "InflateCovarianceTwoWay", true,
+                                                  "Inflate covariance before the second CKF pass."};
+  Gaudi::Property<double> m_twoWayInflateCovarianceFactor{this, "TwoWayInflateCovarianceFactor", 100.0,
+                                                          "Covariance inflation factor for the second CKF pass."};
   ///@}
 
   /**

@@ -517,9 +517,17 @@ void prepareTrackerHits(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geom
 /**
  * @brief Estimate initial bound track parameters from a three-point seed.
  *
- * Evaluates the magnetic field at the bottom position, calls
- * Acts::estimateTrackParamsFromSeed on the bottom/middle/top positions and
- * builds a diagonal initial covariance.
+ * Evaluates the magnetic field at the start (bottom or top) space point,
+ * calls Acts::estimateTrackParamsFromSeed on the bottom/middle/top positions
+ * and builds a diagonal initial covariance.
+ *
+ * @param startSurface Surface on which the returned bound parameters are
+ *                     expressed. For inside-out this is the bottom (inner) SP's
+ *                     surface; for outside-in it is the top (outer) SP's surface.
+ * @param doOutsideIn  When true, project onto @p startSurface at the top SP
+ *                     instead of at the bottom SP. See the outside-in
+ *                     implementation branch below for why this needs a manual
+ *                     FreeVector fix.
  *
  * @return The estimated parameters, or std::nullopt if the estimation fails. A
  *         field-lookup failure throws, matching the tracking algorithms.
@@ -527,18 +535,38 @@ void prepareTrackerHits(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geom
 template <class Alg>
 std::optional<Acts::BoundTrackParameters>
 estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx,
-                       const Acts::Surface& bottomSurface, const Acts::Vector3& bottomPos,
+                       const Acts::Surface& startSurface, const Acts::Vector3& bottomPos,
                        const Acts::Vector3& middlePos, const Acts::Vector3& topPos, double t0,
                        Acts::MagneticFieldProvider::Cache& magCache, double errPos, double errPhi, double errLambda,
-                       double errRelP, double errTime) {
-  // Magnetic field at the seed (bottom space point) position
-  Acts::Result<Acts::Vector3> seedField = geo.magneticField()->getField(bottomPos, magCache);
+                       double errRelP, double errTime, bool doOutsideIn = false) {
+  // Magnetic field at the seed start position (bottom SP for inside-out,
+  // top SP for outside-in).
+  const Acts::Vector3& seedPos = doOutsideIn ? topPos : bottomPos;
+  Acts::Result<Acts::Vector3> seedField = geo.magneticField()->getField(seedPos, magCache);
   if (!seedField.ok()) {
     throw std::runtime_error("Field lookup error: " + std::to_string(seedField.error().value()));
   }
 
-  Acts::Result<Acts::BoundVector> optParams =
-      Acts::estimateTrackParamsFromSeed(geoCtx, bottomSurface, bottomPos, t0, middlePos, topPos, *seedField);
+  // Inside-out: estimateTrackParamsFromSeed(gctx, surface, bottom, ...) uses
+  //   the bottom SP as the free-parameter position and projects it onto
+  //   @p startSurface -- valid, since the bottom SP lies on that surface.
+  // Outside-in: the CKF must start at the OUTER SP propagating backward, so
+  //   @p startSurface is the top SP's surface. The helper hard-codes sp0
+  //   (=bottom) as the free position, and projecting a point that far off
+  //   the outer sensor makes transformFreeToBoundParameters fail. We do the
+  //   two internal steps explicitly and swap in the top position before
+  //   projection. Direction / q-over-p from the same 3-SP circle fit remain
+  //   correct; only WHERE along the helix moves.
+  Acts::Result<Acts::BoundVector> optParams = [&]() -> Acts::Result<Acts::BoundVector> {
+    if (doOutsideIn) {
+      Acts::FreeVector freeParams = Acts::estimateTrackParamsFromSeed(bottomPos, t0, middlePos, topPos, *seedField);
+      freeParams[Acts::eFreePos0] = topPos[0];
+      freeParams[Acts::eFreePos1] = topPos[1];
+      freeParams[Acts::eFreePos2] = topPos[2];
+      return Acts::transformFreeToBoundParameters(freeParams, startSurface, geoCtx);
+    }
+    return Acts::estimateTrackParamsFromSeed(geoCtx, startSurface, bottomPos, t0, middlePos, topPos, *seedField);
+  }();
   if (!optParams.ok()) {
     alg.debug() << "Failed estimation of track parameters for seed." << endmsg;
     return std::nullopt;
@@ -549,7 +577,7 @@ estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geome
 
   Acts::BoundMatrix cov = ACTSTracking::makeInitialCovariance(p, errPos, errPhi, errLambda, errRelP, errTime);
 
-  return Acts::BoundTrackParameters(bottomSurface.getSharedPtr(), params, cov, Acts::ParticleHypothesis::pion());
+  return Acts::BoundTrackParameters(startSurface.getSharedPtr(), params, cov, Acts::ParticleHypothesis::pion());
 }
 
 /// A hit belonging to a seed candidate: global position, transverse radius and
