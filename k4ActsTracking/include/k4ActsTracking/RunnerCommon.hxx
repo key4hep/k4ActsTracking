@@ -506,12 +506,10 @@ void prepareTrackerHits(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geom
 
     ACTSTracking::SourceLink sourceLink(surface->geometryId(), measurements.size());
     Acts::SourceLink srcWrap{sourceLink};
-    // Build the measurement from the local position, optionally extended with
-    // the hit time as a third dimension so the track fit also constrains time.
+    // Optionally measure the hit time as a third coordinate.
     ACTSTracking::Measurement meas = [&] {
       if (useHitTime) {
-        // Hit time in Acts native units (native time = c*t). If the digitiser subtracted the
-        // propagation time-of-flight, add it back (|pos| at c=1) to recover the absolute time.
+        // Acts native units; add back the TOF if the digitiser subtracted it.
         double hitT = static_cast<double>(hitPair.second.getTime()) * Acts::UnitConstants::ns;
         if (hitTimesTofCorrected) {
           hitT += globalPos.norm();
