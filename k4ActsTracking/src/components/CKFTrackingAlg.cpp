@@ -105,7 +105,7 @@ template <>
 struct fmt::formatter<podio::ObjectID> : fmt::ostream_formatter {};
 
 namespace {
-// Doublet time-of-flight cut for the ACTS DoubletSeedFinder experimentCuts hook.
+// TOF-corrected time cut on seed doublets, for the DoubletSeedFinder experimentCuts hook.
 struct TofDoubletCut {
   float deltaTMax; // Acts native time units
   bool operator()(const Acts::ConstSpacePointProxy& middle, const Acts::ConstSpacePointProxy& other, float /*cotTheta*/,
@@ -114,9 +114,9 @@ struct TofDoubletCut {
     const auto& zrO = other.zr();
     const float LM = std::sqrt(zrM[1] * zrM[1] + zrM[0] * zrM[0]);
     const float LO = std::sqrt(zrO[1] * zrO[1] + zrO[0] * zrO[0]);
-    // Native units (c=1): times and the expected TOF (= path length) are both lengths.
+    // c = 1: the expected TOF is the path length.
     const float res = (other.time() - middle.time()) - (LO - LM);
-    return std::abs(res) <= deltaTMax; // keep the doublet
+    return std::abs(res) <= deltaTMax;
   }
 };
 
@@ -188,7 +188,7 @@ private:
   struct SeedInput {
     float x, y, z, r, phi;
     float varR, varZ;
-    float t, varT; // hit time and its variance
+    float t, varT;
     ACTSTracking::SourceLink sourceLink;
   };
 
@@ -476,12 +476,10 @@ private:
 
   k4ActsTracking::CellIDSelector m_seedSelector{};
 
-  // One selector per HitTimeResolutionCellIDs entry, paired with m_hitTimeResolutionValues.
+  // Paired with m_hitTimeResolutionValues.
   std::vector<k4ActsTracking::CellIDSelector> m_hitTimeResolutionSelectors{};
 
-  /// Time resolution (ns) for a hit: the first matching HitTimeResolutionCellIDs
-  /// selection wins; a hit matched by none is a configuration error. (EDM4hep
-  /// 1.1 has no per-hit TrackerHitPlane time error to prefer instead.)
+  /// Time resolution (ns) of the first HitTimeResolutionCellIDs selection matching the hit.
   double hitTimeResolutionFor(const edm4hep::TrackerHitPlane& hit) const {
     for (std::size_t i = 0; i < m_hitTimeResolutionSelectors.size(); ++i) {
       if (m_hitTimeResolutionSelectors[i].accept(hit.getCellID())) {
@@ -661,9 +659,7 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
         sp.phi = std::atan2(sp.y, sp.x);
         sp.varR = static_cast<float>(var[0]);
         sp.varZ = static_cast<float>(var[1]);
-        // Space-point time and variance in Acts native units (native time = c*t). If the
-        // digitiser subtracted the propagation time-of-flight, add it back to recover the
-        // absolute time.
+        // Acts native units; add back the TOF if the digitiser subtracted it.
         sp.t = static_cast<float>(hit.getTime() * Acts::UnitConstants::ns);
         if (m_hitTimesTofCorrected) {
           sp.t += static_cast<float>(globalPos.norm());
@@ -800,11 +796,8 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
   bottomFinderCfg.collisionRegionMax = collisionRegion;
   bottomFinderCfg.cotThetaMax = cotThetaMax;
   bottomFinderCfg.minPt = minPt;
-  // experimentCuts is only evaluated in the interactionPointCut path, so it must be enabled
-  // for the doublet time cut to apply.
+  // experimentCuts only runs with interactionPointCut; the top finder inherits both.
   bottomFinderCfg.interactionPointCut = m_seedFinding_interactionPointCut;
-  // Doublet time-of-flight cut via the experimentCuts hook; the top finder inherits it
-  // through the config copy below, and tofDoubletCut must outlive the seeding call.
   TofDoubletCut tofDoubletCut{static_cast<float>(m_seedFinding_deltaTMax.value() * Acts::UnitConstants::ns)};
   if (m_seedFinding_deltaTMax > 0.0f) {
     bottomFinderCfg.experimentCuts.connect<&TofDoubletCut::operator()>(&tofDoubletCut);
@@ -976,8 +969,7 @@ CKFTrackingAlg::seedsToParameters(const Acts::SeedContainer& seeds, const Acts::
     }
 
     const Acts::Vector3 bottomPos = position(bottomSp);
-    // Seed time in Acts native units (native time = c*t). If the digitiser subtracted the
-    // propagation time-of-flight, add it back to recover the absolute time.
+    // Acts native units; add back the TOF if the digitiser subtracted it.
     double seedT0 = hits[bottomSL.index()].getTime() * Acts::UnitConstants::ns;
     if (m_hitTimesTofCorrected) {
       seedT0 += bottomPos.norm();
