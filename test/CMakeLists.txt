@@ -268,7 +268,16 @@ add_k4run_test(vertexing_CLD_o2_v08
              --IOSvc.Output particle_gun_CLD_o2_v08_VTX.edm4hep.root
   USE_TEST_ENV
   FIXTURES_REQUIRED reco_CLD_fixture
+  FIXTURES_SETUP vertexing_CLD_fixture
 )
+
+# k4run succeeds even when no vertex is found, so check the vertexing output
+add_test(NAME check_vertexing_CLD_o2_v08
+  WORKING_DIRECTORY ${_cld_dir}
+  COMMAND python ${CMAKE_CURRENT_LIST_DIR}/scripts/check_vertexing.py
+                 particle_gun_CLD_o2_v08_VTX.edm4hep.root
+)
+set_tests_properties(check_vertexing_CLD_o2_v08 PROPERTIES FIXTURES_REQUIRED vertexing_CLD_fixture)
 
 
 # === ILD chain ===
