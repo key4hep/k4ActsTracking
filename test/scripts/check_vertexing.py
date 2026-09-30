@@ -80,8 +80,9 @@ for i_event, frame in enumerate(get_reader(args.inputFile).get("events")):
     if len(primaries) != 1:
         fail(f"{len(primaries)} primary vertices instead of 1")
 
-    # Particles of each vertex, and the weight expected on the link to each.
+    # (vertex, particle) pairs as attached to the vertices
     vertex_particles = {}
+    attached_pairs = set()
     for vertex in vertices:
         position = vertex.getPosition()
         coordinates = (position.x, position.y, position.z, vertex.getChi2())
@@ -93,6 +94,7 @@ for i_event, frame in enumerate(get_reader(args.inputFile).get("events")):
             if len(tracks) != 1 or not tracks[0].isAvailable():
                 fail("vertex particle does not point to exactly one input track")
             keys.add(object_key(particle))
+            attached_pairs.add((object_key(vertex), object_key(particle)))
         vertex_particles[object_key(vertex)] = keys
 
     for vertex in primaries:
@@ -109,17 +111,25 @@ for i_event, frame in enumerate(get_reader(args.inputFile).get("events")):
     all_particle_keys = set().union(*vertex_particles.values())
     if len(all_particle_keys) != len(particles):
         fail(f"{len(particles)} particles, but {len(all_particle_keys)} attached to vertices")
-    if len(links) != len(particles):
-        fail(f"{len(links)} vertex-particle links for {len(particles)} particles")
 
+    linked_pairs = []
     for link in links:
         weight = link.getWeight()
         # The weights are stored as float, so allow for the rounding
         if not (math.isfinite(weight) and args.minTrackWeight - 1e-6 <= weight <= 1.0 + 1e-6):
             fail(f"link weight {weight} outside [{args.minTrackWeight}, 1]")
-        vertex_key = object_key(link.getFrom())
-        if object_key(link.getTo()) not in vertex_particles.get(vertex_key, set()):
-            fail("link to a particle that is not attached to its vertex")
+        linked_pairs.append((object_key(link.getFrom()), object_key(link.getTo())))
+
+    # Every attached particle has exactly one link, to its own vertex, and
+    # every link corresponds to an attached particle.
+    if len(set(linked_pairs)) != len(linked_pairs):
+        fail("duplicate vertex-particle links")
+    if set(linked_pairs) != attached_pairs:
+        fail(
+            f"{len(attached_pairs - set(linked_pairs))} attached particles without a link, "
+            f"{len(set(linked_pairs) - attached_pairs)} links to particles not attached to "
+            "their vertex"
+        )
 
 if n_events == 0:
     errors.append("no events in the input file")
