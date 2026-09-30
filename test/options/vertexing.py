@@ -17,6 +17,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+
 # ACTS primary vertex finding on an existing track collection.
 #
 # Detector agnostic: the geometry comes from --compactFile (only its magnetic

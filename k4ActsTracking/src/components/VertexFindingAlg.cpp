@@ -55,6 +55,8 @@
 
 #include <DD4hep/Detector.h>
 
+#include <Eigen/Cholesky>
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -142,10 +144,10 @@ struct VertexFindingAlg final
       this, "BeamSpotPosition", {0., 0.}, "Transverse beam-spot centre (x, y) [mm]"};
 
   // ----- vertex finding ----------------------------------------------------
-  Gaudi::Property<double> m_tracksMaxZinterval{
-      this, "TracksMaxZInterval", 1.0, "Tracks within this z distance of a seed are considered for it [mm]"};
-  Gaudi::Property<double> m_tracksMaxSignificance{
-      this, "TracksMaxSignificance", 5.0, "Maximum compatibility significance for a track to join a vertex"};
+  Gaudi::Property<double> m_tracksMaxZinterval{this, "TracksMaxZInterval", 1.0,
+                                               "Tracks within this z distance of a seed are considered for it [mm]"};
+  Gaudi::Property<double> m_tracksMaxSignificance{this, "TracksMaxSignificance", 5.0,
+                                                  "Maximum compatibility significance for a track to join a vertex"};
   Gaudi::Property<int> m_maxIterations{this, "MaxIterations", 1000, "Maximum number of vertex finding iterations"};
   Gaudi::Property<bool> m_doSmoothing{this, "DoSmoothing", true,
                                       "Refit the track parameters with the vertex position as constraint"};
@@ -304,8 +306,8 @@ VertexFindingAlg::Output VertexFindingAlg::operator()(const edm4hep::TrackCollec
     // readTrack requires the state at the interaction point, which carries the
     // perigee parameters the vertex fit works with.
     const auto states = edmTrack.getTrackStates();
-    const bool hasIPState = std::ranges::any_of(
-        states, [](const auto& state) { return state.location == edm4hep::TrackState::AtIP; });
+    const bool hasIPState =
+        std::ranges::any_of(states, [](const auto& state) { return state.location == edm4hep::TrackState::AtIP; });
     if (!hasIPState) {
       warning() << "Skipping track without an AtIP track state" << endmsg;
       continue;
@@ -345,7 +347,8 @@ VertexFindingAlg::Output VertexFindingAlg::operator()(const edm4hep::TrackCollec
     // A converted covariance that is not positive definite would poison the
     // vertex fit, and points at a conversion or input problem rather than a
     // vertexing one, so report it instead of letting it propagate silently.
-    if (cov.diagonal().minCoeff() <= 0. || cov.determinant() <= 0.) {
+    // A Cholesky decomposition exists exactly for positive-definite matrices.
+    if (Eigen::LLT<Acts::BoundMatrix>(cov).info() != Eigen::Success) {
       warning() << "Skipping track whose converted covariance is not positive definite (min diagonal "
                 << cov.diagonal().minCoeff() << ", determinant " << cov.determinant() << ")" << endmsg;
       continue;
@@ -430,8 +433,8 @@ VertexFindingAlg::Output VertexFindingAlg::operator()(const edm4hep::TrackCollec
       const double mass = atVertex.particleHypothesis().mass() / Acts::UnitConstants::GeV;
 
       auto particle = particles.create();
-      particle.setMomentum({static_cast<float>(momentum.x()), static_cast<float>(momentum.y()),
-                            static_cast<float>(momentum.z())});
+      particle.setMomentum(
+          {static_cast<float>(momentum.x()), static_cast<float>(momentum.y()), static_cast<float>(momentum.z())});
       particle.setMass(static_cast<float>(mass));
       particle.setEnergy(static_cast<float>(std::hypot(momentum.norm(), mass)));
       particle.setCharge(static_cast<float>(atVertex.charge()));
