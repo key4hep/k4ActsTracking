@@ -138,10 +138,13 @@ struct VertexFindingAlg final
   /// seed includes the seed's (beam-spot) uncertainty. Without it, Acts tests
   /// compatibility as if the seed sat exactly on the beam line, which rejects
   /// precise tracks from collisions a few beam-spot widths off it.
+  ///
+  /// The beam spot is centred at the origin. The seeder cuts on and fills its
+  /// density with the tracks' d0 and z0 as given, i.e. w.r.t. the z axis the
+  /// input perigee parameters refer to, so a displaced beam-spot centre would
+  /// not be honoured there.
   Gaudi::Property<std::vector<double>> m_beamSpotSize{
       this, "BeamSpotSize", {}, "Beam-spot size (sigma x, y, z) [mm]; empty = no beam-spot constraint"};
-  Gaudi::Property<std::vector<double>> m_beamSpotPosition{
-      this, "BeamSpotPosition", {0., 0.}, "Transverse beam-spot centre (x, y) [mm]"};
 
   // ----- vertex finding ----------------------------------------------------
   Gaudi::Property<double> m_tracksMaxZinterval{this, "TracksMaxZInterval", 1.0,
@@ -254,14 +257,13 @@ StatusCode VertexFindingAlg::initialize() {
   finderCfg.extractParameters.connect<&Acts::InputTrack::extractParameters>();
 
   if (!m_beamSpotSize.empty()) {
-    if (m_beamSpotSize.size() != 3 || m_beamSpotPosition.size() != 2) {
-      error() << "BeamSpotSize needs 3 values (sigma x, y, z) and BeamSpotPosition 2 (x, y)" << endmsg;
+    if (m_beamSpotSize.size() != 3) {
+      error() << "BeamSpotSize needs 3 values (sigma x, y, z)" << endmsg;
       return StatusCode::FAILURE;
     }
-    // The seeder places seeds at the constraint position plus the z it
-    // finds, so the constraint's z has to be 0.
-    Acts::Vertex beamSpot(Acts::Vector4(m_beamSpotPosition[0] * Acts::UnitConstants::mm,
-                                        m_beamSpotPosition[1] * Acts::UnitConstants::mm, 0., 0.));
+    // Centred at the origin, see m_beamSpotSize. The seeder places seeds at
+    // the constraint position plus the z it finds, so z has to be 0 anyway.
+    Acts::Vertex beamSpot(Acts::Vector4::Zero());
     Acts::Vector4 variances;
     for (std::size_t i = 0; i < 3; ++i) {
       const double sigma = m_beamSpotSize[i] * Acts::UnitConstants::mm;
