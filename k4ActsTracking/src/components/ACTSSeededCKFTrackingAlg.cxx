@@ -20,6 +20,7 @@
 
 // ACTSTracking
 #include "k4ActsTracking/MeasurementCalibrator.hxx"
+#include "k4ActsTracking/RunnerCommon.hxx"
 
 // edm4hep
 #include <edm4hep/MCParticle.h>
@@ -410,7 +411,7 @@ ACTSSeededCKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& t
   Acts::PropagatorPlainOptions pOptions{geometryContext(), magneticFieldContext()};
   pOptions.maxSteps = 10000;
   // Outside-in first pass propagates backward (from outer seed SP inward).
-  if (m_propagateBackward || m_doOutsideInCKF) {
+  if (m_propagateBackward) {
     pOptions.direction = Acts::Direction::Backward();
   }
 
@@ -425,7 +426,7 @@ ACTSSeededCKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& t
   // Outside-in:           backward first pass -> forward second pass.
   Acts::PropagatorPlainOptions secondPOptions{geometryContext(), magneticFieldContext()};
   secondPOptions.maxSteps = 10000;
-  secondPOptions.direction = m_doOutsideInCKF ? Acts::Direction::Forward() : Acts::Direction::Backward();
+  secondPOptions.direction = m_propagateBackward ? Acts::Direction::Forward() : Acts::Direction::Backward();
 
   Acts::GainMatrixUpdater kfUpdater;
 
@@ -567,7 +568,7 @@ std::vector<Acts::BoundTrackParameters> ACTSSeededCKFTrackingAlg::seedsToParamet
     // Outside-in mode: start the first (backward) CKF pass from the OUTER SP,
     // so we need the bound parameters expressed on the top surface, not the
     // bottom one. Inside-out (default): start from the inner SP.
-    const Acts::ConstSpacePointProxy& startSp = m_doOutsideInCKF ? topSp : bottomSp;
+    const Acts::ConstSpacePointProxy& startSp = m_propagateBackward ? topSp : bottomSp;
     const ACTSTracking::SourceLink& startSL = sourceLinkOf(startSp);
     const Acts::GeometryIdentifier geoId = startSL.geometryId();
     const Acts::Surface* surface = trackingGeometry()->findSurface(geoId);
@@ -591,19 +592,13 @@ std::vector<Acts::BoundTrackParameters> ACTSSeededCKFTrackingAlg::seedsToParamet
     // Inside-out: estimateTrackParamsFromSeed(gctx, surface, bottom, ...) uses
     //   the bottom SP as the free-parameter position and projects it onto the
     //   bottom SP's surface -- valid, since bottom lies on that surface.
-    // Outside-in: we want the bound parameters on the TOP surface, but the
-    //   helper hard-codes sp0 (=bottom) as the free position; projecting a
-    //   point that far off the outer sensor makes transformFreeToBoundParameters
-    //   fail. So we do the two internal steps explicitly and swap in the top
-    //   position before the projection. Direction / q-over-p from the same
-    //   3-SP circle fit remain correct; only WHERE along the helix moves.
+    // Outside-in: we want the bound parameters on the TOP surface, i.e. the
+    //   helix at the top SP (position and tangent there), whereas the helper
+    //   evaluates it at sp0 (=bottom); see ACTSTracking::estimateSeedParamsAtTop.
     Acts::Result<Acts::BoundVector> optParams = [&]() -> Acts::Result<Acts::BoundVector> {
-      if (m_doOutsideInCKF) {
-        Acts::FreeVector freeParams = Acts::estimateTrackParamsFromSeed(bottomPos, t0, middlePos, topPos, *seedField);
-        freeParams[Acts::eFreePos0] = topPos[0];
-        freeParams[Acts::eFreePos1] = topPos[1];
-        freeParams[Acts::eFreePos2] = topPos[2];
-        return Acts::transformFreeToBoundParameters(freeParams, *surface, geometryContext());
+      if (m_propagateBackward) {
+        return ACTSTracking::estimateSeedParamsAtTop(bottomPos, t0, middlePos, topPos, *seedField, *surface,
+                                                     geometryContext());
       }
       return Acts::estimateTrackParamsFromSeed(geometryContext(), *surface, bottomPos, t0, middlePos, topPos,
                                                *seedField);
@@ -740,7 +735,7 @@ ACTSSeededCKFTrackingAlg::tracking(const std::vector<Acts::BoundTrackParameters>
             auto secondTrack = tracks.makeTrack();
             secondTrack.copyFrom(*secondResult.value().begin());
 
-            if (m_doOutsideInCKF) {
+            if (m_propagateBackward) {
               // Outside-in stitching: second pass = forward from outermost
               // first-pass measurement.
               //   secondTrack.trackStates() walks stem->tip = inner->outer;

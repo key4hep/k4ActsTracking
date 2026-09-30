@@ -119,13 +119,12 @@ protected:
   ///@{
   Gaudi::Property<bool> m_runCKF{this, "RunCKF", true,
                                  "Run tracking using CKF. False means stop at the seeding stage."};
-  Gaudi::Property<bool> m_propagateBackward{this, "PropagateBackward", false, "Extrapolates tracks towards beamline."};
+  Gaudi::Property<bool> m_propagateBackward{
+      this, "PropagateBackward", false,
+      "Find tracks outside-in: start the CKF at the outermost seed SP and propagate backward through the other seed "
+      "SPs toward the beamline; combined with DoTwoWayCKF the second (forward) pass extends the track outward too."};
   Gaudi::Property<bool> m_doTwoWayCKF{this, "DoTwoWayCKF", false,
                                       "Run two-way CKF: first pass + smooth + second pass in opposite direction."};
-  Gaudi::Property<bool> m_doOutsideInCKF{this, "DoOutsideInCKF", false,
-                                         "Reverse first-pass direction: backward (outside-in) from outermost seed SP "
-                                         "toward IP; combined with DoTwoWayCKF the second (forward) pass extends "
-                                         "outward into the outer tracker."};
   Gaudi::Property<bool> m_inflateCovarianceTwoWay{this, "InflateCovarianceTwoWay", true,
                                                   "Inflate covariance before the second CKF pass."};
   Gaudi::Property<double> m_twoWayInflateCovarianceFactor{this, "TwoWayInflateCovarianceFactor", 100.0,

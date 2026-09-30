@@ -202,13 +202,12 @@ private:
   /// @name Run control
   ///@{
   Gaudi::Property<bool> m_runCKF{this, "RunCKF", true, "Run tracking using CKF. False means stop at seeding."};
-  Gaudi::Property<bool> m_propagateBackward{this, "PropagateBackward", false, "Extrapolates tracks towards beamline."};
+  Gaudi::Property<bool> m_propagateBackward{
+      this, "PropagateBackward", false,
+      "Find tracks outside-in: start the CKF at the outermost seed SP and propagate backward through the other seed "
+      "SPs toward the beamline; combined with DoTwoWayCKF the second (forward) pass extends the track outward."};
   Gaudi::Property<bool> m_doTwoWayCKF{this, "DoTwoWayCKF", false,
                                       "Run two-way CKF: first pass + smooth + second pass in opposite direction."};
-  Gaudi::Property<bool> m_doOutsideInCKF{this, "DoOutsideInCKF", false,
-                                         "Reverse first-pass direction: backward (outside-in) from outermost seed SP "
-                                         "toward IP; combined with DoTwoWayCKF the second (forward) pass extends "
-                                         "outward into the outer tracker."};
   Gaudi::Property<bool> m_inflateCovarianceTwoWay{this, "InflateCovarianceTwoWay", true,
                                                   "Inflate covariance before the second CKF pass."};
   Gaudi::Property<double> m_twoWayInflateCovarianceFactor{this, "TwoWayInflateCovarianceFactor", 100.0,
@@ -543,7 +542,6 @@ StatusCode CKFTrackingAlg::initialize() {
                                                       .bsPtMin = m_bsPtMin,
                                                       .bsPtMinMeasurements = m_bsPtMinMeasurements,
                                                       .doTwoWayCKF = m_doTwoWayCKF,
-                                                      .doOutsideInCKF = m_doOutsideInCKF,
                                                       .inflateCovarianceTwoWay = m_inflateCovarianceTwoWay,
                                                       .twoWayInflateCovarianceFactor = m_twoWayInflateCovarianceFactor,
                                                       .referenceSurface = referenceSurface});
@@ -902,10 +900,10 @@ CKFTrackingAlg::seedsToParameters(const Acts::SeedContainer& seeds, const Acts::
     const Acts::ConstSpacePointProxy middleSp = spacePoints[spIndices[1]];
     const Acts::ConstSpacePointProxy topSp = spacePoints[spIndices[2]];
 
-    // Outside-in mode: start the first (backward) CKF pass from the OUTER SP,
+    // PropagateBackward: start the first (backward) CKF pass from the OUTER SP,
     // so we need bound parameters expressed on the top surface, not the bottom
     // one. Inside-out (default): start from the inner SP.
-    const Acts::ConstSpacePointProxy& startSp = m_doOutsideInCKF ? topSp : bottomSp;
+    const Acts::ConstSpacePointProxy& startSp = m_propagateBackward ? topSp : bottomSp;
     const ACTSTracking::SourceLink& startSL = sourceLinkOf(startSp);
     const Acts::Surface* surface = m_actsGeoSvc->trackingGeometry()->findSurface(startSL.geometryId());
     if (surface == nullptr) {
@@ -916,7 +914,7 @@ CKFTrackingAlg::seedsToParameters(const Acts::SeedContainer& seeds, const Acts::
     std::optional<Acts::BoundTrackParameters> paramseed = ACTSTracking::estimateSeedParameters(
         *this, *m_actsGeoSvc, geoCtx, *surface, position(bottomSp), position(middleSp), position(topSp),
         hits[startSL.index()].getTime(), magCache, m_initialTrackError_pos, m_initialTrackError_phi,
-        m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time, m_doOutsideInCKF);
+        m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time, m_propagateBackward);
     if (!paramseed) {
       continue;
     }

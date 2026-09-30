@@ -146,6 +146,13 @@ public:
     double chi2CutOff = 15;
     std::int32_t numMeasurementsCutOff = 10;
     double chi2CutOffOutlier = std::numeric_limits<double>::max();
+
+    /// Run the first CKF pass backward (outside-in): from the OUTER seed SP
+    /// inward, through the seed's middle and inner SPs towards the beamline.
+    /// Combined with doTwoWayCKF, the second (forward) pass extends the track
+    /// outward past the outer seed SP. When true, the caller must build seeds
+    /// whose bound parameters live on the TOP (outer) SP's surface -- see
+    /// estimateSeedParameters(..., propagateBackward).
     bool propagateBackward = false;
     bool extrapolateToCalo = false;
     std::size_t maxSteps = kDefaultMaxPropagationSteps;
@@ -171,13 +178,6 @@ public:
     /// goes through the same reference-surface extrapolation as the single-
     /// pass output. Disabled by default.
     bool doTwoWayCKF = false;
-
-    /// Reverse the first-pass direction: propagate backward from the OUTER
-    /// seed SP inward. Combined with doTwoWayCKF, the second (forward) pass
-    /// extends the track outward into the outer tracker. When true, the CKF
-    /// caller must build seeds whose starting bound parameters live on the
-    /// TOP (outer) SP's surface -- see estimateSeedParameters(..., doOutsideIn).
-    bool doOutsideInCKF = false;
 
     /// Inflate the covariance passed to the second pass so the acceptance
     /// window is not artificially tight after smoothing. Ignored when
@@ -213,7 +213,7 @@ public:
         m_propagateBackward(cfg.propagateBackward), m_useBranchStopper(cfg.useBranchStopper),
         m_bsMaxHoles(cfg.bsMaxHoles), m_bsMaxOutliers(cfg.bsMaxOutliers), m_bsMinMeasurements(cfg.bsMinMeasurements),
         m_bsPtMin(cfg.bsPtMin), m_bsPtMinMeasurements(cfg.bsPtMinMeasurements), m_doTwoWayCKF(cfg.doTwoWayCKF),
-        m_doOutsideInCKF(cfg.doOutsideInCKF), m_inflateCovarianceTwoWay(cfg.inflateCovarianceTwoWay),
+        m_inflateCovarianceTwoWay(cfg.inflateCovarianceTwoWay),
         m_twoWayInflateCovarianceFactor(cfg.twoWayInflateCovarianceFactor), m_measSelConfig(makeSelectorConfig(cfg)),
         m_trackFinder(std::make_unique<CombKalmanFilter>(makePropagator(geo, false))),
         m_referenceSurface(cfg.referenceSurface
@@ -265,8 +265,8 @@ public:
 
     Acts::PropagatorPlainOptions pOptions{m_geoCtx, m_magCtx};
     pOptions.maxSteps = m_maxSteps;
-    // Outside-in first pass propagates backward from the outer seed SP inward.
-    if (m_propagateBackward || m_doOutsideInCKF) {
+    // Backward (outside-in) first pass: from the outer seed SP inward.
+    if (m_propagateBackward) {
       pOptions.direction = Acts::Direction::Backward();
     }
     const CKFTrackFinderOptions ckfOptions(m_geoCtx, m_magCtx, m_calCtx, extensions, pOptions);
@@ -279,7 +279,7 @@ public:
     // propagation Kalman update.
     Acts::PropagatorPlainOptions secondPOptions{m_geoCtx, m_magCtx};
     secondPOptions.maxSteps = m_maxSteps;
-    secondPOptions.direction = m_doOutsideInCKF ? Acts::Direction::Forward() : Acts::Direction::Backward();
+    secondPOptions.direction = m_propagateBackward ? Acts::Direction::Forward() : Acts::Direction::Backward();
     CKFTrackFinderOptions secondOptions(m_geoCtx, m_magCtx, m_calCtx, extensions, secondPOptions);
     secondOptions.skipPrePropagationUpdate = true;
 
@@ -361,7 +361,7 @@ public:
               auto secondTrack = tracks.makeTrack();
               secondTrack.copyFrom(*secondResult.value().begin());
 
-              if (m_doOutsideInCKF) {
+              if (m_propagateBackward) {
                 // Outside-in stitching: second pass = forward from outermost
                 // first-pass measurement.
                 //   secondTrack.trackStates() walks stem->tip = inner->outer;
@@ -504,7 +504,6 @@ private:
   double m_bsPtMin = 0.0;
   int m_bsPtMinMeasurements = 3;
   bool m_doTwoWayCKF = false;
-  bool m_doOutsideInCKF = false;
   bool m_inflateCovarianceTwoWay = true;
   double m_twoWayInflateCovarianceFactor = 100.0;
   Acts::MeasurementSelector::Config m_measSelConfig;
