@@ -451,8 +451,7 @@ void prepareTrackerHits(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geom
                         ACTSTracking::MeasurementContainer& measurements,
                         ACTSTracking::SourceLinkContainer& sourceLinks, ACTSTracking::HitContainer& hits,
                         int numThreads, HitSink&& hitSink, bool useHitTime = false,
-                        const std::function<double(const edm4hep::TrackerHitPlane&)>& hitTimeResolutionFor = {},
-                        bool hitTimesTofCorrected = false) {
+                        const std::function<double(const edm4hep::TrackerHitPlane&)>& hitTimeResolutionFor = {}) {
   const auto& cellIdToSurface = geo.cellIdToSurfaceMap();
 
   std::vector<std::pair<Acts::GeometryIdentifier, edm4hep::TrackerHitPlane>> sortedHits;
@@ -509,11 +508,7 @@ void prepareTrackerHits(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geom
     // Optionally measure the hit time as a third coordinate.
     ACTSTracking::Measurement meas = [&] {
       if (useHitTime) {
-        // Acts native units; add back the TOF if the digitiser subtracted it.
-        double hitT = static_cast<double>(hitPair.second.getTime()) * Acts::UnitConstants::ns;
-        if (hitTimesTofCorrected) {
-          hitT += globalPos.norm();
-        }
+        const double hitT = static_cast<double>(hitPair.second.getTime()) * Acts::UnitConstants::ns;
         Acts::Vector3 loc3;
         loc3 << loc[0], loc[1], hitT;
         const double timeRes = hitTimeResolutionFor ? hitTimeResolutionFor(hitPair.second) : 0.0;
