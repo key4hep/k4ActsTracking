@@ -93,21 +93,6 @@ template <>
 struct fmt::formatter<podio::ObjectID> : fmt::ostream_formatter {};
 
 namespace {
-// TOF-corrected time cut on seed doublets, for the DoubletSeedFinder experimentCuts hook.
-struct TofDoubletCut {
-  float deltaTMax; // Acts native time units
-  bool operator()(const Acts::ConstSpacePointProxy& middle, const Acts::ConstSpacePointProxy& other, float /*cotTheta*/,
-                  bool /*isBottomCandidate*/) const {
-    const auto& zrM = middle.zr(); // {z, r}
-    const auto& zrO = other.zr();
-    const float LM = std::sqrt(zrM[1] * zrM[1] + zrM[0] * zrM[0]);
-    const float LO = std::sqrt(zrO[1] * zrO[1] + zrO[0] * zrO[0]);
-    // c = 1: the expected TOF is the path length.
-    const float res = (other.time() - middle.time()) - (LO - LM);
-    return std::abs(res) <= deltaTMax;
-  }
-};
-
 /// Build straight-line bound track parameters for a telescope seed.
 ///
 /// In a field-free tracker (the ACTS constant field is 0 for a telescope like
@@ -279,9 +264,14 @@ private:
       "cover every tracker hit."};
   Gaudi::Property<std::vector<double>> m_hitTimeResolutionValues{
       this, "HitTimeResolutionValues", {}, "Time resolutions in ns, paired with HitTimeResolutionCellIDs."};
-  Gaudi::Property<float> m_seedFinding_deltaTMax{
-      this, "SeedFinding_DeltaTMax", -1.0f,
-      "Max |TOF-corrected delta t| (ns) between doublet space points; <= 0 disables the time cut."};
+  Gaudi::Property<float> m_seedFinding_doubletTimeCutNSigma{
+      this, "SeedFinding_DoubletTimeCutNSigma", -1.0f,
+      "Max TOF-corrected time difference between doublet space points, in units of their combined time "
+      "resolution (ACTS DoubletSeedFinder useTime); <= 0 disables the time cut."};
+  Gaudi::Property<float> m_seedFinding_tripletTimeChi2Max{
+      this, "SeedFinding_TripletTimeChi2Max", -1.0f,
+      "Max chi2 of the three TOF-corrected triplet times around their weighted mean (ACTS TripletSeedFinder "
+      "useTime); <= 0 disables the time cut."};
   Gaudi::Property<bool> m_seedFinding_interactionPointCut{this, "SeedFinding_InteractionPointCut", false,
                                                           "Apply the interaction-point compatibility cut in seeding."};
   Gaudi::Property<bool> m_useHitTimeInCKF{
@@ -463,6 +453,10 @@ private:
   // Paired with m_hitTimeResolutionValues.
   std::vector<k4ActsTracking::CellIDSelector> m_hitTimeResolutionSelectors{};
 
+  bool usesHitTimeResolutions() const {
+    return m_useHitTimeInCKF || m_seedFinding_doubletTimeCutNSigma > 0.0f || m_seedFinding_tripletTimeChi2Max > 0.0f;
+  }
+
   /// Time resolution (ns) of the first HitTimeResolutionCellIDs selection matching the hit.
   double hitTimeResolutionFor(const edm4hep::TrackerHitPlane& hit) const {
     for (std::size_t i = 0; i < m_hitTimeResolutionSelectors.size(); ++i) {
@@ -525,15 +519,19 @@ StatusCode CKFTrackingAlg::initialize() {
       return StatusCode::FAILURE;
     }
   }
-  if (m_useHitTimeInCKF && m_hitTimeResolutionCellIDs.empty()) {
-    error() << "UseHitTimeInCKF requires the per-sensor time resolutions to be configured via "
-               "HitTimeResolutionCellIDs and HitTimeResolutionValues"
+  if (usesHitTimeResolutions() && m_hitTimeResolutionCellIDs.empty()) {
+    error() << "UseHitTimeInCKF and the seeding time cuts require the per-sensor time resolutions to be "
+               "configured via HitTimeResolutionCellIDs and HitTimeResolutionValues"
             << endmsg;
     return StatusCode::FAILURE;
   }
   for (const std::string& selection : m_hitTimeResolutionCellIDs.value()) {
     m_hitTimeResolutionSelectors.emplace_back(m_actsGeoSvc->cellIDEncodingString(),
                                               std::vector<std::string>{selection});
+  }
+  if (usesHitTimeResolutions()) {
+    warning() << "The per-sensor HitTimeResolutionValues are a placeholder until EDM4hep stores a time error per hit"
+              << endmsg;
   }
 
   // Apply deltaR fallback defaults
@@ -652,7 +650,7 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
         sp.varR = static_cast<float>(var[0]);
         sp.varZ = static_cast<float>(var[1]);
         sp.t = static_cast<float>(ACTSTracking::hitTime(hit));
-        sp.varT = m_useHitTimeInCKF
+        sp.varT = usesHitTimeResolutions()
                       ? static_cast<float>(std::pow(hitTimeResolutionFor(hit) * Acts::UnitConstants::ns, 2))
                       : 0.f;
         sp.sourceLink = sourceLink;
@@ -784,9 +782,9 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
   bottomFinderCfg.cotThetaMax = cotThetaMax;
   bottomFinderCfg.minPt = minPt;
   bottomFinderCfg.interactionPointCut = m_seedFinding_interactionPointCut;
-  TofDoubletCut tofDoubletCut{static_cast<float>(m_seedFinding_deltaTMax.value() * Acts::UnitConstants::ns)};
-  if (m_seedFinding_deltaTMax > 0.0f) {
-    bottomFinderCfg.experimentCuts.connect<&TofDoubletCut::operator()>(&tofDoubletCut);
+  if (m_seedFinding_doubletTimeCutNSigma > 0.0f) {
+    bottomFinderCfg.useTime = true;
+    bottomFinderCfg.timeCutNSigma = m_seedFinding_doubletTimeCutNSigma;
   }
   auto bottomFinder =
       Acts::DoubletSeedFinder::create(Acts::DoubletSeedFinder::DerivedConfig(bottomFinderCfg, bFieldInZ));
@@ -804,6 +802,10 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
   tripletFinderCfg.sigmaScattering = m_seedFinding_sigmaScattering;
   tripletFinderCfg.radLengthPerSeed = m_seedFinding_radLengthPerSeed;
   tripletFinderCfg.impactMax = impactMax;
+  if (m_seedFinding_tripletTimeChi2Max > 0.0f) {
+    tripletFinderCfg.useTime = true;
+    tripletFinderCfg.timeChi2Max = m_seedFinding_tripletTimeChi2Max;
+  }
   auto tripletFinder =
       Acts::TripletSeedFinder::create(Acts::TripletSeedFinder::DerivedConfig(tripletFinderCfg, bFieldInZ));
 
