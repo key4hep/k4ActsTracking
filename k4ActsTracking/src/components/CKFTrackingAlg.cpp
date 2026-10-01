@@ -281,9 +281,8 @@ private:
   Gaudi::Property<float> m_seedFinding_deltaTMax{
       this, "SeedFinding_DeltaTMax", -1.0f,
       "Max |TOF-corrected delta t| (ns) between doublet space points; <= 0 disables the time cut."};
-  Gaudi::Property<bool> m_seedFinding_interactionPointCut{
-      this, "SeedFinding_InteractionPointCut", true,
-      "Apply the interaction-point compatibility cut in seeding (required for the doublet time cut)."};
+  Gaudi::Property<bool> m_seedFinding_interactionPointCut{this, "SeedFinding_InteractionPointCut", false,
+                                                          "Apply the interaction-point compatibility cut in seeding."};
   Gaudi::Property<bool> m_useHitTimeInCKF{
       this, "UseHitTimeInCKF", false,
       "If true, include hit time as a 3rd CKF measurement dimension (eBoundTime). Hit times must not be "
@@ -775,7 +774,6 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
   bottomFinderCfg.collisionRegionMax = collisionRegion;
   bottomFinderCfg.cotThetaMax = cotThetaMax;
   bottomFinderCfg.minPt = minPt;
-  // experimentCuts only runs with interactionPointCut; the top finder inherits both.
   bottomFinderCfg.interactionPointCut = m_seedFinding_interactionPointCut;
   TofDoubletCut tofDoubletCut{static_cast<float>(m_seedFinding_deltaTMax.value() * Acts::UnitConstants::ns)};
   if (m_seedFinding_deltaTMax > 0.0f) {
