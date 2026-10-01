@@ -17,10 +17,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ]]
 
-# Data files are fetched with ExternalData at build time. Each file is
-# described by a <file>.md5 content link in this directory and is stored on the
-# server under its MD5 hash. To share downloads between build trees, point
-# ExternalData_OBJECT_STORES at a common directory.
 include(ExternalData)
 
 set(ExternalData_URL_TEMPLATES
