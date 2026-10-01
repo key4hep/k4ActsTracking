@@ -31,11 +31,11 @@ set(ExternalData_URL_TEMPLATES
 set(ExternalData_NO_SYMLINKS ON)
 
 set(data_files
-  # Tracking geometry
+  # Tracking geometries
   MuColl_v1.root MuSIC_v1.root MuSIC_v2.root MAIA_v0.root
-  # Geometry description
+  # Geometry descriptions
   MuColl_v1.json MuSIC_v1.json MuSIC_v2.json MAIA_v0.json
-  # Material map
+  # Material maps
   material-maps.json MAIA_v0_material.json MAIA_v0_gen3_material_map.json
 )
 
