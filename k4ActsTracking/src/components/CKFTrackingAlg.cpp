@@ -298,12 +298,10 @@ private:
   Gaudi::Property<bool> m_seedFinding_interactionPointCut{
       this, "SeedFinding_InteractionPointCut", true,
       "Apply the interaction-point compatibility cut in seeding (required for the doublet time cut)."};
-  Gaudi::Property<bool> m_useHitTimeInCKF{this, "UseHitTimeInCKF", false,
-                                          "If true, include hit time as a 3rd CKF measurement dimension (eBoundTime)."};
-  Gaudi::Property<bool> m_hitTimesTofCorrected{
-      this, "HitTimesCorrectedForPropagation", false,
-      "Set true if the digitised hit times had the propagation time-of-flight subtracted (DDPlanarDigi "
-      "CorrectTimesForPropagation=True); the TOF (|pos| at c=1) is then added back to recover absolute times."};
+  Gaudi::Property<bool> m_useHitTimeInCKF{
+      this, "UseHitTimeInCKF", false,
+      "If true, include hit time as a 3rd CKF measurement dimension (eBoundTime). Hit times must not be "
+      "corrected for the time of flight (DDPlanarDigi CorrectTimesForPropagation=False)."};
 
   std::vector<std::string> m_default_empty_vec;
   Gaudi::Property<std::vector<std::string>> m_seedFinding_zBinEdges{this, "SeedFinding_zBinEdges", m_default_empty_vec,
@@ -659,19 +657,14 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
         sp.phi = std::atan2(sp.y, sp.x);
         sp.varR = static_cast<float>(var[0]);
         sp.varZ = static_cast<float>(var[1]);
-        // Acts native units; add back the TOF if the digitiser subtracted it.
         sp.t = static_cast<float>(hit.getTime() * Acts::UnitConstants::ns);
-        if (m_hitTimesTofCorrected) {
-          sp.t += static_cast<float>(globalPos.norm());
-        }
         sp.varT = m_useHitTimeInCKF
                       ? static_cast<float>(std::pow(hitTimeResolutionFor(hit) * Acts::UnitConstants::ns, 2))
                       : 0.f;
         sp.sourceLink = sourceLink;
         seedInputs.push_back(sp);
       },
-      m_useHitTimeInCKF.value(), [this](const edm4hep::TrackerHitPlane& hit) { return hitTimeResolutionFor(hit); },
-      m_hitTimesTofCorrected.value());
+      m_useHitTimeInCKF.value(), [this](const edm4hep::TrackerHitPlane& hit) { return hitTimeResolutionFor(hit); });
 
   debug() << fmt::format("Created {} sourceLinks and {} space points for seeding", sourceLinks.size(),
                          seedInputs.size())
@@ -968,17 +961,10 @@ CKFTrackingAlg::seedsToParameters(const Acts::SeedContainer& seeds, const Acts::
       continue;
     }
 
-    const Acts::Vector3 bottomPos = position(bottomSp);
-    // Acts native units; add back the TOF if the digitiser subtracted it.
-    double seedT0 = hits[bottomSL.index()].getTime() * Acts::UnitConstants::ns;
-    if (m_hitTimesTofCorrected) {
-      seedT0 += bottomPos.norm();
-    }
-
     std::optional<Acts::BoundTrackParameters> paramseed = ACTSTracking::estimateSeedParameters(
-        *this, *m_actsGeoSvc, geoCtx, *surface, bottomPos, position(middleSp), position(topSp), seedT0, magCache,
-        m_initialTrackError_pos, m_initialTrackError_phi, m_initialTrackError_lambda, m_initialTrackError_relP,
-        m_initialTrackError_time);
+        *this, *m_actsGeoSvc, geoCtx, *surface, position(bottomSp), position(middleSp), position(topSp),
+        hits[bottomSL.index()].getTime() * Acts::UnitConstants::ns, magCache, m_initialTrackError_pos,
+        m_initialTrackError_phi, m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time);
     if (!paramseed) {
       continue;
     }
