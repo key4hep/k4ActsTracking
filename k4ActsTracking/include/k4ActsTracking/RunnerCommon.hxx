@@ -508,7 +508,7 @@ void prepareTrackerHits(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geom
     // Optionally measure the hit time as a third coordinate.
     ACTSTracking::Measurement meas = [&] {
       if (useHitTime) {
-        const double hitT = static_cast<double>(hitPair.second.getTime()) * Acts::UnitConstants::ns;
+        const double hitT = hitTime(hitPair.second);
         Acts::Vector3 loc3;
         loc3 << loc[0], loc[1], hitT;
         const double timeRes = hitTimeResolutionFor ? hitTimeResolutionFor(hitPair.second) : 0.0;
@@ -543,17 +543,17 @@ template <class Alg>
 std::optional<Acts::BoundTrackParameters>
 estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx,
                        const Acts::Surface& bottomSurface, const Acts::Vector3& bottomPos,
-                       const Acts::Vector3& middlePos, const Acts::Vector3& topPos, double t0,
-                       Acts::MagneticFieldProvider::Cache& magCache, double errPos, double errPhi, double errLambda,
-                       double errRelP, double errTime) {
+                       const Acts::Vector3& middlePos, const Acts::Vector3& topPos,
+                       const edm4hep::TrackerHit& bottomHit, Acts::MagneticFieldProvider::Cache& magCache,
+                       double errPos, double errPhi, double errLambda, double errRelP, double errTime) {
   // Magnetic field at the seed (bottom space point) position
   Acts::Result<Acts::Vector3> seedField = geo.magneticField()->getField(bottomPos, magCache);
   if (!seedField.ok()) {
     throw std::runtime_error("Field lookup error: " + std::to_string(seedField.error().value()));
   }
 
-  Acts::Result<Acts::BoundVector> optParams =
-      Acts::estimateTrackParamsFromSeed(geoCtx, bottomSurface, bottomPos, t0, middlePos, topPos, *seedField);
+  Acts::Result<Acts::BoundVector> optParams = Acts::estimateTrackParamsFromSeed(
+      geoCtx, bottomSurface, bottomPos, hitTime(bottomHit), middlePos, topPos, *seedField);
   if (!optParams.ok()) {
     alg.debug() << "Failed estimation of track parameters for seed." << endmsg;
     return std::nullopt;
@@ -642,8 +642,7 @@ estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geome
   }
 
   return estimateSeedParameters(alg, geo, geoCtx, *bottomSurface, bottom.pos, middle.pos, top.pos,
-                                hitContainer[bottom.sl.index()].getTime(), magCache, errPos, errPhi, errLambda, errRelP,
-                                errTime);
+                                hitContainer[bottom.sl.index()], magCache, errPos, errPhi, errLambda, errRelP, errTime);
 }
 
 } // namespace ACTSTracking

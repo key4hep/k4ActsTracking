@@ -131,9 +131,9 @@ struct TofDoubletCut {
 /// scale and the reported q/p).
 std::optional<Acts::BoundTrackParameters>
 estimateStraightLineSeedParameters(const Acts::GeometryContext& geoCtx, const Acts::Surface& bottomSurface,
-                                   const Acts::Vector3& bottomPos, const Acts::Vector3& topPos, double t0,
-                                   double nominalP, double errPos, double errPhi, double errLambda, double errRelP,
-                                   double errTime) {
+                                   const Acts::Vector3& bottomPos, const Acts::Vector3& topPos,
+                                   const edm4hep::TrackerHit& bottomHit, double nominalP, double errPos, double errPhi,
+                                   double errLambda, double errRelP, double errTime) {
   const Acts::Vector3 dir = (topPos - bottomPos).normalized();
 
   // The bottom position is derived from the surface, so it lies on it; use a
@@ -149,7 +149,7 @@ estimateStraightLineSeedParameters(const Acts::GeometryContext& geoCtx, const Ac
   params[Acts::eBoundPhi] = Acts::VectorHelpers::phi(dir);
   params[Acts::eBoundTheta] = Acts::VectorHelpers::theta(dir);
   params[Acts::eBoundQOverP] = 1.0 / nominalP; // charge sign is irrelevant at B = 0
-  params[Acts::eBoundTime] = t0;
+  params[Acts::eBoundTime] = ACTSTracking::hitTime(bottomHit);
 
   Acts::BoundMatrix cov = ACTSTracking::makeInitialCovariance(nominalP, errPos, errPhi, errLambda, errRelP, errTime);
   return Acts::BoundTrackParameters(bottomSurface.getSharedPtr(), params, cov, Acts::ParticleHypothesis::pion());
@@ -656,7 +656,7 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
         sp.phi = std::atan2(sp.y, sp.x);
         sp.varR = static_cast<float>(var[0]);
         sp.varZ = static_cast<float>(var[1]);
-        sp.t = static_cast<float>(hit.getTime() * Acts::UnitConstants::ns);
+        sp.t = static_cast<float>(ACTSTracking::hitTime(hit));
         sp.varT = m_useHitTimeInCKF
                       ? static_cast<float>(std::pow(hitTimeResolutionFor(hit) * Acts::UnitConstants::ns, 2))
                       : 0.f;
@@ -961,8 +961,8 @@ CKFTrackingAlg::seedsToParameters(const Acts::SeedContainer& seeds, const Acts::
 
     std::optional<Acts::BoundTrackParameters> paramseed = ACTSTracking::estimateSeedParameters(
         *this, *m_actsGeoSvc, geoCtx, *surface, position(bottomSp), position(middleSp), position(topSp),
-        hits[bottomSL.index()].getTime() * Acts::UnitConstants::ns, magCache, m_initialTrackError_pos,
-        m_initialTrackError_phi, m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time);
+        hits[bottomSL.index()], magCache, m_initialTrackError_pos, m_initialTrackError_phi, m_initialTrackError_lambda,
+        m_initialTrackError_relP, m_initialTrackError_time);
     if (!paramseed) {
       continue;
     }
@@ -1066,7 +1066,7 @@ void CKFTrackingAlg::runTelescopeSeeding(const std::vector<SeedInput>& seedInput
         }
 
         std::optional<Acts::BoundTrackParameters> paramseed = estimateStraightLineSeedParameters(
-            geoCtx, *surface, bottom, top, hits[bottomSL.index()].getTime(), nominalP, m_initialTrackError_pos,
+            geoCtx, *surface, bottom, top, hits[bottomSL.index()], nominalP, m_initialTrackError_pos,
             m_initialTrackError_phi, m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time);
         if (!paramseed) {
           continue;
