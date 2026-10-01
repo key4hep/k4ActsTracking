@@ -452,6 +452,9 @@ void prepareTrackerHits(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geom
                         ACTSTracking::SourceLinkContainer& sourceLinks, ACTSTracking::HitContainer& hits,
                         int numThreads, HitSink&& hitSink, bool useHitTime = false,
                         const std::function<double(const edm4hep::TrackerHitPlane&)>& hitTimeResolutionFor = {}) {
+  if (useHitTime && !hitTimeResolutionFor) {
+    throw std::invalid_argument("prepareTrackerHits: useHitTime requires a hit time resolution function");
+  }
   const auto& cellIdToSurface = geo.cellIdToSurfaceMap();
 
   std::vector<std::pair<Acts::GeometryIdentifier, edm4hep::TrackerHitPlane>> sortedHits;
@@ -511,7 +514,7 @@ void prepareTrackerHits(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geom
         const double hitT = hitTime(hitPair.second);
         Acts::Vector3 loc3;
         loc3 << loc[0], loc[1], hitT;
-        const double timeRes = hitTimeResolutionFor ? hitTimeResolutionFor(hitPair.second) : 0.0;
+        const double timeRes = hitTimeResolutionFor(hitPair.second);
         Acts::SquareMatrix3 cov3 = Acts::SquareMatrix3::Zero();
         cov3(0, 0) = localCov(0, 0);
         cov3(1, 1) = localCov(1, 1);

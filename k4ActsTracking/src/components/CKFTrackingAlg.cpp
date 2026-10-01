@@ -89,6 +89,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -529,6 +530,14 @@ StatusCode CKFTrackingAlg::initialize() {
     error() << "HitTimeResolutionCellIDs and HitTimeResolutionValues must have the same length ("
             << m_hitTimeResolutionCellIDs.size() << " != " << m_hitTimeResolutionValues.size() << ")" << endmsg;
     return StatusCode::FAILURE;
+  }
+  for (std::size_t i = 0; i < m_hitTimeResolutionValues.size(); ++i) {
+    const double res = m_hitTimeResolutionValues[i];
+    if (!(res > 0.0) || !std::isfinite(res)) {
+      error() << "HitTimeResolutionValues[" << i << "] (" << m_hitTimeResolutionCellIDs[i]
+              << ") must be finite and > 0, got " << res << endmsg;
+      return StatusCode::FAILURE;
+    }
   }
   if (m_useHitTimeInCKF && m_hitTimeResolutionCellIDs.empty()) {
     error() << "UseHitTimeInCKF requires the per-sensor time resolutions to be configured via "
