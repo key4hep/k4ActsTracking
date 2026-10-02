@@ -17,32 +17,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ]]
 
-# Download the necessary data files dynamically
-set(DATA_BASE_URL "https://key4hep.web.cern.ch/key4hep/k4ActsTracking/MuColl/data")
-set(FILE_LIST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/file_list.txt")
-set(OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+include(ExternalData)
 
-message(STATUS "Running download script for data files...")
-execute_process(
-  COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/download_files.sh" ${FILE_LIST_PATH} ${DATA_BASE_URL} ${OUTPUT_DIR}
-  RESULT_VARIABLE download_result
-  ERROR_VARIABLE download_error
+set(ExternalData_URL_TEMPLATES
+  "https://key4hep.web.cern.ch/key4hep/k4ActsTracking/MuColl/data/%(hash)"
+)
+# Copy the files into the build tree instead of symlinking to the object store,
+# so that install() installs the files themselves
+set(ExternalData_NO_SYMLINKS ON)
+
+set(data_files
+  # Tracking geometries
+  MuColl_v1.root MuSIC_v1.root MuSIC_v2.root MAIA_v0.root
+  # Geometry descriptions
+  MuColl_v1.json MuSIC_v1.json MuSIC_v2.json MAIA_v0.json
+  # Material maps
+  material-maps.json MAIA_v0_material.json MAIA_v0_gen3_material_map.json
 )
 
-if(download_result EQUAL 0)
-  message(STATUS "Data files download completed successfully")
-else()
-  message(FATAL_ERROR "Failed to download data files:\n${download_error}")
-endif()
+set(data_args)
+foreach(file IN LISTS data_files)
+  list(APPEND data_args "DATA{${file}}")
+endforeach()
 
-# Tracking geometry
-INSTALL(FILES MuColl_v1.root MuSIC_v1.root MuSIC_v2.root MAIA_v0.root
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/k4ActsTracking/data)
+ExternalData_Expand_Arguments(k4ActsTrackingData data_paths ${data_args})
+ExternalData_Add_Target(k4ActsTrackingData)
 
-# Geometry description
-INSTALL(FILES MuColl_v1.json MuSIC_v1.json MuSIC_v2.json MAIA_v0.json
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/k4ActsTracking/data)
-
-# Material map
-INSTALL(FILES material-maps.json MAIA_v0_material.json MAIA_v0_gen3_material_map.json
+install(FILES ${data_paths}
   DESTINATION ${CMAKE_INSTALL_DATADIR}/k4ActsTracking/data)

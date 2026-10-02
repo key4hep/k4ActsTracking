@@ -467,9 +467,11 @@ ctest -R reco_MAIA_Gen3 --output-on-failure
 Note that adding real material *should* change the fit results — this test checks
 the chain still runs, not that the numbers are unchanged.
 
-**5e. Add the map to the repository.** Once validated, add the file to
-`data/file_list.txt` with its md5 and upload it alongside the other data files;
-`data/CMakeLists.txt` downloads and installs it at configure time.
+**5e. Add the map to the repository.** Once validated, upload the file to the
+data server under its md5 hash (`md5sum <file>`), commit a content link
+`data/<file>.md5` containing that hash, and add the file name to `data_files` in
+`data/CMakeLists.txt`, which downloads it at build time (CMake `ExternalData`)
+and installs it.
 
 ## Caveat: maps are tied to the blueprint that produced them
 
