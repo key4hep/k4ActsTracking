@@ -276,8 +276,9 @@ StatusCode VertexFindingAlg::initialize() {
   // decision, and lowers the annealing temperature over the iterations so the
   // assignment hardens gradually.
   Fitter::Config fitterCfg(*m_ipEstimator);
-  if (m_annealingTemperatures.empty()) {
-    error() << "AnnealingTemperatures needs at least one temperature" << endmsg;
+  const auto isFinitePositive = [](double value) { return std::isfinite(value) && value > 0.; };
+  if (m_annealingTemperatures.empty() || !std::ranges::all_of(m_annealingTemperatures.value(), isFinitePositive)) {
+    error() << "AnnealingTemperatures needs at least one temperature, all finite and positive" << endmsg;
     return StatusCode::FAILURE;
   }
   fitterCfg.annealingTool =
@@ -311,8 +312,10 @@ StatusCode VertexFindingAlg::initialize() {
   finderCfg.extractParameters.connect<&Acts::InputTrack::extractParameters>();
 
   if (!m_beamSpotSize.empty()) {
-    if (m_beamSpotSize.size() != 3) {
-      error() << "BeamSpotSize needs 3 values (sigma x, y, z)" << endmsg;
+    // A zero sigma would make the constraint covariance singular, which Acts
+    // only rejects when the constraint is used, i.e. in every event.
+    if (m_beamSpotSize.size() != 3 || !std::ranges::all_of(m_beamSpotSize.value(), isFinitePositive)) {
+      error() << "BeamSpotSize needs 3 finite, positive values (sigma x, y, z)" << endmsg;
       return StatusCode::FAILURE;
     }
     // Centred at the origin, see m_beamSpotSize. The seeder places seeds at
