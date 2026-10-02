@@ -262,7 +262,7 @@ add_k4run_test(ckf_tracking_CLD_o2_v08
 
 add_k4run_test(vertexing_CLD_o2_v08
   WORKING_DIRECTORY ${_cld_dir}
-  OPTIONS_FILE ${CMAKE_CURRENT_LIST_DIR}/options/vertexing.py
+  OPTIONS_FILE ${CMAKE_CURRENT_LIST_DIR}/options/CLD_Vertexing.py
   EXTRA_ARGS --compactFile ${_cld_compact}
              --IOSvc.Input particle_gun_CLD_o2_v08_REC.edm4hep.root
              --IOSvc.Output particle_gun_CLD_o2_v08_VTX.edm4hep.root

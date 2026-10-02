@@ -154,6 +154,47 @@ struct VertexFindingAlg final
   Gaudi::Property<int> m_maxIterations{this, "MaxIterations", 1000, "Maximum number of vertex finding iterations"};
   Gaudi::Property<bool> m_doSmoothing{this, "DoSmoothing", true,
                                       "Refit the track parameters with the vertex position as constraint"};
+  /// After a candidate is fitted, the tracks whose compatibility with it is
+  /// below this chi2 leave the seed pool; the others can seed further vertices.
+  Gaudi::Property<double> m_maxVertexChi2{this, "MaxVertexChi2", 18.42,
+                                          "Track-vertex chi2 below which a track no longer seeds new vertices"};
+  Gaudi::Property<double> m_maxMergeVertexSignificance{
+      this, "MaxMergeVertexSignificance", 3.0,
+      "A new vertex closer than this significance to an existing one is discarded as merged"};
+  Gaudi::Property<bool> m_doFullSplitting{this, "DoFullSplitting", false,
+                                          "Use the 3D (instead of the z) vertex distance in the merging test"};
+  Gaudi::Property<bool> m_doNotBreakWhileSeeding{this, "DoNotBreakWhileSeeding", false,
+                                                 "Keep searching for vertices after a candidate has been rejected"};
+
+  // ----- vertex fit ----------------------------------------------------------
+  /// The fit gives each track the weight
+  ///   w = exp(-chi2 / 2T) / (exp(-chi2 / 2T) + exp(-cutOff / 2T)),
+  /// so w = 0.5 at chi2 = AnnealingCutOff, and steps the temperature T through
+  /// AnnealingTemperatures. A high first temperature lets tracks far from the
+  /// seed still pull the vertex before the weights harden; a single T = 1
+  /// means no annealing, which loses precise tracks from collisions off the
+  /// beam line where the seed sits. The chi2 uses the track uncertainty only.
+  /// The default is the Acts default ladder.
+  Gaudi::Property<std::vector<double>> m_annealingTemperatures{this,
+                                                               "AnnealingTemperatures",
+                                                               {64.0, 16.0, 4.0, 2.0, 1.5, 1.0},
+                                                               "Temperatures of the deterministic annealing of the "
+                                                               "track weights"};
+  Gaudi::Property<double> m_annealingCutOff{this, "AnnealingCutOff", 9.0,
+                                            "Track-vertex chi2 at which a track gets weight 0.5"};
+  Gaudi::Property<unsigned int> m_fitterMaxIterations{this, "FitterMaxIterations", 30,
+                                                      "Maximum number of iterations of the multi-vertex fit"};
+
+  /// Multiplies the converted track covariance by the square of this factor,
+  /// for input tracks whose uncertainties are known to be underestimated
+  /// (pull widths above 1). 1 leaves the input untouched.
+  Gaudi::Property<double> m_trackCovarianceScale{this, "TrackCovarianceScale", 1.0,
+                                                 "Factor applied to the track parameter uncertainties"};
+  /// Added in quadrature to sigma(d0) and sigma(z0) after the scaling above,
+  /// for inputs that miss a momentum-independent term of the impact-parameter
+  /// resolution (pulls growing with momentum). 0 leaves the input untouched.
+  Gaudi::Property<double> m_impactParameterErrorTerm{this, "ImpactParameterErrorTerm", 0.0,
+                                                     "Uncertainty added in quadrature to sigma(d0) and sigma(z0) [mm]"};
 
   // ----- output -------------------------------------------------------------
   /// Same threshold as the minTrkWeight of Acts' VertexTruthMatcher, so a
@@ -235,7 +276,13 @@ StatusCode VertexFindingAlg::initialize() {
   // decision, and lowers the annealing temperature over the iterations so the
   // assignment hardens gradually.
   Fitter::Config fitterCfg(*m_ipEstimator);
-  fitterCfg.annealingTool = Acts::AnnealingUtility(Acts::AnnealingUtility::Config(9., {1.0}));
+  if (m_annealingTemperatures.empty()) {
+    error() << "AnnealingTemperatures needs at least one temperature" << endmsg;
+    return StatusCode::FAILURE;
+  }
+  fitterCfg.annealingTool =
+      Acts::AnnealingUtility(Acts::AnnealingUtility::Config(m_annealingCutOff, m_annealingTemperatures));
+  fitterCfg.maxIterations = m_fitterMaxIterations;
   fitterCfg.doSmoothing = m_doSmoothing;
   fitterCfg.useTime = false;
   fitterCfg.extractParameters.connect<&Acts::InputTrack::extractParameters>();
@@ -253,6 +300,10 @@ StatusCode VertexFindingAlg::initialize() {
   finderCfg.tracksMaxZinterval = m_tracksMaxZinterval * Acts::UnitConstants::mm;
   finderCfg.tracksMaxSignificance = m_tracksMaxSignificance;
   finderCfg.maxIterations = m_maxIterations;
+  finderCfg.maxVertexChi2 = m_maxVertexChi2;
+  finderCfg.maxMergeVertexSignificance = m_maxMergeVertexSignificance;
+  finderCfg.doFullSplitting = m_doFullSplitting;
+  finderCfg.doNotBreakWhileSeeding = m_doNotBreakWhileSeeding;
   finderCfg.useTime = false;
   finderCfg.extractParameters.connect<&Acts::InputTrack::extractParameters>();
 
@@ -263,7 +314,7 @@ StatusCode VertexFindingAlg::initialize() {
     }
     // Centred at the origin, see m_beamSpotSize. The seeder places seeds at
     // the constraint position plus the z it finds, so z has to be 0 anyway.
-    Acts::Vertex beamSpot(Acts::Vector4::Zero());
+    Acts::Vertex beamSpot(Acts::Vector4(Acts::Vector4::Zero()));
     Acts::Vector4 variances;
     for (std::size_t i = 0; i < 3; ++i) {
       const double sigma = m_beamSpotSize[i] * Acts::UnitConstants::mm;
@@ -340,7 +391,10 @@ VertexFindingAlg::Output VertexFindingAlg::operator()(const edm4hep::TrackCollec
     }
 
     // Patch the missing time uncertainty, see m_defaultTimeVariance.
-    Acts::BoundMatrix cov = params.covariance().value();
+    Acts::BoundMatrix cov = params.covariance().value() * (m_trackCovarianceScale * m_trackCovarianceScale);
+    const double ipErrorTerm = m_impactParameterErrorTerm * Acts::UnitConstants::mm;
+    cov(Acts::eBoundLoc0, Acts::eBoundLoc0) += ipErrorTerm * ipErrorTerm;
+    cov(Acts::eBoundLoc1, Acts::eBoundLoc1) += ipErrorTerm * ipErrorTerm;
     if (cov(Acts::eBoundTime, Acts::eBoundTime) <= 0.) {
       cov(Acts::eBoundTime, Acts::eBoundTime) =
           m_defaultTimeVariance * Acts::UnitConstants::ns * Acts::UnitConstants::ns;
