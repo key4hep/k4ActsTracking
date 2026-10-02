@@ -61,11 +61,18 @@ parser.add_argument(
 )
 args = parser.parse_known_args()[0]
 
-# Tuned on CLD_o2_v08 (Key4hep nightly 2026-09-30) with 6000 events of a
-# 10-muon gun (1.5-100 GeV) smeared with the 240 GeV beam spot, and checked on
-# an independent 5000 events. Compared there with LCFIPlus on the same tracks:
-# efficiency 99.98 % vs 99.3 %, sigma_eff x / z 1.02 / 1.04 um vs 1.21 / 1.12 um,
-# vertex pull widths ~1.06 vs ~1.65.
+# Tuned on CLD_o2_v08 (Key4hep nightly 2026-09-30) on three event types at once,
+# each split into a tuning and an independent test sample: a 10-muon gun
+# (1.5-100 GeV, 240 GeV beam spot; 6000 + 5000 events), Z -> bb at 91 GeV
+# (5000 + 5000) and Z -> uu/dd at 91 GeV (2500 + 2500). The settings are the
+# ones closest to the best on all three, not the best on any one. On the test
+# samples, compared with LCFIPlus on the same tracks:
+#   muon gun:  PV efficiency 100 % vs 99.3 %, sigma_eff x / z 1.05 / 1.06 um vs
+#              1.21 / 1.12 um, vertex pull widths 1.0 vs 1.65
+#   Z -> bb:   PV efficiency 82.5 % vs 72.5 %, sigma_eff x / z 4.8 / 8.1 um vs
+#              5.9 / 10.5 um, 1.95 vs 2.58 tracks from b/c decays in the PV
+#   Z -> uu/dd: PV efficiency 99.6 % vs 99.2 %, sigma_eff x / z 2.96 / 3.18 um vs
+#              3.06 / 3.18 um, pull widths 1.0 vs 1.2
 svcList, vertexing = make_vertexing(
     BeamSpotSize=list(BEAM_SPOT_SIZES[args.cms]),
     # CLD's d0 resolution (~1 um for hard tracks) is far below the transverse
@@ -76,18 +83,23 @@ svcList, vertexing = make_vertexing(
     # The fit starts on the beam line. A hot start gives precise tracks from
     # collisions off it (chi2 ~ 100 at the seed) a say before the weights
     # harden; the Acts default ladder starts at 64 and loses a few such events.
+    # Also improves Z -> bb (z resolution, 2-3x fewer split vertices).
     AnnealingTemperatures=[256.0, 64.0, 16.0, 4.0, 2.0, 1.5, 1.0],
-    # chi2 at which a track gets weight 0.5 (Acts default 9). 12, 16 and 25 did
-    # equally well on the muon gun; to be checked with b/c decays (Z -> qq, ZH).
-    AnnealingCutOff=16.0,
+    # chi2 at which a track gets weight 0.5, the Acts default. 12 and 16 let
+    # more b/c-decay tracks into the PV (Z -> bb efficiency -1.3 / -3 points)
+    # and gain only 0.01-0.02 um on the muon gun.
+    AnnealingCutOff=9.0,
     # Calibration of CLD's track uncertainties, which miss a momentum-independent
-    # term: d0 / z0 pulls w.r.t. the true vertex are ~1.1 at a few GeV and grow to
-    # ~1.7 / 1.5 at 100 GeV. Fitting sigma_true^2 = (k sigma)^2 + c^2 in momentum
-    # bins gives k = 1.10 / 1.08 and c = 1.59 / 1.63 um for d0 / z0; a common
-    # k = 1.09, c = 1.6 um is used. Specific to CLD's track fit: rederive it when
-    # the tracking or the geometry changes.
-    TrackCovarianceScale=1.09,
-    ImpactParameterErrorTerm=0.0016,
+    # term: d0 / z0 pulls w.r.t. the true vertex are ~1.0-1.1 below a few GeV and
+    # grow to ~1.7 / 1.5 at 100 GeV. Fitting sigma_true^2 = (k sigma)^2 + c^2 to
+    # the pull widths in momentum bins, with the prompt tracks of the muon gun
+    # and Z -> bb tuning samples together (0.3-100 GeV), gives k = 1.09 / 1.08 and
+    # c = 1.8 um for d0 / z0; pulls are then 0.94-1.08 in both samples. Costs
+    # ~1 point of Z -> bb PV efficiency (slightly more compatible displaced
+    # tracks), gives correct vertex uncertainties everywhere. Specific to CLD's
+    # track fit: rederive it when the tracking or the geometry changes.
+    TrackCovarianceScale=1.08,
+    ImpactParameterErrorTerm=0.0018,
 )
 
 ApplicationMgr(
