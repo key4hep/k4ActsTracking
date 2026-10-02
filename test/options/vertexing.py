@@ -24,7 +24,9 @@
 # field is used) and the input tracks from --inputTracks, so this runs on any
 # reconstruction output that provides edm4hep tracks with an AtIP track state.
 # No tracking is redone here; the tracks are only translated into the ACTS
-# parametrization by ACTS' own EDM4hep converter.
+# parametrization by ACTS' own EDM4hep converter. Runs with the algorithm's
+# defaults; per-detector settings live in <Detector>_Vertexing.py (e.g.
+# CLD_Vertexing.py).
 #
 # Example, on CLD tracks from ConformalTracking + RefitFinal:
 #   k4run vertexing.py \
@@ -32,29 +34,17 @@
 #       --IOSvc.Input particle_gun_CLD_o2_v08_REC.edm4hep.root \
 #       --IOSvc.Output particle_gun_CLD_o2_v08_VTX.edm4hep.root
 
+import os
+import sys
+
 from Gaudi.Configuration import INFO
-from Gaudi.Configurables import EventDataSvc, GeoSvc, VertexFindingAlg
-from k4FWCore import ApplicationMgr, IOSvc
+from k4FWCore import ApplicationMgr
 from k4FWCore.parseArgs import parser
 
-parser.add_argument(
-    "--compactFile",
-    help="The geometry compact file to use (for the magnetic field)",
-    type=str,
-    required=True,
-)
-parser.add_argument(
-    "--inputTracks",
-    help="Name of the input track collection to run vertexing on",
-    type=str,
-    default="SiTracks_Refitted",
-)
-parser.add_argument(
-    "--outputVertices",
-    help="Name of the output vertex collection",
-    type=str,
-    default="ACTSPrimaryVertices",
-)
+sys.path.insert(0, os.path.dirname(__file__))
+
+from _vertexing_helpers import make_vertexing
+
 parser.add_argument(
     "--beamSpotSize",
     help="Beam-spot size sigma x y z [mm]; enables the beam-spot constraint "
@@ -71,27 +61,9 @@ parser.add_argument(
 )
 args = parser.parse_known_args()[0]
 
-iosvc = IOSvc("IOSvc")
-# Keep the input collections in the output file, so the vertices can be
-# compared with the tracks and with LCFIPlus' PrimaryVertices side by side.
-iosvc.outputCommands = ["keep *"]
-
-svcList = [
-    GeoSvc("GeoSvc", detectors=[args.compactFile], EnableGeant4Geo=False),
-    EventDataSvc("EventDataSvc"),
-]
-
-vertexing = VertexFindingAlg(
-    "VertexFindingAlg",
-    InputTracks=[args.inputTracks],
-    OutputVertices=[args.outputVertices],
-    # One particle per track used by a vertex, and the vertex -> particle links
-    # carrying the adaptive fit's track weights
-    OutputParticles=[f"{args.outputVertices}_Particles"],
-    OutputVertexParticleLinks=[f"{args.outputVertices}_ParticleLinks"],
+svcList, vertexing = make_vertexing(
     SeedMaxD0Significance=args.seedMaxD0Significance,
     BeamSpotSize=args.beamSpotSize or [],
-    OutputLevel=INFO,
 )
 
 ApplicationMgr(
