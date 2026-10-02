@@ -85,7 +85,9 @@
 ///  - the vertices,
 ///  - one ReconstructedParticle per track the fit kept, pointing at its input
 ///    edm4hep::Track and attached to the vertex's `particles`, so vertices can
-///    be traced back to tracks (and from there to MC truth),
+///    be traced back to tracks (and from there to MC truth). An edm4hep::Track
+///    carries no particle species, so mass and energy assume the Acts default
+///    pion hypothesis and the PDG is left unset,
 ///  - a vertex -> particle link per such track whose weight is the adaptive
 ///    fit's track weight, which edm4hep::Vertex itself has no place for.
 struct VertexFindingAlg final
@@ -314,7 +316,7 @@ StatusCode VertexFindingAlg::initialize() {
     }
     // Centred at the origin, see m_beamSpotSize. The seeder places seeds at
     // the constraint position plus the z it finds, so z has to be 0 anyway.
-    Acts::Vertex beamSpot(Acts::Vector4(Acts::Vector4::Zero()));
+    Acts::Vertex beamSpot{Acts::Vector4{Acts::Vector4::Zero()}};
     Acts::Vector4 variances;
     for (std::size_t i = 0; i < 3; ++i) {
       const double sigma = m_beamSpotSize[i] * Acts::UnitConstants::mm;
@@ -486,6 +488,7 @@ VertexFindingAlg::Output VertexFindingAlg::operator()(const edm4hep::TrackCollec
 
       const Acts::BoundTrackParameters& atVertex = trackAtVertex.fittedParams;
       const Acts::Vector3 momentum = atVertex.momentum() / Acts::UnitConstants::GeV;
+      // readTrack cannot know the species, so this is the default pion mass.
       const double mass = atVertex.particleHypothesis().mass() / Acts::UnitConstants::GeV;
 
       auto particle = particles.create();
