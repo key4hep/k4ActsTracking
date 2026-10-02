@@ -92,6 +92,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <numeric>
@@ -268,16 +269,12 @@ private:
   Gaudi::Property<float> m_seedFinding_minPt{this, "SeedFinding_MinPt", 500.0, "Minimum pT of tracks to seed [MeV]."};
   Gaudi::Property<float> m_seedFinding_impactMax{this, "SeedFinding_ImpactMax", 3.0,
                                                  "Maximum d0 of tracks to seed [mm]."};
-  Gaudi::Property<std::vector<std::string>> m_hitTimeResolutionCellIDs{
+  Gaudi::Property<std::map<std::string, double>> m_hitTimeResolutions{
       this,
-      "HitTimeResolutionCellIDs",
+      "HitTimeResolutions",
       {},
-      "CellIDSelector selection strings assigning per-sensor time resolutions, paired with "
-      "HitTimeResolutionValues; the first matching selection wins. Mirror the digitiser's per-layer "
-      "ResolutionT settings here. Required when UseHitTimeInCKF is true, and the selections must "
-      "cover every tracker hit."};
-  Gaudi::Property<std::vector<double>> m_hitTimeResolutionValues{
-      this, "HitTimeResolutionValues", {}, "Time resolutions in ns, paired with HitTimeResolutionCellIDs."};
+      "Per-sensor time resolutions in ns, keyed by CellIDSelector selection string. The selections must not "
+      "overlap and must cover every tracker hit. Required when UseHitTimeInCKF or a seeding time cut is set."};
   Gaudi::Property<float> m_seedFinding_doubletTimeCutNSigma{
       this, "SeedFinding_DoubletTimeCutNSigma", -1.0f,
       "Max TOF-corrected time difference between doublet space points, in units of their combined time "
@@ -464,24 +461,22 @@ private:
 
   k4ActsTracking::CellIDSelector m_seedSelector{};
 
-  // Paired with m_hitTimeResolutionValues.
-  std::vector<k4ActsTracking::CellIDSelector> m_hitTimeResolutionSelectors{};
+  std::vector<std::pair<k4ActsTracking::CellIDSelector, double>> m_hitTimeResolutionSelectors{};
 
   bool usesHitTimeResolutions() const {
     return m_useHitTimeInCKF || m_seedFinding_doubletTimeCutNSigma > 0.0f || m_seedFinding_tripletTimeChi2Max > 0.0f;
   }
 
-  /// Time resolution (ns) of the first HitTimeResolutionCellIDs selection matching the hit.
+  /// Time resolution (ns) of the HitTimeResolutions selection matching the hit.
   double hitTimeResolutionFor(const edm4hep::TrackerHitPlane& hit) const {
-    for (std::size_t i = 0; i < m_hitTimeResolutionSelectors.size(); ++i) {
-      if (m_hitTimeResolutionSelectors[i].accept(hit.getCellID())) {
-        return m_hitTimeResolutionValues.value()[i];
+    for (const auto& [selector, resolution] : m_hitTimeResolutionSelectors) {
+      if (selector.accept(hit.getCellID())) {
+        return resolution;
       }
     }
-    throw std::runtime_error(
-        fmt::format("CKFTrackingAlg: no HitTimeResolutionCellIDs selection matches cellID {}; the selections "
-                    "must cover every tracker hit when UseHitTimeInCKF is enabled",
-                    hit.getCellID()));
+    throw std::runtime_error(fmt::format("CKFTrackingAlg: no HitTimeResolutions selection matches cellID {}; the "
+                                         "selections must cover every tracker hit",
+                                         hit.getCellID()));
   }
 
   // Shared Combinatorial Kalman Filter, built once in initialize() (the
@@ -520,31 +515,31 @@ StatusCode CKFTrackingAlg::initialize() {
     return StatusCode::FAILURE;
   }
 
-  if (m_hitTimeResolutionCellIDs.size() != m_hitTimeResolutionValues.size()) {
-    error() << "HitTimeResolutionCellIDs and HitTimeResolutionValues must have the same length ("
-            << m_hitTimeResolutionCellIDs.size() << " != " << m_hitTimeResolutionValues.size() << ")" << endmsg;
+  if (usesHitTimeResolutions() && m_hitTimeResolutions.empty()) {
+    error() << "UseHitTimeInCKF and the seeding time cuts require HitTimeResolutions to be configured" << endmsg;
     return StatusCode::FAILURE;
   }
-  for (std::size_t i = 0; i < m_hitTimeResolutionValues.size(); ++i) {
-    const double res = m_hitTimeResolutionValues[i];
-    if (!(res > 0.0) || !std::isfinite(res)) {
-      error() << "HitTimeResolutionValues[" << i << "] (" << m_hitTimeResolutionCellIDs[i]
-              << ") must be finite and > 0, got " << res << endmsg;
+  std::vector<std::string> selections;
+  for (const auto& [selection, resolution] : m_hitTimeResolutions.value()) {
+    if (!(resolution > 0.0) || !std::isfinite(resolution)) {
+      error() << "HitTimeResolutions[" << selection << "] must be finite and > 0, got " << resolution << endmsg;
       return StatusCode::FAILURE;
     }
+    m_hitTimeResolutionSelectors.emplace_back(
+        k4ActsTracking::CellIDSelector(m_actsGeoSvc->cellIDEncodingString(), {selection}), resolution);
+    selections.push_back(selection);
   }
-  if (usesHitTimeResolutions() && m_hitTimeResolutionCellIDs.empty()) {
-    error() << "UseHitTimeInCKF and the seeding time cuts require the per-sensor time resolutions to be "
-               "configured via HitTimeResolutionCellIDs and HitTimeResolutionValues"
-            << endmsg;
-    return StatusCode::FAILURE;
-  }
-  for (const std::string& selection : m_hitTimeResolutionCellIDs.value()) {
-    m_hitTimeResolutionSelectors.emplace_back(m_actsGeoSvc->cellIDEncodingString(),
-                                              std::vector<std::string>{selection});
+  for (std::size_t i = 0; i < m_hitTimeResolutionSelectors.size(); ++i) {
+    for (std::size_t j = i + 1; j < m_hitTimeResolutionSelectors.size(); ++j) {
+      if (m_hitTimeResolutionSelectors[i].first.overlaps(m_hitTimeResolutionSelectors[j].first)) {
+        error() << "HitTimeResolutions selections \"" << selections[i] << "\" and \"" << selections[j] << "\" overlap"
+                << endmsg;
+        return StatusCode::FAILURE;
+      }
+    }
   }
   if (usesHitTimeResolutions()) {
-    warning() << "The per-sensor HitTimeResolutionValues are a placeholder until EDM4hep stores a time error per hit"
+    warning() << "The per-sensor HitTimeResolutions are a placeholder until EDM4hep stores a time error per hit"
               << endmsg;
   }
 
