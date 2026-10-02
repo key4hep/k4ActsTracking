@@ -154,8 +154,6 @@ struct VertexFindingAlg final
   Gaudi::Property<double> m_tracksMaxSignificance{this, "TracksMaxSignificance", 5.0,
                                                   "Maximum compatibility significance for a track to join a vertex"};
   Gaudi::Property<int> m_maxIterations{this, "MaxIterations", 1000, "Maximum number of vertex finding iterations"};
-  Gaudi::Property<bool> m_doSmoothing{this, "DoSmoothing", true,
-                                      "Refit the track parameters with the vertex position as constraint"};
   /// After a candidate is fitted, the tracks whose compatibility with it is
   /// below this chi2 leave the seed pool; the others can seed further vertices.
   Gaudi::Property<double> m_maxVertexChi2{this, "MaxVertexChi2", 18.42,
@@ -285,7 +283,10 @@ StatusCode VertexFindingAlg::initialize() {
   fitterCfg.annealingTool =
       Acts::AnnealingUtility(Acts::AnnealingUtility::Config(m_annealingCutOff, m_annealingTemperatures));
   fitterCfg.maxIterations = m_fitterMaxIterations;
-  fitterCfg.doSmoothing = m_doSmoothing;
+  // Always on: smoothing replaces each track's parameters by ones refitted at
+  // its vertex, which the output particles report with the vertex as their
+  // reference point. Without it they would still be the input parameters.
+  fitterCfg.doSmoothing = true;
   fitterCfg.useTime = false;
   fitterCfg.extractParameters.connect<&Acts::InputTrack::extractParameters>();
   fitterCfg.trackLinearizer.connect<&Linearizer::linearizeTrack>(&m_linearizer.value());
