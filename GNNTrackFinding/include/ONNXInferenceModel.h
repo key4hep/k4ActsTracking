@@ -225,12 +225,19 @@ public:
   // Load model from file
   bool loadModel(const std::string& modelPath);
 
+  template <typename T, typename DeviceT>
+  [[nodiscard]] std::vector<Ort::Value> runInference(const T& inputData, const DeviceT& device);
+
   template <typename T>
-  [[nodiscard]] std::vector<Ort::Value> runInference(const T& inputData);
+  [[nodiscard]] std::vector<Ort::Value> runInference(const T& inputData, int cudaDeviceIndex = -1);
 
   // Run inference on input data
   [[nodiscard]] std::vector<Ort::Value> runInference(const std::vector<float>& inputData,
-                                                     const std::vector<int64_t>& inputShape);
+                                                     const std::vector<int64_t>& inputShape, int cudaDeviceIndex = -1);
+
+  template <typename DeviceT>
+  [[nodiscard]] std::vector<Ort::Value> runInference(const std::vector<float>& inputData,
+                                                     const std::vector<int64_t>& inputShape, const DeviceT& device);
 
   // Print model information to stream
   template <typename StreamT>
@@ -279,14 +286,28 @@ private:
   void cleanup();
 };
 
+template <typename T, typename DeviceT>
+std::vector<Ort::Value> ONNXInferenceModel::runInference(const T& inputData, const DeviceT& device) {
+  const int cudaDeviceIndex = device.isCuda() ? static_cast<int>(device.index) : -1;
+  return runInference(inputData, cudaDeviceIndex);
+}
+
 template <typename T>
-std::vector<Ort::Value> ONNXInferenceModel::runInference(const T& inputData) {
+std::vector<Ort::Value> ONNXInferenceModel::runInference(const T& inputData, int cudaDeviceIndex) {
   auto input = flatten(inputData);
   auto dims = getDimensions(inputData);
   // Very basic check to at least avoid glaring mistakes in the inputData shape
   assert(input.size() == std::reduce(dims.begin(), dims.end(), 1u, std::multiplies<>()));
 
-  return runInference(input, dims);
+  return runInference(input, dims, cudaDeviceIndex);
+}
+
+template <typename DeviceT>
+std::vector<Ort::Value> ONNXInferenceModel::runInference(const std::vector<float>& inputData,
+                                                         const std::vector<int64_t>& inputShape,
+                                                         const DeviceT& device) {
+  const int cudaDeviceIndex = device.isCuda() ? static_cast<int>(device.index) : -1;
+  return runInference(inputData, inputShape, cudaDeviceIndex);
 }
 
 template <typename StreamT>

@@ -255,6 +255,6 @@ test/gaudi_opts/testConverterConstants.py
 # OS junk
 .DS_Store
 
-# Detector/material files fetched by data/download_files.sh
+# Detector/material files downloaded into data/ by older versions of the build
 /data/*.root
 /data/*.json
