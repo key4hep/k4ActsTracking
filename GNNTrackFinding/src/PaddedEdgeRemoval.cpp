@@ -18,6 +18,8 @@
  */
 #include "PaddedEdgeRemoval.h"
 
+#include "HostTensorView.h"
+
 #include <fmt/format.h>
 
 #include <cstddef>
@@ -37,11 +39,8 @@ PipelineTensors PaddedEdgeRemoval::operator()(PipelineTensors tensors,
   // The edge index may live on the device, so bring it to the host to build the
   // mask. Keeping this on the host is what saves the package from needing a
   // CUDA kernel of its own; the selects below are device aware.
-  const std::optional<Tensor<std::int64_t>> hostEdges =
-      tensors.edgeIndex.device().isCpu()
-          ? std::nullopt
-          : std::optional{tensors.edgeIndex.clone({ActsPlugins::Device::Cpu(), execContext.stream})};
-  const std::int64_t* edgeData = hostEdges.has_value() ? hostEdges->data() : tensors.edgeIndex.data();
+  const gnntracking::HostTensorView<std::int64_t> hostEdges{tensors.edgeIndex, execContext};
+  const std::int64_t* edgeData = hostEdges.data();
 
   // The edge index is a (2 x numEdges) row-major tensor, so the source of edge i
   // is at i and its target at numEdges + i.

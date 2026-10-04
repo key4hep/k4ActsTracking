@@ -260,12 +260,13 @@ The edge building leaves every edge oriented from the lower to the higher node
 index, which says nothing about the geometry. With `SortEdges` (the default) the
 graph construction re-orients each one from the hit closer to the interaction
 point to the one further out, measured by `r^2 + z^2` of the **unscaled** hit
-features, with the node index breaking ties, and then collapses a pair of hits
-that ended up in the graph in both directions. This is what the ACORN pipeline
-does after its own graph construction, and it is the convention the models are
-trained with: the six [edge features](#edge-features) are signed differences
-along the edge, so without it `dr`, `dz`, ... come out with the wrong sign for
-about half of the edges.
+features, with the node index breaking ties. (The edge building already holds
+every pair of hits only once, so nothing needs collapsing afterwards.) This is
+what the ACORN pipeline does after its own graph construction, and it is the
+convention the models are trained with: the six
+[edge features](#edge-features) are signed differences along the edge, so
+without it `dr`, `dz`, ... come out with the wrong sign for about half of the
+edges.
 
 `r` and `z` are added to the extracted hit features automatically when this is
 enabled. Setting `SortEdges=False` leaves the edges as the edge building

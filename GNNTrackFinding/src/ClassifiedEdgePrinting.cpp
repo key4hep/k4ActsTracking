@@ -18,6 +18,8 @@
  */
 #include "ClassifiedEdgePrinting.h"
 
+#include "HostTensorView.h"
+
 #include <fmt/format.h>
 #include <fmt/ranges.h>
 
@@ -27,11 +29,9 @@
 #include <optional>
 #include <span>
 #include <string>
-#include <type_traits>
 #include <utility>
 
 using ActsPlugins::PipelineTensors;
-using ActsPlugins::Tensor;
 
 ClassifiedEdgePrinting::ClassifiedEdgePrinting(const Config& cfg, std::unique_ptr<const Acts::Logger> logger)
     : m_cfg(cfg), m_logger(std::move(logger)) {}
@@ -47,32 +47,23 @@ PipelineTensors ClassifiedEdgePrinting::operator()(PipelineTensors tensors,
   const std::size_t numShown = config().printAll ? numEdges : std::min(config().numEdgesShown, numEdges);
 
   // Everything is printed from the host, so pull the tensors over if they are
-  // not there already. This is the same idiom the track building uses.
-  const ActsPlugins::ExecutionContext cpuCtx{ActsPlugins::Device::Cpu(), execContext.stream};
-  const auto toHost = [&cpuCtx](const auto& tensor) -> std::optional<std::decay_t<decltype(tensor)>> {
-    if (tensor.device().isCpu()) {
-      return std::nullopt;
-    }
-    return tensor.clone(cpuCtx);
-  };
-  const std::optional<Tensor<std::int64_t>> hostEdges = toHost(tensors.edgeIndex);
-  const std::int64_t* edgeData = hostEdges ? hostEdges->data() : tensors.edgeIndex.data();
+  // not there already.
+  const gnntracking::HostTensorView<std::int64_t> hostEdges{tensors.edgeIndex, execContext};
+  const std::int64_t* edgeData = hostEdges.data();
 
   // The scores are there for every classified graph, the edge features only if
   // the pipeline computes them at all (three-input classifiers).
-  std::optional<Tensor<float>> hostScores{};
+  std::optional<gnntracking::HostTensorView<float>> hostScores{};
   const float* scoreData = nullptr;
   if (tensors.edgeScores.has_value()) {
-    hostScores = toHost(*tensors.edgeScores);
-    scoreData = hostScores ? hostScores->data() : tensors.edgeScores->data();
+    scoreData = hostScores.emplace(*tensors.edgeScores, execContext).data();
   }
 
-  std::optional<Tensor<float>> hostFeatures{};
+  std::optional<gnntracking::HostTensorView<float>> hostFeatures{};
   const float* featureData = nullptr;
   std::size_t numEdgeFeatures = 0;
   if (tensors.edgeFeatures.has_value()) {
-    hostFeatures = toHost(*tensors.edgeFeatures);
-    featureData = hostFeatures ? hostFeatures->data() : tensors.edgeFeatures->data();
+    featureData = hostFeatures.emplace(*tensors.edgeFeatures, execContext).data();
     numEdgeFeatures = tensors.edgeFeatures->shape()[1];
   }
 

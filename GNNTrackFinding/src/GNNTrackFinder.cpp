@@ -20,6 +20,7 @@
 
 #include "CCAndWalkTrackBuilding.h"
 #include "ClassifiedEdgePrinting.h"
+#include "ConfigParsing.h"
 #include "EdgeDirection.h"
 #include "OnnxMetricLearning.h"
 #include "PaddedEdgeRemoval.h"
@@ -239,11 +240,12 @@ StatusCode GNNTrackFinder::initialize() {
     return StatusCode::FAILURE;
   }
 
-  const auto embeddingFeatures = mlutils::parseList<std::string>(m_inputFeaturesEmbedding.value());
-  const auto embeddingScales = mlutils::parseList<float>(m_inputScalesEmbedding.value());
-  const auto edgeFeatureScales = mlutils::parseList<float>(m_edgeFeatureScales.value());
-  const auto edgeClassifierFeaturesList = mlutils::parseMultiList<std::string>(m_inputFeaturesEdgeClassifier.value());
-  const auto edgeClassifierScalesList = mlutils::parseMultiList<float>(m_inputScalesEdgeClassifier.value());
+  const auto embeddingFeatures = gnntracking::parseList<std::string>(m_inputFeaturesEmbedding.value());
+  const auto embeddingScales = gnntracking::parseList<float>(m_inputScalesEmbedding.value());
+  const auto edgeFeatureScales = gnntracking::parseList<float>(m_edgeFeatureScales.value());
+  const auto edgeClassifierFeaturesList =
+      gnntracking::parseMultiList<std::string>(m_inputFeaturesEdgeClassifier.value());
+  const auto edgeClassifierScalesList = gnntracking::parseMultiList<float>(m_inputScalesEdgeClassifier.value());
 
   // The six edge features are defined in terms of r, phi, z and eta, so unlike
   // the model inputs there is nothing to select: all that is configurable is

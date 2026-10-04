@@ -19,14 +19,15 @@
 #include "CCAndWalkTrackBuilding.h"
 
 #include "EdgeDirection.h"
+#include "HostTensorView.h"
 
 #include <fmt/format.h>
 
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <numeric>
-#include <optional>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -144,20 +145,13 @@ std::vector<std::vector<int>> CCAndWalkTrackBuilding::operator()(PipelineTensors
 
   // Everything is walked on the host, so pull the tensors over if they are not
   // there already.
-  const ActsPlugins::ExecutionContext cpuCtx{ActsPlugins::Device::Cpu(), execContext.stream};
-  const auto toHost = [&cpuCtx](const auto& tensor) -> std::optional<std::decay_t<decltype(tensor)>> {
-    if (tensor.device().isCpu()) {
-      return std::nullopt;
-    }
-    return tensor.clone(cpuCtx);
-  };
-  const auto hostEdgeIndex = toHost(tensors.edgeIndex);
-  const auto hostScores = toHost(*tensors.edgeScores);
-  const auto hostNodeFeatures = toHost(tensors.nodeFeatures);
+  const gnntracking::HostTensorView<std::int64_t> hostEdgeIndex{tensors.edgeIndex, execContext};
+  const gnntracking::HostTensorView<float> hostScores{*tensors.edgeScores, execContext};
+  const gnntracking::HostTensorView<float> hostNodeFeatures{tensors.nodeFeatures, execContext};
 
-  const std::int64_t* edgeData = hostEdgeIndex ? hostEdgeIndex->data() : tensors.edgeIndex.data();
-  const float* scoreData = hostScores ? hostScores->data() : tensors.edgeScores->data();
-  const float* nodeData = hostNodeFeatures ? hostNodeFeatures->data() : tensors.nodeFeatures.data();
+  const std::int64_t* edgeData = hostEdgeIndex.data();
+  const float* scoreData = hostScores.data();
+  const float* nodeData = hostNodeFeatures.data();
 
   // Direct every edge outwards (see EdgeDirection.h). Only the real hits are
   // looked at: any padding rows the edge classifiers were given sit past them.
@@ -191,13 +185,21 @@ std::vector<std::vector<int>> CCAndWalkTrackBuilding::operator()(PipelineTensors
     return {};
   }
 
-  // The graph construction can deliver a pair of hits in both directions, which
-  // after the orientation above become the same edge twice. Collapse those, so
-  // that they do not count twice towards a node's degree.
-  std::ranges::sort(directed, [](const auto& lhs, const auto& rhs) {
-    return lhs.first != rhs.first ? lhs.first < rhs.first : lhs.second > rhs.second;
-  });
-  directed.erase(std::ranges::unique(directed, {}, [](const auto& e) { return e.first; }).begin(), directed.end());
+  // Every pair of hits is in the graph at most once: the edge building
+  // (postprocessEdgeTensor() in Acts' buildEdges) deduplicates the pairs, and
+  // neither the classifiers nor re-orienting a pair can create a second copy.
+  // So no edge counts twice towards a node's degree. Checked in debug builds
+  // only, as it takes a sort.
+  [[maybe_unused]] const auto eachPairOnce = [&directed] {
+    std::vector<std::pair<int, int>> pairs{};
+    pairs.reserve(directed.size());
+    for (const auto& [edge, score] : directed) {
+      pairs.push_back(edge);
+    }
+    std::ranges::sort(pairs);
+    return std::ranges::adjacent_find(pairs) == pairs.end();
+  };
+  assert(eachPairOnce() && "CCAndWalkTrackBuilding got the same pair of hits twice");
 
   std::vector<std::vector<OutEdge>> outEdges(numNodes);
   std::vector<int> inDegree(numNodes, 0);
