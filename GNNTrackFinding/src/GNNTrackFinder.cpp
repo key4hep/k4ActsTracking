@@ -24,25 +24,10 @@
 #include "OnnxMetricLearning.h"
 #include "PaddedEdgeRemoval.h"
 
-#if __has_include("ActsPlugins/Gnn/Stages.hpp")
 #include <ActsPlugins/Gnn/BoostTrackBuilding.hpp>
 #include <ActsPlugins/Gnn/GnnPipeline.hpp>
 #include <ActsPlugins/Gnn/OnnxEdgeClassifier.hpp>
 #include <ActsPlugins/Gnn/Stages.hpp>
-#else
-#include <Acts/Plugins/Gnn/BoostTrackBuilding.hpp>
-#include <Acts/Plugins/Gnn/GnnPipeline.hpp>
-#include <Acts/Plugins/Gnn/OnnxEdgeClassifier.hpp>
-#include <Acts/Plugins/Gnn/Stages.hpp>
-namespace ActsPlugins {
-using BoostTrackBuilding = Acts::BoostTrackBuilding;
-using Device = Acts::Device;
-using EdgeClassificationBase = Acts::EdgeClassificationBase;
-using GnnPipeline = Acts::GnnPipeline;
-using OnnxEdgeClassifier = Acts::OnnxEdgeClassifier;
-using TrackBuildingBase = Acts::TrackBuildingBase;
-} // namespace ActsPlugins
-#endif
 
 #include <k4ActsTracking/ActsGaudiLogger.h>
 #include <k4ActsTracking/KFRunner.hxx>

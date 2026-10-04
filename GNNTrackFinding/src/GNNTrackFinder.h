@@ -27,16 +27,9 @@
 #include <Acts/Definitions/Units.hpp>
 #include <Acts/Utilities/Logger.hpp>
 
-#include <GaudiKernel/SmartIF.h>
-#if __has_include("ActsPlugins/Gnn/GnnPipeline.hpp")
 #include <ActsPlugins/Gnn/GnnPipeline.hpp>
-#else
-#include <Acts/Plugins/Gnn/GnnPipeline.hpp>
-namespace ActsPlugins {
-using GnnPipeline = Acts::GnnPipeline;
-using Device = Acts::Device;
-} // namespace ActsPlugins
-#endif
+
+#include <GaudiKernel/SmartIF.h>
 
 #include <Gaudi/Accumulators/RootHistogram.h>
 #include <Gaudi/Property.h>
