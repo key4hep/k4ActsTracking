@@ -76,7 +76,7 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
   Gaudi::Property<std::string> m_inputScalesEmbedding{
       this, "InputScalesEmbedding", "1,1,1,1",
       "Comma-separated list of scales for the hit features for the node embedding model. "
-      "Must be same size as InputFeaturesEmbedding."};
+      "Must be same size as InputFeaturesEmbedding, and none may be zero."};
   Gaudi::Property<int> m_embeddingFixedInputLength{
       this, "EmbeddingFixedInputLength", 0,
       "If > 0, pad the node embedding model input with all-zero rows up to this many nodes, for models exported "
@@ -118,13 +118,14 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
       this,
       "InputFeaturesEdgeClassifier",
       {"r,phi,z,t"},
-      "List of comma-separated lists of node features for the edge classifier models."};
+      "List of comma-separated lists of node features for the edge classifier models. Each model gets its features in "
+      "the order they are listed in, and a feature may be listed more than once."};
   Gaudi::Property<std::vector<std::string>> m_inputScalesEdgeClassifier{
       this,
       "InputScalesEdgeClassifier",
       {"1,1,1,1"},
       "List of comma-separated lists of scales for the node features for the edge classifier models. "
-      "Must be same size as InputFeaturesEdgeClassifier."};
+      "Must be same size as InputFeaturesEdgeClassifier, and none may be zero."};
   Gaudi::Property<std::vector<float>> m_edgeClassifierCut{
       this, "EdgeClassifierCut", {0.5f}, "List of cut values to use for the edge classifiers"};
   Gaudi::Property<bool> m_detailedDebugOut{this, "DetailedDebugOut", false,

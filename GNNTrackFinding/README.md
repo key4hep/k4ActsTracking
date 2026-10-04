@@ -75,7 +75,14 @@ In order to build this package you need a couple of dependencies that are not
 yet found in the Key4hep stack. Specifically, you need
 - Acts built with the `PluginGnn`.
   - This in turn requires the c++ library of [pytorch_scatter](https://github.com/rusty1s/pytorch_scatter) to be built.
-  - Acts needs [acts#4631](https://github.com/acts-project/acts/pull/4631) to be able to build without CUDA support
+  - Acts has to be recent enough to provide the node feature selection and
+    scaling of `OnnxEdgeClassifier`
+    ([acts#5646](https://github.com/acts-project/acts/pull/5646)) and to pass
+    the selected features in the configured order
+    ([acts#6142](https://github.com/acts-project/acts/pull/6142)). No release
+    contains the latter yet (the last one checked is v48.0.1), so build Acts from
+    its main branch. CMake requires Acts >= 48.1.0, the first release cut from
+    main after acts#6142; main itself reports version 999.999.999 and passes.
 
 In particular the GNN plugin and the c++ library of pytorch_scatter are not yet
 available via spack, so they need some manual intervention.
@@ -132,12 +139,12 @@ list lengths are rejected in `initialize`.
 | Property | Default | Description |
 | --- | --- | --- |
 | `InputFeaturesEmbedding` | `"r,phi,z,t"` | Comma separated features for the embedding model |
-| `InputScalesEmbedding` | `"1,1,1,1"` | Comma separated scales, each feature is divided by its scale |
+| `InputScalesEmbedding` | `"1,1,1,1"` | Comma separated scales, each feature is divided by its scale (so none may be zero) |
 | `EmbeddingFixedInputLength` | `0` | If `> 0`, pad the embedding model input with all-zero rows up to this many nodes. `0` disables the padding |
 | `KeepEmbeddingPadding` | `False` | Keep those padding rows in the node features handed to the edge classifiers, see below |
 | `EdgeClassifierFixedInputLength` | `0` | If `> 0`, pad the edge index and edge features up to this many edges, see below |
-| `InputFeaturesEdgeClassifier` | `["r,phi,z,t"]` | Per classifier list of comma separated features |
-| `InputScalesEdgeClassifier` | `["1,1,1,1"]` | Per classifier list of comma separated scales |
+| `InputFeaturesEdgeClassifier` | `["r,phi,z,t"]` | Per classifier list of comma separated features, passed to the model in the order given. A feature may be listed more than once |
+| `InputScalesEdgeClassifier` | `["1,1,1,1"]` | Per classifier list of comma separated scales, each feature is divided by its scale (so none may be zero) |
 | `ComputeEdgeFeatures` | `False` | Compute the six edge features a three-input classifier needs, see below |
 | `EdgeFeatureScales` | `""` | Scales of `r`, `phi`, `z`, `eta` used for that computation |
 
