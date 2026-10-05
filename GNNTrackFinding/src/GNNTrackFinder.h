@@ -66,10 +66,13 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
   Gaudi::Property<std::string> m_nodeEmbeddingModelPath{
       this, "NodeEmbeddingModelPath", "",
       "Path to the ONNX model file for the node embedding / graph construction metric model"};
-  Gaudi::Property<float> m_edgeBuildingRadius{this, "EdgeBuildingRadius", 0.1f,
-                                              "The radius parameter for the KD-Tree that is used in edge building"};
-  Gaudi::Property<float> m_edgeBuildingKnn{this, "EdgeBuildingKnn", 100.f,
-                                           "The KNN parameter for the KD-Tree that is used in edge building"};
+  Gaudi::Property<float> m_edgeBuildingRadius{
+      this, "EdgeBuildingRadius", 0.1f, "Radius in embedding space within which two hits are connected by an edge"};
+  Gaudi::Property<int> m_edgeBuildingKnn{
+      this, "EdgeBuildingKnn", 100,
+      "Maximum number of neighbours per hit in the edge building. Only the CUDA (FRNN) edge building applies it as a "
+      "cap; the CPU (KD-tree) edge building keeps every neighbour within EdgeBuildingRadius and uses this only to "
+      "reserve memory. Must be > 0."};
   Gaudi::Property<std::string> m_inputFeaturesEmbedding{
       this, "InputFeaturesEmbedding", "r,phi,z,t",
       "Comma-separated list of hit features for the node embedding model."};

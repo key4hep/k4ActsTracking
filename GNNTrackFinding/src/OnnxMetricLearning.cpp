@@ -356,8 +356,8 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
   if (fixedEdgeLength != 0 && fixedEdgeLength < numEdges) {
     throw std::runtime_error(fmt::format(
         "Cannot zero-pad the edge classifier input to a fixed length of {} edges, this segment already has {}. "
-        "Increase EdgeClassifierFixedInputLength, or lower EdgeBuildingRadius / EdgeBuildingKnn so that fewer edges "
-        "are built.",
+        "Increase EdgeClassifierFixedInputLength, or lower EdgeBuildingRadius (or, on CUDA only, EdgeBuildingKnn) so "
+        "that fewer edges are built.",
         fixedEdgeLength, numEdges));
   }
   if (fixedEdgeLength > numEdges) {

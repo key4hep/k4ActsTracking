@@ -36,8 +36,8 @@ produces an `edm4hep::TrackCollection` of fitted track candidates. Per event it
 3. **extracts the configured features** per hit (positions, time and CellID
    fields) into the flat `(nHits x nFeatures)` input tensor,
 4. runs the **graph construction**: a metric learning ONNX model embeds every
-   hit into a space in which a KD-tree (CPU) / FRNN (CUDA) radius + KNN search
-   builds the candidate edges (`OnnxMetricLearning`). Every edge is then
+   hit into a space in which a radius search (KD-tree on CPU, FRNN with an
+   additional KNN cap on CUDA) builds the candidate edges (`OnnxMetricLearning`). Every edge is then
    oriented from the hit closer to the interaction point to the one further out
    (`SortEdges`, see [Edge ordering](#edge-ordering)),
 5. runs one or more **edge classifiers** (ACTS `OnnxEdgeClassifier`) that score
@@ -122,8 +122,8 @@ k4run GNNTrackFinding/options/runGNNTrackFinding.py \
 | Property | Default | Description |
 | --- | --- | --- |
 | `NodeEmbeddingModelPath` | `""` | Path to the ONNX model of the metric learning / graph construction stage |
-| `EdgeBuildingRadius` | `0.1` | Radius parameter of the edge building in embedding space |
-| `EdgeBuildingKnn` | `100` | KNN parameter of the edge building in embedding space |
+| `EdgeBuildingRadius` | `0.1` | Radius in embedding space within which two hits are connected by an edge |
+| `EdgeBuildingKnn` | `100` | Maximum number of neighbours per hit. Only the CUDA (FRNN) edge building applies it; on CPU the KD-tree keeps every neighbour within the radius and uses this only to reserve memory |
 | `SortEdges` | `True` | Orient every built edge from the hit closer to the interaction point to the one further out, see [Edge ordering](#edge-ordering) |
 | `EdgeClassifierModelPath` | `[]` | Paths to the ONNX models of the edge classifiers |
 | `EdgeClassifierCut` | `[0.5]` | Score cut of each edge classifier |

@@ -87,7 +87,9 @@ TrackFinder = GNNTrackFinder(
     # of each segment with all-zero rows up to that length (0 = no padding).
     EmbeddingFixedInputLength=0,
     EdgeBuildingRadius=0.1,
-    EdgeBuildingKnn=100.0,
+    # Only caps the neighbours per hit on CUDA, the CPU edge building keeps all
+    # neighbours within EdgeBuildingRadius
+    EdgeBuildingKnn=100,
     # Orient every built edge from the hit closer to the interaction point to
     # the one further out, as the ACORN pipeline does.
     SortEdges=True,
