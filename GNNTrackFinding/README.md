@@ -347,9 +347,9 @@ A non-zero overlap extends every bin into its successor, so that hits close to a
 bin boundary end up in both bins and tracks crossing the boundary can still be
 found.
 
-> **Note:** the phi bins do *not* wrap around, i.e. the last phi bin does not
-> overlap with the first one. Track candidates crossing `phi = +/- pi` can
-> therefore be split between two segments.
+Phi is periodic, so with a non-zero `PhiOverlap` the last phi bin also reaches
+across `phi = +/- pi` into the first one, and tracks crossing that boundary are
+found like any other. Theta does not wrap: the last theta bin ends at `pi`.
 
 Hits in an overlap region are run through the pipeline once per segment they
 fall into, so a track there can be found (and fitted) more than once. The
@@ -434,5 +434,3 @@ implementation. I keep this list here as a reminder for later
   Acts GNN plugin, together with the CPU edge feature computation and the edge
   ordering.
 - Run the (independent) theta/phi segments concurrently instead of sequentially.
-- Make the phi segmentation wrap around, so that candidates crossing
-  `phi = +/- pi` are not split.
