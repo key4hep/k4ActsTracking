@@ -129,9 +129,7 @@ OnnxMetricLearning::OnnxMetricLearning(const Config& cfg, std::unique_ptr<const 
     : m_model("MetricLearning", getOnnxLogLevel(lggr->level()), cfg.device.isCuda(), cfg.device.index), m_config(cfg),
       m_logger(std::move(lggr)) {
   ACTS_INFO(fmt::format("Loading model from {}", config().modelPath));
-  if (!m_model.loadModel(config().modelPath)) {
-    throw std::runtime_error(fmt::format("Could not load the node embedding ONNX model from '{}'", config().modelPath));
-  }
+  m_model.loadModel(config().modelPath);
 
   // Take the embedding dimension from the model itself instead of having it
   // configured. The last axis of the (nNodes x embeddingDim) output carries it,
