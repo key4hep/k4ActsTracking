@@ -108,8 +108,10 @@ torch::Tensor toTorchTensor(const Ort::Value& onnxTensor, bool targetCuda, std::
 
   auto torchTensor = torch::from_blob(const_cast<void*>(data), shape, options);
 
-  if (targetCuda && memoryInfo.GetDeviceId() != static_cast<int>(cudaDeviceIndex)) {
-    // not on target CUDA device
+  // Host memory reports device id 0 as well, so the id alone does not tell
+  // whether the output is already on cuda:0.
+  if (targetCuda && (!onCudaMemory || memoryInfo.GetDeviceId() != static_cast<int>(cudaDeviceIndex))) {
+    // not on target CUDA device (in host memory, or on another GPU)
     const auto targetDevice = torch::Device(torch::kCUDA, static_cast<int64_t>(cudaDeviceIndex));
     return torchTensor.to(targetDevice);
   }
