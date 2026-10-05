@@ -470,8 +470,6 @@ void GNNTrackFinder::buildPipeline(const std::vector<float>& embeddingScales,
                                  // vector is what tells OnnxMetricLearning not to order the edges
                                  .distanceFeatureIndices =
                                      m_sortEdges.value() ? m_distanceFeatureIndices : std::vector<std::size_t>{},
-                                 // The edge features are a pipeline output, so the full dump covers them too
-                                 .printAllEdgeFeatures = m_detailedDebugOut.value(),
                                  .fixedInputLength = m_embeddingFixedInputLength.value(),
                                  .keepPadding = m_keepEmbeddingPadding.value(),
                                  .fixedEdgeLength = m_edgeClassifierFixedInputLength.value(),
