@@ -20,7 +20,6 @@
 
 #include "CCAndWalkTrackBuilding.h"
 #include "ClassifiedEdgePrinting.h"
-#include "ConfigParsing.h"
 #include "EdgeDirection.h"
 #include "OnnxMetricLearning.h"
 #include "PaddedEdgeRemoval.h"
@@ -240,12 +239,17 @@ StatusCode GNNTrackFinder::initialize() {
     return StatusCode::FAILURE;
   }
 
-  const auto embeddingFeatures = gnntracking::parseList<std::string>(m_inputFeaturesEmbedding.value());
-  const auto embeddingScales = gnntracking::parseList<float>(m_inputScalesEmbedding.value());
-  const auto edgeFeatureScales = gnntracking::parseList<float>(m_edgeFeatureScales.value());
-  const auto edgeClassifierFeaturesList =
-      gnntracking::parseMultiList<std::string>(m_inputFeaturesEdgeClassifier.value());
-  const auto edgeClassifierScalesList = gnntracking::parseMultiList<float>(m_inputScalesEdgeClassifier.value());
+  const auto& embeddingFeatures = m_inputFeaturesEmbedding.value();
+  const auto& embeddingScales = m_inputScalesEmbedding.value();
+  const auto& edgeFeatureScales = m_edgeFeatureScales.value();
+  const auto& edgeClassifierFeaturesList = m_inputFeaturesEdgeClassifier.value();
+  // The property is double (Gaudi has no parser for nested float vectors), the
+  // Acts edge classifier takes float
+  std::vector<std::vector<float>> edgeClassifierScalesList{};
+  edgeClassifierScalesList.reserve(nEdgeClassifiers);
+  for (const auto& scales : m_inputScalesEdgeClassifier.value()) {
+    edgeClassifierScalesList.emplace_back(scales.begin(), scales.end());
+  }
 
   // The six edge features are defined in terms of r, phi, z and eta, so unlike
   // the model inputs there is nothing to select: all that is configurable is

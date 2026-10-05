@@ -138,15 +138,15 @@ list lengths are rejected in `initialize`.
 
 | Property | Default | Description |
 | --- | --- | --- |
-| `InputFeaturesEmbedding` | `"r,phi,z,t"` | Comma separated features for the embedding model |
-| `InputScalesEmbedding` | `"1,1,1,1"` | Comma separated scales, each feature is divided by its scale (so none may be zero) |
+| `InputFeaturesEmbedding` | `["r", "phi", "z", "t"]` | Features for the embedding model |
+| `InputScalesEmbedding` | `[1, 1, 1, 1]` | Scales of those features, each feature is divided by its scale (so none may be zero) |
 | `EmbeddingFixedInputLength` | `0` | If `> 0`, pad the embedding model input with all-zero rows up to this many nodes. `0` disables the padding |
 | `KeepEmbeddingPadding` | `False` | Keep those padding rows in the node features handed to the edge classifiers, see below |
 | `EdgeClassifierFixedInputLength` | `0` | If `> 0`, pad the edge index and edge features up to this many edges, see below |
-| `InputFeaturesEdgeClassifier` | `["r,phi,z,t"]` | Per classifier list of comma separated features, passed to the model in the order given. A feature may be listed more than once |
-| `InputScalesEdgeClassifier` | `["1,1,1,1"]` | Per classifier list of comma separated scales, each feature is divided by its scale (so none may be zero) |
+| `InputFeaturesEdgeClassifier` | `[["r", "phi", "z", "t"]]` | One list of features per classifier, passed to the model in the order given. A feature may be listed more than once |
+| `InputScalesEdgeClassifier` | `[[1, 1, 1, 1]]` | One list of scales per classifier, each feature is divided by its scale (so none may be zero) |
 | `ComputeEdgeFeatures` | `False` | Compute the six edge features a three-input classifier needs, see below |
-| `EdgeFeatureScales` | `""` | Scales of `r`, `phi`, `z`, `eta` used for that computation. Required with `ComputeEdgeFeatures`, and **the `phi` scale has to be pi** |
+| `EdgeFeatureScales` | `[]` | Scales of `r`, `phi`, `z`, `eta` used for that computation. Required with `ComputeEdgeFeatures`, and **the `phi` scale has to be pi** |
 
 The supported (case insensitive) feature names are
 
@@ -287,7 +287,7 @@ scales go **in that order**, whatever order the models take their own inputs in.
 
 ```python
 ComputeEdgeFeatures=True,
-EdgeFeatureScales="1000,3.14,1000,1",
+EdgeFeatureScales=[1000, 3.14, 1000, 1],
 ```
 
 `phislope` is `dphi / dr` clamped to `[-100, 100]` and `rphislope` is that times

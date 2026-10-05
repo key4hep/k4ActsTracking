@@ -73,13 +73,14 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
       "Maximum number of neighbours per hit in the edge building. Only the CUDA (FRNN) edge building applies it as a "
       "cap; the CPU (KD-tree) edge building keeps every neighbour within EdgeBuildingRadius and uses this only to "
       "reserve memory. Must be > 0."};
-  Gaudi::Property<std::string> m_inputFeaturesEmbedding{
-      this, "InputFeaturesEmbedding", "r,phi,z,t",
-      "Comma-separated list of hit features for the node embedding model."};
-  Gaudi::Property<std::string> m_inputScalesEmbedding{
-      this, "InputScalesEmbedding", "1,1,1,1",
-      "Comma-separated list of scales for the hit features for the node embedding model. "
-      "Must be same size as InputFeaturesEmbedding, and none may be zero."};
+  Gaudi::Property<std::vector<std::string>> m_inputFeaturesEmbedding{
+      this, "InputFeaturesEmbedding", {"r", "phi", "z", "t"}, "Hit features for the node embedding model."};
+  Gaudi::Property<std::vector<float>> m_inputScalesEmbedding{
+      this,
+      "InputScalesEmbedding",
+      {1.f, 1.f, 1.f, 1.f},
+      "Scales for the hit features for the node embedding model, each feature is divided by its scale. Must be "
+      "the same size as InputFeaturesEmbedding (or empty for no scaling), and none may be zero."};
   Gaudi::Property<int> m_embeddingFixedInputLength{
       this, "EmbeddingFixedInputLength", 0,
       "If > 0, pad the node embedding model input with all-zero rows up to this many nodes, for models exported "
@@ -108,28 +109,28 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
       "If true, compute the six edge features (dr, dphi, dz, deta, phislope, rphislope) for every built edge, which "
       "is what edge classifier models with three inputs take as their \"edge_attr\" input. False (the default) "
       "computes none, which is what two-input models expect."};
-  Gaudi::Property<std::string> m_edgeFeatureScales{
-      this, "EdgeFeatureScales", "",
-      "Comma-separated list of the four scales the edge features are computed with. They are always computed from "
-      "r, phi, z and eta, so these are the scales of those four - in that order, whichever order the models take "
-      "their own inputs in. The edge features are handed to the classifiers unscaled, so these have to be the "
-      "scales the classifier was trained with. The phi scale has to be pi, which the dphi wrap-around assumes (as "
-      "the ACORN training does), so this is required when ComputeEdgeFeatures is true and not read otherwise."};
+  Gaudi::Property<std::vector<float>> m_edgeFeatureScales{
+      this,
+      "EdgeFeatureScales",
+      {},
+      "The four scales the edge features are computed with. They are always computed from r, phi, z and eta, so "
+      "these are the scales of those four - in that order, whichever order the models take their own inputs in. The "
+      "edge features are handed to the classifiers unscaled, so these have to be the scales the classifier was "
+      "trained with. The phi scale has to be pi, which the dphi wrap-around assumes (as the ACORN training does), so "
+      "this is required when ComputeEdgeFeatures is true and not read otherwise."};
 
   Gaudi::Property<std::vector<std::string>> m_edgeClassifierModelPath{
       this, "EdgeClassifierModelPath", {}, "List of paths to ONNX model files for edge classifier(s)."};
-  Gaudi::Property<std::vector<std::string>> m_inputFeaturesEdgeClassifier{
-      this,
-      "InputFeaturesEdgeClassifier",
-      {"r,phi,z,t"},
-      "List of comma-separated lists of node features for the edge classifier models. Each model gets its features in "
-      "the order they are listed in, and a feature may be listed more than once."};
-  Gaudi::Property<std::vector<std::string>> m_inputScalesEdgeClassifier{
-      this,
-      "InputScalesEdgeClassifier",
-      {"1,1,1,1"},
-      "List of comma-separated lists of scales for the node features for the edge classifier models. "
-      "Must be same size as InputFeaturesEdgeClassifier, and none may be zero."};
+  Gaudi::Property<std::vector<std::vector<std::string>>> m_inputFeaturesEdgeClassifier{
+      this, "InputFeaturesEdgeClassifier", std::vector<std::vector<std::string>>{{"r", "phi", "z", "t"}},
+      "Node features for the edge classifier models, one list per model. Each model gets its features in the order "
+      "they are listed in, and a feature may be listed more than once."};
+  // double rather than float: Gaudi parses nested vectors of double, but not of float
+  Gaudi::Property<std::vector<std::vector<double>>> m_inputScalesEdgeClassifier{
+      this, "InputScalesEdgeClassifier", std::vector<std::vector<double>>{{1., 1., 1., 1.}},
+      "Scales for the node features of the edge classifier models, one list per model, each feature is divided by "
+      "its scale. Each list must be the same size as the corresponding InputFeaturesEdgeClassifier list (or empty for "
+      "no scaling), and none may be zero."};
   Gaudi::Property<std::vector<float>> m_edgeClassifierCut{
       this, "EdgeClassifierCut", {0.5f}, "List of cut values to use for the edge classifiers"};
   Gaudi::Property<bool> m_detailedDebugOut{this, "DetailedDebugOut", false,
