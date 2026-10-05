@@ -42,6 +42,7 @@
 #include <cstdint>
 #include <iostream>
 #include <memory>
+#include <numbers>
 #include <optional>
 #include <span>
 #include <stdexcept>
@@ -503,7 +504,8 @@ std::optional<torch::Tensor> OnnxMetricLearning::buildEdgeFeatures(const std::ve
   // classifier scales its node input but passes the edge input through as it
   // is, so these are computed from the already scaled node values.
   enum EdgeFeatureInput { eR = 0, ePhi, eZ, eEta };
-  constexpr float pi = static_cast<float>(M_PI);
+  constexpr float pi = std::numbers::pi_v<float>;
+  constexpr float phiScale = kEdgeFeaturePhiScale;
 
   const auto& indices = config().edgeFeatureIndices;
   const auto& scales = config().edgeFeatureScales;
@@ -528,13 +530,14 @@ std::optional<torch::Tensor> OnnxMetricLearning::buildEdgeFeatures(const std::ve
   const auto dz = tgtValues.select(1, eZ) - srcValues.select(1, eZ);
   const auto deta = tgtValues.select(1, eEta) - srcValues.select(1, eEta);
 
-  // phi is scaled by pi, so the difference is unscaled to wrap it back into
-  // [-pi, pi] and then scaled again. A single wrap is enough since the unscaled
-  // difference cannot leave [-2pi, 2pi].
-  auto dphi = pi * (tgtValues.select(1, ePhi) - srcValues.select(1, ePhi));
+  // phi is scaled by kEdgeFeaturePhiScale (checked by the caller), so the
+  // difference is unscaled to wrap it back into [-pi, pi] and then scaled
+  // again. A single wrap is enough since the unscaled difference cannot leave
+  // [-2pi, 2pi].
+  auto dphi = phiScale * (tgtValues.select(1, ePhi) - srcValues.select(1, ePhi));
   dphi = torch::where(dphi > pi, dphi - 2.f * pi, dphi);
   dphi = torch::where(dphi < -pi, dphi + 2.f * pi, dphi);
-  dphi = dphi / pi;
+  dphi = dphi / phiScale;
 
   // Doublets on the same radius have no defined slope and get a flat zero. The
   // substitute denominator only keeps the discarded branch from producing infs.
