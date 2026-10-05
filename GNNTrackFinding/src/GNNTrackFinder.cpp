@@ -309,8 +309,7 @@ StatusCode GNNTrackFinder::initialize() {
       return false;
     }
     if (std::ranges::find(scales, 0.f) != scales.end()) {
-      error() << fmt::format("Input scales {} for {} contain a zero, features are divided by their scale",
-                             scales, what)
+      error() << fmt::format("Input scales {} for {} contain a zero, features are divided by their scale", scales, what)
               << endmsg;
       return false;
     }
