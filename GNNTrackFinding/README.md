@@ -344,6 +344,11 @@ found.
 > overlap with the first one. Track candidates crossing `phi = +/- pi` can
 > therefore be split between two segments.
 
+Hits in an overlap region are run through the pipeline once per segment they
+fall into, so a track there can be found (and fitted) more than once. The
+output is not deduplicated, so run a duplicate removal downstream when using
+overlaps.
+
 ### Track candidates and fit
 
 | Property | Default | Description |
@@ -418,14 +423,9 @@ debugging on small inputs.
 Many parts of this are currently in a prototype stage to get some results. This
 also means that there is plenty of opportunity to improve on the current
 implementation. I keep this list here as a reminder for later
-- Generalize `mlutils::{flatten,getDimensions,totalSize}` to also handle
-  `std::vector<std::array>` which would probably offer better performance due to
-  the better memory layout.
-- Make the `ONNXInferenceModel::runInference` thread-safe such that it can be
-  marked as `const` to avoid the `mutable` statements in `operator()` of
-  Functional algorithms
 - The `OnnxMetricLearning` class should almost certainly be upstreamed to the
-  Acts GNN plugin.
+  Acts GNN plugin, together with the CPU edge feature computation and the edge
+  ordering.
 - Run the (independent) theta/phi segments concurrently instead of sequentially.
 - Make the phi segmentation wrap around, so that candidates crossing
   `phi = +/- pi` are not split.

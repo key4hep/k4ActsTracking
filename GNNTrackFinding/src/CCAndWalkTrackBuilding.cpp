@@ -86,9 +86,10 @@ std::vector<int> CCAndWalkTrackBuilding::longestPathFrom(int start, const std::v
   std::vector<int> path{};
   std::size_t steps = 0;
 
-  // Iterative depth first search over the branches. The graph is acyclic by
+  // Recursive depth first search over the branches. The graph is acyclic by
   // construction (see the header), so a path can never revisit a node and no
-  // on-path bookkeeping is needed.
+  // on-path bookkeeping is needed, and the recursion is never deeper than the
+  // longest path.
   const auto walk = [&](const auto& self, int node) -> void {
     path.push_back(node);
     if (path.size() > best.size()) {
