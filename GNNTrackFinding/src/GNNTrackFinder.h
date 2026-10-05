@@ -200,6 +200,10 @@ private:
   std::vector<std::vector<int>> m_edgeClassifierFeatureIndices{};
   std::unique_ptr<ActsPlugins::GnnPipeline> m_pipeline{nullptr};
   std::unique_ptr<const Acts::Logger> m_logger{nullptr};
+  /// Logger of the EdgePrintingHook, which prints the graph after every stage
+  std::unique_ptr<const Acts::Logger> m_edgeLogger{nullptr};
+  /// Names of the pipeline stages the EdgePrintingHook is called after, in order
+  std::vector<std::string> m_pipelineStageNames{};
   ActsPlugins::Device m_runDevice{ActsPlugins::Device::Type::eCPU, 0};
 
   /// CellID decoder, built once from the geometry service's encoding string

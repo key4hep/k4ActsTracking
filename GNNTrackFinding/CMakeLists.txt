@@ -39,7 +39,6 @@ install(TARGETS GNNTrackingONNXInferenceModels
 
 set(sources
     src/CCAndWalkTrackBuilding.cpp
-    src/ClassifiedEdgePrinting.cpp
     src/EdgePrintingHook.cpp
     src/GNNTrackFinder.cpp
     src/OnnxMetricLearning.cpp
