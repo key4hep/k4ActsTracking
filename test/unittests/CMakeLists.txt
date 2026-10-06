@@ -97,7 +97,7 @@ catch_discover_tests(unittest_k4ActsTracking
 # Only built when the GNN track finding code is enabled (it provides the
 # GNNTrackingONNXInferenceModels target this test links against).
 if(K4ACTSTRACKING_BUILD_GNN)
-  add_executable(unittest_gnntrackfinding EdgeDirectionTests.cpp ONNXInferenceModelTests.cpp)
+  add_executable(unittest_gnntrackfinding ONNXInferenceModelTests.cpp EdgeDirectionTests.cpp)
   target_link_libraries(unittest_gnntrackfinding
     PUBLIC GNNTrackingONNXInferenceModels
     PRIVATE Catch2::Catch2WithMain)
