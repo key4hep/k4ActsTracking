@@ -146,7 +146,7 @@ list lengths are rejected in `initialize`.
 | `InputFeaturesEdgeClassifier` | `["r,phi,z,t"]` | Per classifier list of comma separated features, passed to the model in the order given. A feature may be listed more than once |
 | `InputScalesEdgeClassifier` | `["1,1,1,1"]` | Per classifier list of comma separated scales, each feature is divided by its scale (so none may be zero) |
 | `ComputeEdgeFeatures` | `False` | Compute the six edge features a three-input classifier needs, see below |
-| `EdgeFeatureScales` | `""` | Scales of `r`, `phi`, `z`, `eta` used for that computation. Required with `ComputeEdgeFeatures`, and the `phi` scale has to be pi |
+| `EdgeFeatureScales` | `""` | Scales of `r`, `phi`, `z`, `eta` used for that computation. Required with `ComputeEdgeFeatures`, and **the `phi` scale has to be pi** |
 
 The supported (case insensitive) feature names are
 
