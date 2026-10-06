@@ -352,10 +352,18 @@ public:
             }
 
             auto secondResult = trackFinder.findTracks(params2, secondOptions, tracks);
-            if (!secondResult.ok() || secondResult.value().empty()) {
+            // The second pass can also return a track with no states at all
+            // (first seen once endcap-disk seeding was enabled). Copying it
+            // leaves secondTrack without a stem index, so trackStates() below
+            // throws "Track has no stem index" and the whole event aborts;
+            // now treating it like an empty result instead.
+            const bool secondEmpty =
+                !secondResult.ok() || secondResult.value().empty() || secondResult.value().begin()->nTrackStates() == 0;
+            if (secondEmpty) {
               alg.warning() << "TwoWayCKF: second pass "
                             << (!secondResult.ok() ? std::string("FAILED: ") + secondResult.error().message()
-                                                   : std::string("returned EMPTY"))
+                                : secondResult.value().empty() ? std::string("returned EMPTY")
+                                                               : std::string("returned a track with no states"))
                             << ", falling back to single-pass output." << endmsg;
             } else {
               auto secondTrack = tracks.makeTrack();
