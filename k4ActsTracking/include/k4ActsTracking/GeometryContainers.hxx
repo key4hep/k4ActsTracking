@@ -20,6 +20,7 @@
 #pragma once
 
 #include <Acts/Geometry/GeometryIdentifier.hpp>
+#include <Acts/Surfaces/Surface.hpp>
 #include <boost/container/flat_set.hpp>
 
 namespace ACTSTracking {

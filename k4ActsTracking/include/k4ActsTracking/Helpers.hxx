@@ -38,6 +38,7 @@
 #include <Acts/EventData/BoundTrackParameters.hpp>
 #include <Acts/EventData/FreeTrackParameters.hpp>
 #include <Acts/EventData/ParticleHypothesis.hpp>
+#include <Acts/EventData/TrackContainer.hpp>
 #include <Acts/EventData/VectorMultiTrajectory.hpp>
 #include <Acts/EventData/VectorTrackContainer.hpp>
 #include <Acts/Geometry/GeometryContext.hpp>
@@ -47,8 +48,6 @@
 #include <Acts/Propagator/EigenStepper.hpp>
 #include <Acts/Propagator/Navigator.hpp>
 #include <Acts/Propagator/Propagator.hpp>
-#include <Acts/TrackFinding/CombinatorialKalmanFilter.hpp>
-#include <Acts/TrackFitting/KalmanFitter.hpp>
 
 // ACTSTracking
 #include "k4ActsTracking/IActsGeoSvc.h"

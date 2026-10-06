@@ -22,12 +22,15 @@ gaudi_add_library(k4ActsTracking
   SOURCES
     src/ActsGaudiLogger.cpp
     src/CellIDSelector.cxx
+    src/CKFRunner.cpp
     src/HitFeatures.cxx
     src/components/Helpers.cxx
   LINK
+    Gaudi::GaudiKernel
     DD4hep::DDCore
     EDM4HEP::edm4hep
     k4FWCore::k4FWCore
+    k4FWCore::k4Interface
     ${ACTS_LIBRARY_TARGETS}
 )
 install(TARGETS k4ActsTracking
@@ -40,6 +43,7 @@ set(_plugin_sources
   src/components/ACTSAlgBase.cxx
   src/components/ACTSDuplicateRemoval.cxx
   src/components/ACTSSeededCKFTrackingAlg.cxx
+  src/components/ACTSSeededCKFTrackFinding.cxx
   src/components/ActsGeoSvc.cpp
   src/components/FilterTracksAlg.cxx
   src/components/GeometryIdMappingTool.cxx
