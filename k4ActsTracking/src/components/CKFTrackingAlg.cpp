@@ -23,7 +23,6 @@
 #include "k4ActsTracking/Helpers.hxx"
 #include "k4ActsTracking/IActsGeoSvc.h"
 #include "k4ActsTracking/Measurement.hxx"
-#include "k4ActsTracking/MeasurementCalibrator.hxx"
 #include "k4ActsTracking/SourceLink.hxx"
 
 // k4FWCore
@@ -50,31 +49,18 @@
 #include <Acts/EventData/ParticleHypothesis.hpp>
 #include <Acts/EventData/SeedContainer.hpp>
 #include <Acts/EventData/SpacePointContainer.hpp>
-#include <Acts/EventData/TrackContainer.hpp>
-#include <Acts/EventData/TrackStateType.hpp>
-#include <Acts/EventData/VectorMultiTrajectory.hpp>
-#include <Acts/EventData/VectorTrackContainer.hpp>
 #include <Acts/Geometry/GeometryContext.hpp>
 #include <Acts/MagneticField/MagneticFieldContext.hpp>
 #include <Acts/MagneticField/MagneticFieldProvider.hpp>
-#include <Acts/Propagator/EigenStepper.hpp>
-#include <Acts/Propagator/Navigator.hpp>
-#include <Acts/Propagator/Propagator.hpp>
 #include <Acts/Seeding/BroadTripletSeedFilter.hpp>
 #include <Acts/Seeding/CylindricalSpacePointGrid.hpp>
 #include <Acts/Seeding/DoubletSeedFinder.hpp>
 #include <Acts/Seeding/EstimateTrackParamsFromSeed.hpp>
 #include <Acts/Seeding/TripletSeedFinder.hpp>
 #include <Acts/Seeding/TripletSeeder.hpp>
-#include <Acts/Surfaces/PerigeeSurface.hpp>
 #include <Acts/Surfaces/PlaneSurface.hpp>
-#include <Acts/TrackFinding/CombinatorialKalmanFilter.hpp>
-#include <Acts/TrackFinding/MeasurementSelector.hpp>
-#include <Acts/TrackFinding/TrackStateCreator.hpp>
-#include <Acts/TrackFitting/GainMatrixUpdater.hpp>
 #include <Acts/Utilities/Logger.hpp>
 #include <Acts/Utilities/RangeXD.hpp>
-#include <Acts/Utilities/TrackHelpers.hpp>
 #include <Acts/Utilities/VectorHelpers.hpp>
 
 // TBB
