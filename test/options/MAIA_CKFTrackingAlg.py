@@ -22,7 +22,7 @@ import os
 import sys
 
 from Gaudi.Configuration import INFO
-from Gaudi.Configurables import CKFTrackingAlg, DDPlanarDigi
+from Gaudi.Configurables import DDPlanarDigi
 from k4FWCore import ApplicationMgr, IOSvc
 from k4FWCore.parseArgs import parser
 
@@ -102,62 +102,48 @@ hit_merger, hit_rel_merger = make_hit_mergers(
 )
 algList.extend([hit_merger, hit_rel_merger])
 
-ckf_tracking = make_ckf_tracking(
-    hit_merger,
-    hit_rel_merger,
-    seeding_cellids=["system:1", "system:2,layer:1|2|3"],
+ckf_properties = {
+    "seeding_cellids": ["system:1", "system:2,layer:1|2|3"],
     # Keep hits with a chi2 up to this value as outliers instead of holes
-    CKF_Chi2CutOffOutlier=25,
+    "CKF_Chi2CutOffOutlier": 25,
     # Terminate poor CKF branches early, aligned with a typical downstream
     # track selection (at least 8 hits, at most 2 holes)
-    UseBranchStopper=True,
-    BranchStopper_MaxHoles=2,
-    BranchStopper_MaxOutliers=2,
-    BranchStopper_MinMeasurements=8,
-)
+    "UseBranchStopper": True,
+    "BranchStopper_MaxHoles": 2,
+    "BranchStopper_MaxOutliers": 2,
+    "BranchStopper_MinMeasurements": 8,
+}
 
 # Outside-in alternative: seeds in the IT + OT barrels and disks, a first CKF
 # pass towards the beamline, and a second (two-way) pass back out.
-ckf_tracking_outsidein = CKFTrackingAlg(
-    "CKFTrackingOutsideIn",
-    RunCKF=True,
-    SeedingSensorsCellIDs=["system:3", "system:4", "system:5", "system:6"],
+ckf_outsidein_properties = {
+    **ckf_properties,
+    "seeding_cellids": ["system:3|4|5|6"],
     # Seed points outside RMax / ZMax are ignored: cover the whole IT + OT
-    SeedFinding_RMax=1600,
-    SeedFinding_ZMax=2300,
-    SeedFinding_DeltaRMin=5,
-    SeedFinding_DeltaRMax=400,
-    SeedFinding_MinPt=1500,
-    SeedFinding_ImpactMax=3,
-    SeedFinding_SigmaScattering=50,
-    SeedFinding_CollisionRegion=6,
-    SeedFinding_RadLengthPerSeed=0.1,
-    PropagateBackward=True,
-    DoTwoWayCKF=True,
-    InflateCovarianceTwoWay=True,
-    TwoWayInflateCovarianceFactor=100.0,
-    CKF_Chi2CutOff=10,
-    CKF_Chi2CutOffOutlier=25,
-    CKF_NumMeasurementsCutOff=2,
-    UseBranchStopper=True,
-    BranchStopper_MaxHoles=2,
-    BranchStopper_MaxOutliers=3,
-    BranchStopper_MinMeasurements=8,
-    BranchStopper_PtMin=0.5,
-    BranchStopper_PtMinMeasurements=4,
-    OutputTrackCollection="CKFTracks",
-    OutputSeedCollection="CKFTrackSeeds",
-    InputTrackerHitCollection=hit_merger.OutputCollection,
-    InputTrackerHitRelationCollection=hit_rel_merger.OutputCollection,
-    OutputLevel=INFO,
-)
+    "SeedFinding_RMax": 1600,
+    "SeedFinding_ZMax": 2300,
+    "SeedFinding_DeltaRMax": 400,
+    "SeedFinding_MinPt": 1500,
+    "PropagateBackward": True,
+    "DoTwoWayCKF": True,
+    "CKF_NumMeasurementsCutOff": 2,
+    "BranchStopper_MaxOutliers": 3,
+    "BranchStopper_PtMin": 0.5,
+    "BranchStopper_PtMinMeasurements": 4,
+}
 
 parser.add_argument(
     "--outsideIn",
     action="store_true",
-    help="Run ckf_tracking_outsidein instead of the default inside-out ckf_tracking",
+    help="Run the outside-in, two-way CKF seeded in the IT + OT instead of the default inside-out CKF",
 )
 outside_in = parser.parse_known_args()[0].outsideIn
-algList.append(ckf_tracking_outsidein if outside_in else ckf_tracking)
+
+ckf_tracking = make_ckf_tracking(
+    hit_merger,
+    hit_rel_merger,
+    **(ckf_outsidein_properties if outside_in else ckf_properties),
+)
+algList.append(ckf_tracking)
 
 ApplicationMgr(TopAlg=algList, ExtSvc=svcList, OutputLevel=INFO, EvtSel="NONE", EvtMax=-1)
