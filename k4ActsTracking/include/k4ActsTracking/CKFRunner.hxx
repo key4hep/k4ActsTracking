@@ -124,6 +124,30 @@ void appendSeedTrack(edm4hep::TrackCollection& seedCollection, std::mutex& seedM
 }
 
 /**
+ * @brief Anchor of the two-way CKF: the first non-outlier measurement of @p track.
+ *
+ * Walks the track forward (stem to tip), so the anchor is where the first CKF
+ * pass started: the innermost measurement for an inside-out first pass, the
+ * outermost for an outside-in one. The second pass runs from there in the
+ * opposite direction. The track must be forward-linked (copyFrom() does that).
+ *
+ * @return The anchor state, or std::nullopt if the track has no such state.
+ */
+template <class track_proxy_t>
+std::optional<typename track_proxy_t::ConstTrackStateProxy> findTwoWayAnchor(const track_proxy_t& track) {
+  // A named range: find_if on a temporary range would return std::ranges::dangling.
+  auto states = track.trackStates();
+  auto it = std::ranges::find_if(states, [](const auto& st) {
+    return st.typeFlags().test(Acts::TrackStateFlag::HasMeasurement) &&
+           !st.typeFlags().test(Acts::TrackStateFlag::IsOutlier);
+  });
+  if (it == states.end()) {
+    return std::nullopt;
+  }
+  return *it;
+}
+
+/**
  * @brief Owns the ACTS Combinatorial Kalman Filter and runs it over seeds.
  *
  * Owns the event-independent propagators and CKF (built once) and runs the
@@ -323,27 +347,16 @@ public:
         std::optional<CKFTrackContainer::TrackProxy> stitchedOpt;
         if (m_doTwoWayCKF) {
           using ConstTP = CKFTrackContainer::ConstTrackProxy;
-          using ConstTSP = ConstTP::ConstTrackStateProxy;
 
-          // trackStatesReversed() walks head->stem; last non-outlier
-          // measurement in that walk is the innermost state for a forward
-          // pass and the outermost state for a backward pass -- the anchor.
           ConstTP constSmoothed(smoothed);
-          std::optional<ConstTSP> anchorOpt;
-          for (auto st : constSmoothed.trackStatesReversed()) {
-            if (!st.typeFlags().test(Acts::TrackStateFlag::HasMeasurement))
-              continue;
-            if (st.typeFlags().test(Acts::TrackStateFlag::IsOutlier))
-              continue;
-            anchorOpt = st;
-          }
+          const auto anchor = findTwoWayAnchor(constSmoothed);
 
-          if (!anchorOpt.has_value()) {
+          if (!anchor.has_value()) {
             alg.warning() << "TwoWayCKF: no anchor measurement found, falling back to single-pass output." << endmsg;
           } else {
-            const auto anchorIdx = anchorOpt->index();
+            const auto anchorIdx = anchor->index();
 
-            Acts::BoundTrackParameters params2 = constSmoothed.createParametersFromState(*anchorOpt);
+            Acts::BoundTrackParameters params2 = constSmoothed.createParametersFromState(*anchor);
             if (m_inflateCovarianceTwoWay) {
               auto cov2 = *params2.covariance();
               cov2 *= m_twoWayInflateCovarianceFactor;

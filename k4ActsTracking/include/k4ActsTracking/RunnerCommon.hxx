@@ -515,29 +515,28 @@ void prepareTrackerHits(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geom
 }
 
 /**
- * @brief Seed parameters at the TOP space point, for the outside-in CKF.
+ * @brief Bound seed parameters at the space point the CKF starts from.
  *
- * Runs the same three-point estimate as the inside-out path, which evaluates
- * the free parameters at the bottom SP, and moves them to the top SP: the
- * position becomes the top SP and the direction becomes the helix tangent
- * there. ACTS computes that tangent from the same helix and with the same
- * convention as the bottom-SP direction (unit length, along the bottom->top
- * direction of travel). q/p (and the time, @p t0 being the top SP's) are
- * unchanged. The result is expressed on @p topSurface, the surface of the top
- * SP. - this fixes an issue with poor efficiency at low pT
+ * Inside-out: the start is the bottom SP, where Acts::estimateTrackParamsFromSeed
+ * evaluates the parameters anyway; @p startSurface is the bottom SP's surface.
+ *
+ * Outside-in (@p propagateBackward): the start is the top SP. The same three-point
+ * estimate is moved there: the position becomes the top SP and the direction the
+ * helix tangent at the top SP, not the direction at the bottom SP.
  */
-inline Acts::Result<Acts::BoundVector> estimateSeedParamsAtTop(const Acts::Vector3& bottomPos, double t0,
-                                                               const Acts::Vector3& middlePos,
-                                                               const Acts::Vector3& topPos, const Acts::Vector3& bField,
-                                                               const Acts::Surface& topSurface,
-                                                               const Acts::GeometryContext& geoCtx) {
+inline Acts::Result<Acts::BoundVector>
+estimateSeedParamsAtStart(const Acts::GeometryContext& geoCtx, const Acts::Surface& startSurface,
+                          const Acts::Vector3& bottomPos, double t0, const Acts::Vector3& middlePos,
+                          const Acts::Vector3& topPos, const Acts::Vector3& bField, bool propagateBackward) {
+  if (!propagateBackward) {
+    return Acts::estimateTrackParamsFromSeed(geoCtx, startSurface, bottomPos, t0, middlePos, topPos, bField);
+  }
   Acts::Vector3 topTangent = Acts::Vector3::Zero();
   Acts::FreeVector freeParams =
       Acts::estimateTrackParamsFromSeed(bottomPos, t0, middlePos, topPos, bField, nullptr, nullptr, &topTangent);
-
   freeParams.segment<3>(Acts::eFreePos0) = topPos;
   freeParams.segment<3>(Acts::eFreeDir0) = topTangent;
-  return Acts::transformFreeToBoundParameters(freeParams, topSurface, geoCtx);
+  return Acts::transformFreeToBoundParameters(freeParams, startSurface, geoCtx);
 }
 
 /**
@@ -554,7 +553,7 @@ inline Acts::Result<Acts::BoundVector> estimateSeedParamsAtTop(const Acts::Vecto
  * @param propagateBackward When true (backward, outside-in CKF), express the
  *                          parameters at the top SP (position and helix
  *                          tangent) on @p startSurface instead of at the bottom
- *                          SP; see estimateSeedParamsAtTop.
+ *                          SP; see estimateSeedParamsAtStart.
  *
  * @return The estimated parameters, or std::nullopt if the estimation fails. A
  *         field-lookup failure throws, matching the tracking algorithms.
@@ -574,22 +573,8 @@ estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geome
     throw std::runtime_error("Field lookup error: " + std::to_string(seedField.error().value()));
   }
 
-  // Inside-out: estimateTrackParamsFromSeed(gctx, surface, bottom, ...) uses
-  //   the bottom SP as the free-parameter position and projects it onto
-  //   @p startSurface -- valid, since the bottom SP lies on that surface.
-  // Outside-in: the CKF must start at the OUTER SP propagating backward, so
-  //   @p startSurface is the top SP's surface, and the free parameters must
-  //   describe the helix AT the top SP. The helper evaluates them at sp0
-  //   (=bottom), so both the position and the direction are moved to the top
-  //   SP: the direction is the helix tangent at the top SP, not the one at the
-  //   bottom SP (they differ by the turning angle between the two, ~16 deg for
-  //   a 2 GeV OT seed). q/p is unchanged along the helix.
-  Acts::Result<Acts::BoundVector> optParams = [&]() -> Acts::Result<Acts::BoundVector> {
-    if (propagateBackward) {
-      return estimateSeedParamsAtTop(bottomPos, t0, middlePos, topPos, *seedField, startSurface, geoCtx);
-    }
-    return Acts::estimateTrackParamsFromSeed(geoCtx, startSurface, bottomPos, t0, middlePos, topPos, *seedField);
-  }();
+  Acts::Result<Acts::BoundVector> optParams =
+      estimateSeedParamsAtStart(geoCtx, startSurface, bottomPos, t0, middlePos, topPos, *seedField, propagateBackward);
   if (!optParams.ok()) {
     alg.debug() << "Failed estimation of track parameters for seed." << endmsg;
     return std::nullopt;
