@@ -347,7 +347,7 @@ StatusCode GNNTrackFinder::initialize() {
                              expectedPhiScale,
                              edgeFeatureScales.empty() ? std::string{"no scales"}
                                                        : fmt::format("{}", edgeFeatureScales[phiPos]),
-                             fmt::join(kEdgeFeatureInputs, ", "))
+                             kEdgeFeatureInputs)
               << endmsg;
       return StatusCode::FAILURE;
     }
