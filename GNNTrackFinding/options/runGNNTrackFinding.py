@@ -86,7 +86,7 @@ TrackFinder = GNNTrackFinder(
     # If the embedding model was exported with a fixed-size input, pad the hits
     # of each segment with all-zero rows up to that length (0 = no padding).
     EmbeddingFixedInputLength=0,
-    EdgeBuildingRadius=0.1,
+    EdgeBuildingRadius=1.6,
     # Only caps the neighbours per hit on CUDA, the CPU edge building keeps all
     # neighbours within EdgeBuildingRadius
     EdgeBuildingKnn=500,

@@ -67,7 +67,7 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
       this, "NodeEmbeddingModelPath", "",
       "Path to the ONNX model file for the node embedding / graph construction metric model"};
   Gaudi::Property<float> m_edgeBuildingRadius{
-      this, "EdgeBuildingRadius", 0.1f, "Radius in embedding space within which two hits are connected by an edge"};
+      this, "EdgeBuildingRadius", 1.6f, "Radius in embedding space within which two hits are connected by an edge"};
   Gaudi::Property<int> m_edgeBuildingKnn{
       this, "EdgeBuildingKnn", 500,
       "Maximum number of neighbours per hit in the edge building. Only the CUDA (FRNN) edge building applies it as a "

@@ -122,7 +122,7 @@ k4run GNNTrackFinding/options/runGNNTrackFinding.py \
 | Property | Default | Description |
 | --- | --- | --- |
 | `NodeEmbeddingModelPath` | `""` | Path to the ONNX model of the metric learning / graph construction stage |
-| `EdgeBuildingRadius` | `0.1` | Radius in embedding space within which two hits are connected by an edge |
+| `EdgeBuildingRadius` | `1.6` | Radius in embedding space within which two hits are connected by an edge |
 | `EdgeBuildingKnn` | `500` | Maximum number of neighbours per hit. Only the CUDA (FRNN) edge building applies it; on CPU the KD-tree keeps every neighbour within the radius and uses this only to reserve memory |
 | `SortEdges` | `True` | Orient every built edge from the hit closer to the interaction point to the one further out, see [Edge ordering](#edge-ordering) |
 | `EdgeClassifierModelPath` | `[]` | Paths to the ONNX models of the edge classifiers |
