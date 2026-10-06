@@ -476,14 +476,17 @@ torch::Tensor OnnxMetricLearning::orderEdgesByDistance(const std::vector<float>&
   using torch::indexing::Slice;
   edgeList.index_put_({Slice(), flipMask}, edgeList.index({Slice(), flipMask}).flip(0));
 
-  // No deduplication is needed afterwards: Acts' postprocessEdgeTensor() has
-  // already reduced the graph to one column per pair of hits (in a canonical,
-  // sorted order, so the graph is reproducible from run to run), and flipping
-  // a column keeps it the only one of its pair.
+  // Collapse a pair of hits that ended up in the graph in both directions, as
+  // Acts' postprocessEdgeTensor() does after its own orientation. That one
+  // already deduplicated, so this normally only gives the columns a canonical
+  // order, which keeps the graph reproducible from run to run.
+  const int64_t numEdges = edgeList.size(1);
+  edgeList = std::get<0>(torch::unique_dim(edgeList, -1, false));
 
   // The flips are only counted when this is printed: .item() waits for the
   // device. flipMask is a tensor of its own, so the flip above left it intact.
-  ACTS_DEBUG(fmt::format("Oriented {} of {} edges outwards", flipMask.sum().item<int64_t>(), edgeList.size(1)));
+  ACTS_DEBUG(fmt::format("Oriented {} of {} edges outwards, {} duplicate(s) collapsed", flipMask.sum().item<int64_t>(),
+                         numEdges, numEdges - edgeList.size(1)));
 
   return edgeList;
 }

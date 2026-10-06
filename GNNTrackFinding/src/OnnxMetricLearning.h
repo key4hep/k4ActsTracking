@@ -125,9 +125,8 @@ public:
 
 private:
   /// @p edgeList with every edge oriented from the hit closer to the
-  /// interaction point to the one further out. The edge list is expected to
-  /// hold every pair of hits once, as the edge building leaves it, and still
-  /// does afterwards. The ordering is gnntracking::pointsOutward() over the
+  /// interaction point to the one further out, and with the columns
+  /// deduplicated. The ordering is gnntracking::pointsOutward() over the
   /// unscaled node values selected by Config::distanceFeatureIndices, the same
   /// one CCAndWalkTrackBuilding directs the classified graph by. Returns
   /// @p edgeList unchanged if no distance features are configured.
