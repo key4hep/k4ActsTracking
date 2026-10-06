@@ -88,7 +88,7 @@ public:
     /// classification. Needs keepPadding. 0 disables it.
     int fixedEdgeLength{0};
     float rVal{1.6};               // Same as TorchMetricLearning
-    float knnVal{500.};            // Same as TorchMetricLearning
+    int knnVal{500};               // Same as TorchMetricLearning
     bool shuffleDirections{false}; // Same as TorchMetricLearning
 
     // Device the embedding model and edge building run on. Defaults to CPU;

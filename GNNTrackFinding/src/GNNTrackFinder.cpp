@@ -254,6 +254,13 @@ StatusCode GNNTrackFinder::initialize() {
     return StatusCode::FAILURE;
   }
 
+  // The KD-tree edge building reserves memory for this many neighbours per hit,
+  // so a non-positive value would wrap around to an enormous reservation
+  if (m_edgeBuildingKnn.value() <= 0) {
+    error() << fmt::format("EdgeBuildingKnn has to be > 0, got {}", m_edgeBuildingKnn.value()) << endmsg;
+    return StatusCode::FAILURE;
+  }
+
   // There is no padding to keep without the padding itself
   if (m_keepEmbeddingPadding.value() && m_embeddingFixedInputLength.value() <= 0) {
     error() << "KeepEmbeddingPadding is set, but EmbeddingFixedInputLength is 0, so the embedding input is not padded"

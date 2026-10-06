@@ -108,8 +108,10 @@ torch::Tensor toTorchTensor(const Ort::Value& onnxTensor, bool targetCuda, std::
 
   auto torchTensor = torch::from_blob(const_cast<void*>(data), shape, options);
 
-  if (targetCuda && memoryInfo.GetDeviceId() != static_cast<int>(cudaDeviceIndex)) {
-    // not on target CUDA device
+  // Host memory reports device id 0 as well, so the id alone does not tell
+  // whether the output is already on cuda:0.
+  if (targetCuda && (!onCudaMemory || memoryInfo.GetDeviceId() != static_cast<int>(cudaDeviceIndex))) {
+    // not on target CUDA device (in host memory, or on another GPU)
     const auto targetDevice = torch::Device(torch::kCUDA, static_cast<int64_t>(cudaDeviceIndex));
     return torchTensor.to(targetDevice);
   }
@@ -129,9 +131,7 @@ OnnxMetricLearning::OnnxMetricLearning(const Config& cfg, std::unique_ptr<const 
     : m_model("MetricLearning", getOnnxLogLevel(lggr->level()), cfg.device.isCuda(), cfg.device.index), m_config(cfg),
       m_logger(std::move(lggr)) {
   ACTS_INFO(fmt::format("Loading model from {}", config().modelPath));
-  if (!m_model.loadModel(config().modelPath)) {
-    throw std::runtime_error(fmt::format("Could not load the node embedding ONNX model from '{}'", config().modelPath));
-  }
+  m_model.loadModel(config().modelPath);
 
   // Take the embedding dimension from the model itself instead of having it
   // configured. The last axis of the (nNodes x embeddingDim) output carries it,
@@ -356,8 +356,8 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
   if (fixedEdgeLength != 0 && fixedEdgeLength < numEdges) {
     throw std::runtime_error(fmt::format(
         "Cannot zero-pad the edge classifier input to a fixed length of {} edges, this segment already has {}. "
-        "Increase EdgeClassifierFixedInputLength, or lower EdgeBuildingRadius / EdgeBuildingKnn so that fewer edges "
-        "are built.",
+        "Increase EdgeClassifierFixedInputLength, or lower EdgeBuildingRadius (or, on CUDA only, EdgeBuildingKnn) so "
+        "that fewer edges are built.",
         fixedEdgeLength, numEdges));
   }
   if (fixedEdgeLength > numEdges) {

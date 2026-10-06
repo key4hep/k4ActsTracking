@@ -222,8 +222,9 @@ public:
   // Destructor
   ~ONNXInferenceModel() = default;
 
-  // Load model from file
-  bool loadModel(const std::string& modelPath);
+  // Load model from file. Throws std::runtime_error naming the model and the
+  // onnxruntime error if that fails, leaving no model loaded.
+  void loadModel(const std::string& modelPath);
 
   template <typename T, typename DeviceT>
   [[nodiscard]] std::vector<Ort::Value> runInference(const T& inputData, const DeviceT& device);

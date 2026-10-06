@@ -17,6 +17,7 @@
  * limitations under the License.
  */
 #include "catch2/catch_test_macros.hpp"
+#include "catch2/matchers/catch_matchers_string.hpp"
 #include "catch2/matchers/catch_matchers_vector.hpp"
 
 #include "ONNXInferenceModel.h"
@@ -155,7 +156,9 @@ TEST_CASE("model metadata without a loaded model") {
   REQUIRE(model.inputShape(0).empty());
   REQUIRE(model.outputShape(0).empty());
 
-  REQUIRE_FALSE(model.loadModel("this-file-does-not-exist.onnx"));
+  // The error names the model, which the onnxruntime message alone does not
+  REQUIRE_THROWS_WITH(model.loadModel("this-file-does-not-exist.onnx"),
+                      Catch::Matchers::ContainsSubstring("this-file-does-not-exist.onnx"));
   REQUIRE(model.numInputs() == 0);
   REQUIRE(model.numOutputs() == 0);
   REQUIRE(model.inputShape(0).empty());
