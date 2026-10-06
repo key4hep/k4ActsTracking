@@ -69,7 +69,7 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
   Gaudi::Property<float> m_edgeBuildingRadius{
       this, "EdgeBuildingRadius", 0.1f, "Radius in embedding space within which two hits are connected by an edge"};
   Gaudi::Property<int> m_edgeBuildingKnn{
-      this, "EdgeBuildingKnn", 100,
+      this, "EdgeBuildingKnn", 500,
       "Maximum number of neighbours per hit in the edge building. Only the CUDA (FRNN) edge building applies it as a "
       "cap; the CPU (KD-tree) edge building keeps every neighbour within EdgeBuildingRadius and uses this only to "
       "reserve memory. Must be > 0."};
