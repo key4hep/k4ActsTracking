@@ -22,8 +22,9 @@ import os
 import sys
 
 from Gaudi.Configuration import INFO
-from Gaudi.Configurables import DDPlanarDigi
+from Gaudi.Configurables import CKFTrackingAlg, DDPlanarDigi
 from k4FWCore import ApplicationMgr, IOSvc
+from k4FWCore.parseArgs import parser
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -114,6 +115,49 @@ ckf_tracking = make_ckf_tracking(
     BranchStopper_MaxOutliers=2,
     BranchStopper_MinMeasurements=8,
 )
-algList.append(ckf_tracking)
+
+# Outside-in alternative: seeds in the IT + OT barrels and disks, a first CKF
+# pass towards the beamline, and a second (two-way) pass back out.
+ckf_tracking_outsidein = CKFTrackingAlg(
+    "CKFTrackingOutsideIn",
+    RunCKF=True,
+    SeedingSensorsCellIDs=["system:3", "system:4", "system:5", "system:6"],
+    # Seed points outside RMax / ZMax are ignored: cover the whole IT + OT
+    SeedFinding_RMax=1600,
+    SeedFinding_ZMax=2300,
+    SeedFinding_DeltaRMin=5,
+    SeedFinding_DeltaRMax=400,
+    SeedFinding_MinPt=1500,
+    SeedFinding_ImpactMax=3,
+    SeedFinding_SigmaScattering=50,
+    SeedFinding_CollisionRegion=6,
+    SeedFinding_RadLengthPerSeed=0.1,
+    PropagateBackward=True,
+    DoTwoWayCKF=True,
+    InflateCovarianceTwoWay=True,
+    TwoWayInflateCovarianceFactor=100.0,
+    CKF_Chi2CutOff=10,
+    CKF_Chi2CutOffOutlier=25,
+    CKF_NumMeasurementsCutOff=2,
+    UseBranchStopper=True,
+    BranchStopper_MaxHoles=2,
+    BranchStopper_MaxOutliers=3,
+    BranchStopper_MinMeasurements=8,
+    BranchStopper_PtMin=0.5,
+    BranchStopper_PtMinMeasurements=4,
+    OutputTrackCollection="CKFTracks",
+    OutputSeedCollection="CKFTrackSeeds",
+    InputTrackerHitCollection=hit_merger.OutputCollection,
+    InputTrackerHitRelationCollection=hit_rel_merger.OutputCollection,
+    OutputLevel=INFO,
+)
+
+parser.add_argument(
+    "--outsideIn",
+    action="store_true",
+    help="Run ckf_tracking_outsidein instead of the default inside-out ckf_tracking",
+)
+outside_in = parser.parse_known_args()[0].outsideIn
+algList.append(ckf_tracking_outsidein if outside_in else ckf_tracking)
 
 ApplicationMgr(TopAlg=algList, ExtSvc=svcList, OutputLevel=INFO, EvtSel="NONE", EvtMax=-1)

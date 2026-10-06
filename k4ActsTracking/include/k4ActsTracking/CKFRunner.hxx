@@ -144,7 +144,7 @@ std::optional<typename track_proxy_t::ConstTrackStateProxy> findTwoWayAnchor(con
   if (it == states.end()) {
     return std::nullopt;
   }
-  return *it;
+  return typename track_proxy_t::ConstTrackStateProxy{*it};
 }
 
 /**
