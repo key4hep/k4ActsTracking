@@ -505,7 +505,6 @@ std::optional<torch::Tensor> OnnxMetricLearning::buildEdgeFeatures(const std::ve
   // is, so these are computed from the already scaled node values.
   enum EdgeFeatureInput { eR = 0, ePhi, eZ, eEta };
   constexpr float pi = std::numbers::pi_v<float>;
-  constexpr float phiScale = kEdgeFeaturePhiScale;
 
   const auto& indices = config().edgeFeatureIndices;
   const auto& scales = config().edgeFeatureScales;
@@ -534,10 +533,10 @@ std::optional<torch::Tensor> OnnxMetricLearning::buildEdgeFeatures(const std::ve
   // difference is unscaled to wrap it back into [-pi, pi] and then scaled
   // again. A single wrap is enough since the unscaled difference cannot leave
   // [-2pi, 2pi].
-  auto dphi = phiScale * (tgtValues.select(1, ePhi) - srcValues.select(1, ePhi));
+  auto dphi = kEdgeFeaturePhiScale * (tgtValues.select(1, ePhi) - srcValues.select(1, ePhi));
   dphi = torch::where(dphi > pi, dphi - 2.f * pi, dphi);
   dphi = torch::where(dphi < -pi, dphi + 2.f * pi, dphi);
-  dphi = dphi / phiScale;
+  dphi = dphi / kEdgeFeaturePhiScale;
 
   // Doublets on the same radius have no defined slope and get a flat zero. The
   // substitute denominator only keeps the discarded branch from producing infs.
