@@ -113,7 +113,8 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
       "Comma-separated list of the four scales the edge features are computed with. They are always computed from "
       "r, phi, z and eta, so these are the scales of those four - in that order, whichever order the models take "
       "their own inputs in. The edge features are handed to the classifiers unscaled, so these have to be the "
-      "scales the classifier was trained with. Empty applies no scaling. Only read if ComputeEdgeFeatures is true."};
+      "scales the classifier was trained with. The phi scale has to be pi, which the dphi wrap-around assumes (as "
+      "the ACORN training does), so this is required when ComputeEdgeFeatures is true and not read otherwise."};
 
   Gaudi::Property<std::vector<std::string>> m_edgeClassifierModelPath{
       this, "EdgeClassifierModelPath", {}, "List of paths to ONNX model files for edge classifier(s)."};

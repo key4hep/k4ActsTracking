@@ -146,7 +146,7 @@ list lengths are rejected in `initialize`.
 | `InputFeaturesEdgeClassifier` | `["r,phi,z,t"]` | Per classifier list of comma separated features, passed to the model in the order given. A feature may be listed more than once |
 | `InputScalesEdgeClassifier` | `["1,1,1,1"]` | Per classifier list of comma separated scales, each feature is divided by its scale (so none may be zero) |
 | `ComputeEdgeFeatures` | `False` | Compute the six edge features a three-input classifier needs, see below |
-| `EdgeFeatureScales` | `""` | Scales of `r`, `phi`, `z`, `eta` used for that computation |
+| `EdgeFeatureScales` | `""` | Scales of `r`, `phi`, `z`, `eta` used for that computation. Required with `ComputeEdgeFeatures`, and **the `phi` scale has to be pi** |
 
 The supported (case insensitive) feature names are
 
@@ -291,8 +291,15 @@ EdgeFeatureScales="1000,3.14,1000,1",
 
 `phislope` is `dphi / dr` clamped to `[-100, 100]` and `rphislope` is that times
 the mean radius of the two hits; edges between hits at the same radius get a flat
-zero for both. The `dphi` wrap-around assumes that `phi` is scaled by pi, as in
-the example above.
+zero for both.
+
+The `dphi` wrap-around takes `phi` to be scaled by pi: it multiplies the
+difference by pi, wraps it into `[-pi, pi]` and divides it by pi again. That is
+the convention of the ACORN training and of Acts' `makeEdgeFeatures()`, and with
+any other `phi` scale (or none at all) the wrap happens at the wrong angle. So
+`initialize` requires `EdgeFeatureScales` whenever `ComputeEdgeFeatures` is set,
+and rejects a `phi` scale that is not pi to within 1% (which admits the `3.14`
+above).
 
 The edge classifier scales its *node* input (`InputScalesEdgeClassifier`) but
 passes the edge input through as it is, so these have to be the scaling the
@@ -340,9 +347,9 @@ A non-zero overlap extends every bin into its successor, so that hits close to a
 bin boundary end up in both bins and tracks crossing the boundary can still be
 found.
 
-> **Note:** the phi bins do *not* wrap around, i.e. the last phi bin does not
-> overlap with the first one. Track candidates crossing `phi = +/- pi` can
-> therefore be split between two segments.
+Phi is periodic, so with a non-zero `PhiOverlap` the last phi bin also reaches
+across `phi = +/- pi` into the first one, and tracks crossing that boundary are
+found like any other. Theta does not wrap: the last theta bin ends at `pi`.
 
 Hits in an overlap region are run through the pipeline once per segment they
 fall into, so a track there can be found (and fitted) more than once. The
@@ -427,5 +434,3 @@ implementation. I keep this list here as a reminder for later
   Acts GNN plugin, together with the CPU edge feature computation and the edge
   ordering.
 - Run the (independent) theta/phi segments concurrently instead of sequentially.
-- Make the phi segmentation wrap around, so that candidates crossing
-  `phi = +/- pi` are not split.

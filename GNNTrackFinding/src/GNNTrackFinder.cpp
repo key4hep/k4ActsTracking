@@ -330,6 +330,28 @@ StatusCode GNNTrackFinder::initialize() {
                    kEdgeFeatureInputs.size(), edgeFeatureScales)) {
     return StatusCode::FAILURE;
   }
+  // The dphi wrap-around of the edge features takes phi to be scaled by pi, as
+  // the ACORN training and Acts' makeEdgeFeatures() do. With any other scale
+  // (or none) it wraps at the wrong angle and every edge feature derived from
+  // dphi comes out wrong, so this is not left to the configuration. The
+  // tolerance admits the "3.14" such scales are commonly written as.
+  if (computeEdgeFeatures) {
+    constexpr float expectedPhiScale = OnnxMetricLearning::kEdgeFeaturePhiScale;
+    constexpr float phiScaleTolerance = 0.01f;
+    const auto phiPos =
+        static_cast<std::size_t>(std::ranges::find(kEdgeFeatureInputs, "phi") - kEdgeFeatureInputs.begin());
+    if (edgeFeatureScales.empty() || std::abs(edgeFeatureScales[phiPos] / expectedPhiScale - 1.f) > phiScaleTolerance) {
+      error() << fmt::format("The edge features need phi scaled by pi ({}), as the dphi wrap-around assumes, but "
+                             "EdgeFeatureScales gives {}. Set the phi entry of EdgeFeatureScales ({}, in that order) "
+                             "to pi.",
+                             expectedPhiScale,
+                             edgeFeatureScales.empty() ? std::string{"no scales"}
+                                                       : fmt::format("{}", edgeFeatureScales[phiPos]),
+                             kEdgeFeatureInputs)
+              << endmsg;
+      return StatusCode::FAILURE;
+    }
+  }
   for (std::size_t i = 0; i < nEdgeClassifiers; ++i) {
     if (!checkScales(fmt::format("edge classifier {}", i), edgeClassifierFeaturesList[i].size(),
                      edgeClassifierScalesList[i])) {
