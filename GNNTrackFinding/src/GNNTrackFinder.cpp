@@ -24,25 +24,10 @@
 #include "OnnxMetricLearning.h"
 #include "PaddedEdgeRemoval.h"
 
-#if __has_include("ActsPlugins/Gnn/Stages.hpp")
 #include <ActsPlugins/Gnn/BoostTrackBuilding.hpp>
 #include <ActsPlugins/Gnn/GnnPipeline.hpp>
 #include <ActsPlugins/Gnn/OnnxEdgeClassifier.hpp>
 #include <ActsPlugins/Gnn/Stages.hpp>
-#else
-#include <Acts/Plugins/Gnn/BoostTrackBuilding.hpp>
-#include <Acts/Plugins/Gnn/GnnPipeline.hpp>
-#include <Acts/Plugins/Gnn/OnnxEdgeClassifier.hpp>
-#include <Acts/Plugins/Gnn/Stages.hpp>
-namespace ActsPlugins {
-using BoostTrackBuilding = Acts::BoostTrackBuilding;
-using Device = Acts::Device;
-using EdgeClassificationBase = Acts::EdgeClassificationBase;
-using GnnPipeline = Acts::GnnPipeline;
-using OnnxEdgeClassifier = Acts::OnnxEdgeClassifier;
-using TrackBuildingBase = Acts::TrackBuildingBase;
-} // namespace ActsPlugins
-#endif
 
 #include <k4ActsTracking/ActsGaudiLogger.h>
 #include <k4ActsTracking/KFRunner.hxx>
@@ -314,27 +299,33 @@ StatusCode GNNTrackFinder::initialize() {
   }
 
   // The models divide each feature by its scale, so there has to be exactly one
-  // scale per feature (or none at all, in which case no scaling is applied).
-  const auto checkScales = [this](const std::string& what, std::size_t nFeatures, std::size_t nScales) {
-    if (nScales == 0 || nFeatures == nScales) {
-      return true;
+  // non-zero scale per feature (or none at all, in which case no scaling is
+  // applied).
+  const auto checkScales = [this](const std::string& what, std::size_t nFeatures, const std::vector<float>& scales) {
+    if (!scales.empty() && nFeatures != scales.size()) {
+      error() << fmt::format("Number of input scales ({}) does not match the number of input features ({}) for {}",
+                             scales.size(), nFeatures, what)
+              << endmsg;
+      return false;
     }
-    error() << fmt::format("Number of input scales ({}) does not match the number of input features ({}) for {}",
-                           nScales, nFeatures, what)
-            << endmsg;
-    return false;
+    if (std::ranges::find(scales, 0.f) != scales.end()) {
+      error() << fmt::format("Input scales {} for {} contain a zero, features are divided by their scale", scales, what)
+              << endmsg;
+      return false;
+    }
+    return true;
   };
-  if (!checkScales("the node embedding model", embeddingFeatures.size(), embeddingScales.size())) {
+  if (!checkScales("the node embedding model", embeddingFeatures.size(), embeddingScales)) {
     return StatusCode::FAILURE;
   }
   if (computeEdgeFeatures &&
       !checkScales(fmt::format("the edge feature computation ({}, in that order)", fmt::join(kEdgeFeatureInputs, ", ")),
-                   kEdgeFeatureInputs.size(), edgeFeatureScales.size())) {
+                   kEdgeFeatureInputs.size(), edgeFeatureScales)) {
     return StatusCode::FAILURE;
   }
   for (std::size_t i = 0; i < nEdgeClassifiers; ++i) {
     if (!checkScales(fmt::format("edge classifier {}", i), edgeClassifierFeaturesList[i].size(),
-                     edgeClassifierScalesList[i].size())) {
+                     edgeClassifierScalesList[i])) {
       return StatusCode::FAILURE;
     }
   }

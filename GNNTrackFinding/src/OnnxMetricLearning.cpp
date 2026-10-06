@@ -20,13 +20,8 @@
 #include "EdgeDirection.h"
 #include "ONNXInferenceModel.h"
 
-#if __has_include("ActsPlugins/Gnn/detail/TensorVectorConversion.hpp")
 #include <ActsPlugins/Gnn/detail/TensorVectorConversion.hpp>
 #include <ActsPlugins/Gnn/detail/buildEdges.hpp>
-#else
-#include <Acts/Plugins/Gnn/detail/TensorVectorConversion.hpp>
-#include <Acts/Plugins/Gnn/detail/buildEdges.hpp>
-#endif
 
 #include <onnxruntime_cxx_api.h>
 

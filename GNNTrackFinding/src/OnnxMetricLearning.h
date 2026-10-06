@@ -21,18 +21,8 @@
 #include "ONNXInferenceModel.h"
 
 #include <Acts/Utilities/Logger.hpp>
-#if __has_include("ActsPlugins/Gnn/Stages.hpp")
 #include <ActsPlugins/Gnn/Stages.hpp>
 #include <ActsPlugins/Gnn/Tensor.hpp>
-#else
-#include <Acts/Plugins/Gnn/Stages.hpp>
-#include <Acts/Plugins/Gnn/Tensor.hpp>
-namespace ActsPlugins {
-using Device = Acts::Device;
-using ExecutionContext = Acts::ExecutionContext;
-using PipelineTensors = Acts::PipelineTensors;
-} // namespace ActsPlugins
-#endif
 
 #include <torch/torch.h>
 
