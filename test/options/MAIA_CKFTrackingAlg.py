@@ -118,7 +118,14 @@ ckf_properties = {
 # pass towards the beamline, and a second (two-way) pass back out.
 ckf_outsidein_properties = {
     **ckf_properties,
-    "seeding_cellids": ["system:3|4|5|6"],
+    # Fewest outermost layers giving >= 3 seed points for |eta| < 2.44: IT
+    # barrel 2, IT disks 3-5, OT barrels 0-1 and all OT disks
+    "seeding_cellids": [
+        "system:3,layer:2",
+        "system:4,layer:3|4|5",
+        "system:5,layer:0|1",
+        "system:6",
+    ],
     # Seed points outside RMax / ZMax are ignored: cover the whole IT + OT
     "SeedFinding_RMax": 1600,
     "SeedFinding_ZMax": 2300,
