@@ -144,9 +144,8 @@ estimateStraightLineSeedParameters(const Acts::GeometryContext& geoCtx, const Ac
 /**
  * @brief Seeded CKF tracking algorithm using ActsGeoSvc.
  *
- * Functionally equivalent to ACTSSeededCKFTrackingAlg but obtains the
- * tracking geometry, magnetic field and surface–cellID mapping directly
- * from IActsGeoSvc instead of inheriting from ACTSAlgBase.
+ * Obtains the tracking geometry, magnetic field and surface–cellID mapping
+ * directly from IActsGeoSvc.
  *
  * ACTS contexts (geometry, magnetic-field, calibration) are default-
  * constructed as documented by the ACTS framework.
