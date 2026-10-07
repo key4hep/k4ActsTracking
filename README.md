@@ -83,8 +83,6 @@ The Gaudi plugin module `k4ActsTrackingPlugins` provides, among others:
 * **`CKFTrackingFromSeedsAlg`** — runs the same CKF, but seeded from an existing
   input track collection (e.g. candidates from an upstream pattern-recognition
   stage) instead of the internal seed finder.
-* **`ACTSSeededCKFTrackingAlg`** — legacy seeded CKF tracking algorithm,
-  superseded by `CKFTrackingAlg` and slated for removal.
 * **`MaterialMappingAlg`** — projects a recorded Geant4 geantino scan onto the
   material surfaces designated by the blueprint and writes the resulting
   material map. Runs alongside `ActsGeoSvc` so the map matches the geometry it
