@@ -79,7 +79,6 @@
 
 // TBB
 #include <tbb/blocked_range.h>
-#include <tbb/enumerable_thread_specific.h>
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_sort.h>
 #include <tbb/task_arena.h>
@@ -800,21 +799,7 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
   // container and magnetic-field cache; the shared edm4hep collections are
   // guarded by mutexes (m_seedMutex / m_trackMutex).
   // -------------------------------------------------------------------------
-  // Visibility: count distinct TBB worker threads that actually enter the
-  // parallel body. If the reported count stays at 1 even with NumThreads>1,
-  // the arena did not get workers (usually a global TBB concurrency limit
-  // imposed by the enclosing Gaudi scheduler).
-  std::atomic<int> ckfActiveThreads{0};
-  tbb::enumerable_thread_specific<bool> ckfThreadInit;
-
   auto parallelSeedingAndTracking = [&](const tbb::blocked_range<size_t>& r) {
-    auto& initialized = ckfThreadInit.local();
-    if (!initialized) {
-      initialized = true;
-      info() << "CKF parallel thread #" << ++ckfActiveThreads << " started (of " << m_numThreads.value()
-             << " requested)" << endmsg;
-    }
-
     // The magnetic-field cache is mutated on every field lookup, so each
     // parallel invocation needs its own cache rather than sharing one.
     Acts::MagneticFieldProvider::Cache localMagCache = m_actsGeoSvc->magneticField()->makeCache(magCtx);
@@ -869,7 +854,6 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
     parallelSeedingAndTracking(tbb::blocked_range<size_t>(0, groups.size()));
   }
 
-  info() << "CKF: " << ckfActiveThreads.load() << " thread(s) active for " << groups.size() << " seed groups" << endmsg;
   debug() << "Track Collection Size: " << trackCollection.size() << endmsg;
   return std::make_tuple(std::move(seedCollection), std::move(trackCollection));
 }
