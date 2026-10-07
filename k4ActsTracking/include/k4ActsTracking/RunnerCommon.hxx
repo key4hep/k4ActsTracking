@@ -432,11 +432,16 @@ inline Acts::SquareMatrix2 hitLocalCovariance(const Acts::GeometryContext& geoCt
     return Acts::Vector3(std::sin(a[0]) * std::cos(a[1]), std::sin(a[0]) * std::sin(a[1]), std::cos(a[0]));
   };
   const Acts::RotationMatrix3 frame = surface.referenceFrame(geoCtx, globalPos, Acts::Vector3::UnitZ());
+  const Acts::Vector3 ex = frame.col(0); // local x
+  const Acts::Vector3 ey = frame.col(1); // local y
   const Acts::Vector3 u = unit(hit.getU());
   const Acts::Vector3 v = unit(hit.getV());
 
-  Acts::SquareMatrix2 rot; // (u, v) -> (local x, local y)
-  rot << frame.col(0).dot(u), frame.col(0).dot(v), frame.col(1).dot(u), frame.col(1).dot(v);
+  // (u, v) -> (local x, local y)
+  // clang-format off
+  const Acts::SquareMatrix2 rot{{ex.dot(u), ex.dot(v)},
+                                {ey.dot(u), ey.dot(v)}};
+  // clang-format on
   Acts::SquareMatrix2 uvCov = Acts::SquareMatrix2::Zero();
   uvCov(0, 0) = std::pow(hit.getDu() * Acts::UnitConstants::mm, 2);
   uvCov(1, 1) = std::pow(hit.getDv() * Acts::UnitConstants::mm, 2);
