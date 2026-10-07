@@ -42,6 +42,7 @@
 #include <cstdint>
 #include <iostream>
 #include <memory>
+#include <numbers>
 #include <optional>
 #include <span>
 #include <stdexcept>
@@ -108,8 +109,10 @@ torch::Tensor toTorchTensor(const Ort::Value& onnxTensor, bool targetCuda, std::
 
   auto torchTensor = torch::from_blob(const_cast<void*>(data), shape, options);
 
-  if (targetCuda && memoryInfo.GetDeviceId() != static_cast<int>(cudaDeviceIndex)) {
-    // not on target CUDA device
+  // Host memory reports device id 0 as well, so the id alone does not tell
+  // whether the output is already on cuda:0.
+  if (targetCuda && (!onCudaMemory || memoryInfo.GetDeviceId() != static_cast<int>(cudaDeviceIndex))) {
+    // not on target CUDA device (in host memory, or on another GPU)
     const auto targetDevice = torch::Device(torch::kCUDA, static_cast<int64_t>(cudaDeviceIndex));
     return torchTensor.to(targetDevice);
   }
@@ -129,9 +132,7 @@ OnnxMetricLearning::OnnxMetricLearning(const Config& cfg, std::unique_ptr<const 
     : m_model("MetricLearning", getOnnxLogLevel(lggr->level()), cfg.device.isCuda(), cfg.device.index), m_config(cfg),
       m_logger(std::move(lggr)) {
   ACTS_INFO(fmt::format("Loading model from {}", config().modelPath));
-  if (!m_model.loadModel(config().modelPath)) {
-    throw std::runtime_error(fmt::format("Could not load the node embedding ONNX model from '{}'", config().modelPath));
-  }
+  m_model.loadModel(config().modelPath);
 
   // Take the embedding dimension from the model itself instead of having it
   // configured. The last axis of the (nNodes x embeddingDim) output carries it,
@@ -356,8 +357,8 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
   if (fixedEdgeLength != 0 && fixedEdgeLength < numEdges) {
     throw std::runtime_error(fmt::format(
         "Cannot zero-pad the edge classifier input to a fixed length of {} edges, this segment already has {}. "
-        "Increase EdgeClassifierFixedInputLength, or lower EdgeBuildingRadius / EdgeBuildingKnn so that fewer edges "
-        "are built.",
+        "Increase EdgeClassifierFixedInputLength, or lower EdgeBuildingRadius (or, on CUDA only, EdgeBuildingKnn) so "
+        "that fewer edges are built.",
         fixedEdgeLength, numEdges));
   }
   if (fixedEdgeLength > numEdges) {
@@ -503,7 +504,7 @@ std::optional<torch::Tensor> OnnxMetricLearning::buildEdgeFeatures(const std::ve
   // classifier scales its node input but passes the edge input through as it
   // is, so these are computed from the already scaled node values.
   enum EdgeFeatureInput { eR = 0, ePhi, eZ, eEta };
-  constexpr float pi = static_cast<float>(M_PI);
+  constexpr float pi = std::numbers::pi_v<float>;
 
   const auto& indices = config().edgeFeatureIndices;
   const auto& scales = config().edgeFeatureScales;
@@ -528,13 +529,14 @@ std::optional<torch::Tensor> OnnxMetricLearning::buildEdgeFeatures(const std::ve
   const auto dz = tgtValues.select(1, eZ) - srcValues.select(1, eZ);
   const auto deta = tgtValues.select(1, eEta) - srcValues.select(1, eEta);
 
-  // phi is scaled by pi, so the difference is unscaled to wrap it back into
-  // [-pi, pi] and then scaled again. A single wrap is enough since the unscaled
-  // difference cannot leave [-2pi, 2pi].
-  auto dphi = pi * (tgtValues.select(1, ePhi) - srcValues.select(1, ePhi));
+  // phi is scaled by kEdgeFeaturePhiScale (checked by the caller), so the
+  // difference is unscaled to wrap it back into [-pi, pi] and then scaled
+  // again. A single wrap is enough since the unscaled difference cannot leave
+  // [-2pi, 2pi].
+  auto dphi = kEdgeFeaturePhiScale * (tgtValues.select(1, ePhi) - srcValues.select(1, ePhi));
   dphi = torch::where(dphi > pi, dphi - 2.f * pi, dphi);
   dphi = torch::where(dphi < -pi, dphi + 2.f * pi, dphi);
-  dphi = dphi / pi;
+  dphi = dphi / kEdgeFeaturePhiScale;
 
   // Doublets on the same radius have no defined slope and get a flat zero. The
   // substitute denominator only keeps the discarded branch from producing infs.

@@ -29,6 +29,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <numbers>
 #include <optional>
 #include <string>
 #include <vector>
@@ -46,6 +47,12 @@ public:
   /// How many edges the DEBUG dump of the computed edge features shows,
   /// unless Config::printAllEdgeFeatures asks for all of them
   static constexpr std::size_t kNumEdgesShown = 5;
+  /// The scale the edge feature computation takes phi to be divided by: the
+  /// dphi wrap-around un-scales the difference by it, wraps it into [-pi, pi]
+  /// and scales it back. This is the convention of the ACORN training and of
+  /// Acts' makeEdgeFeatures(), so Config::edgeFeatureScales has to scale phi by
+  /// exactly this for the features to be what the classifier was trained on.
+  static constexpr float kEdgeFeaturePhiScale = std::numbers::pi_v<float>;
 
   struct Config {
     std::string modelPath{};
@@ -61,7 +68,8 @@ public:
     /// Scales for edgeFeatureIndices. The edge features are computed from the
     /// scaled node values, so these have to be the scales the edge classifier
     /// was trained with. Must be the same size as edgeFeatureIndices, or empty
-    /// for no scaling.
+    /// for no scaling. Note that the dphi wrap-around is only correct if phi is
+    /// scaled by kEdgeFeaturePhiScale.
     std::vector<float> edgeFeatureScales{};
     /// Indices of the (unscaled) r and z node features, in that order, in the
     /// full per-hit feature vector, by which every built edge is oriented (see
@@ -88,7 +96,7 @@ public:
     /// classification. Needs keepPadding. 0 disables it.
     int fixedEdgeLength{0};
     float rVal{1.6};               // Same as TorchMetricLearning
-    float knnVal{500.};            // Same as TorchMetricLearning
+    int knnVal{500};               // Same as TorchMetricLearning
     bool shuffleDirections{false}; // Same as TorchMetricLearning
 
     // Device the embedding model and edge building run on. Defaults to CPU;

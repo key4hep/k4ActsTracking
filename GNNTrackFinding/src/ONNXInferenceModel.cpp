@@ -18,7 +18,6 @@
  */
 #include "ONNXInferenceModel.h"
 
-#include <iostream>
 #include <stdexcept>
 
 namespace mlutils {
@@ -40,19 +39,17 @@ ONNXInferenceModel::ONNXInferenceModel(const std::string& name, OrtLoggingLevel 
   }
 }
 
-bool ONNXInferenceModel::loadModel(const std::string& modelPath) {
+void ONNXInferenceModel::loadModel(const std::string& modelPath) {
+  cleanup();
   try {
-    cleanup();
-
     m_session = std::make_unique<Ort::Session>(*m_env, modelPath.c_str(), *m_sessionOptions);
     extractModelInfo();
     m_modelLoaded = true;
-
-    return true;
   } catch (const std::exception& e) {
-    std::cerr << "Error loading ONNX model: " << e.what() << std::endl;
-    m_modelLoaded = false;
-    return false;
+    // Leave the model in the "nothing loaded" state, whatever stage failed, and
+    // hand the onnxruntime message on: it says why, but not which model.
+    cleanup();
+    throw std::runtime_error("Could not load the " + m_envName + " ONNX model '" + modelPath + "': " + e.what());
   }
 }
 

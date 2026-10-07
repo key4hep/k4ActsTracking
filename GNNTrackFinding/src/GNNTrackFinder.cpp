@@ -239,11 +239,17 @@ StatusCode GNNTrackFinder::initialize() {
     return StatusCode::FAILURE;
   }
 
-  const auto embeddingFeatures = mlutils::parseList<std::string>(m_inputFeaturesEmbedding.value());
-  const auto embeddingScales = mlutils::parseList<float>(m_inputScalesEmbedding.value());
-  const auto edgeFeatureScales = mlutils::parseList<float>(m_edgeFeatureScales.value());
-  const auto edgeClassifierFeaturesList = mlutils::parseMultiList<std::string>(m_inputFeaturesEdgeClassifier.value());
-  const auto edgeClassifierScalesList = mlutils::parseMultiList<float>(m_inputScalesEdgeClassifier.value());
+  const auto& embeddingFeatures = m_inputFeaturesEmbedding.value();
+  const auto& embeddingScales = m_inputScalesEmbedding.value();
+  const auto& edgeFeatureScales = m_edgeFeatureScales.value();
+  const auto& edgeClassifierFeaturesList = m_inputFeaturesEdgeClassifier.value();
+  // The property is double (Gaudi has no parser for nested float vectors), the
+  // Acts edge classifier takes float
+  std::vector<std::vector<float>> edgeClassifierScalesList{};
+  edgeClassifierScalesList.reserve(nEdgeClassifiers);
+  for (const auto& scales : m_inputScalesEdgeClassifier.value()) {
+    edgeClassifierScalesList.emplace_back(scales.begin(), scales.end());
+  }
 
   // The six edge features are defined in terms of r, phi, z and eta, so unlike
   // the model inputs there is nothing to select: all that is configurable is
@@ -251,6 +257,13 @@ StatusCode GNNTrackFinder::initialize() {
   const bool computeEdgeFeatures = m_computeEdgeFeatures.value();
   if (!computeEdgeFeatures && !edgeFeatureScales.empty()) {
     error() << "EdgeFeatureScales is set, but ComputeEdgeFeatures is false, so no edge features are computed" << endmsg;
+    return StatusCode::FAILURE;
+  }
+
+  // The KD-tree edge building reserves memory for this many neighbours per hit,
+  // so a non-positive value would wrap around to an enormous reservation
+  if (m_edgeBuildingKnn.value() <= 0) {
+    error() << fmt::format("EdgeBuildingKnn has to be > 0, got {}", m_edgeBuildingKnn.value()) << endmsg;
     return StatusCode::FAILURE;
   }
 
@@ -322,6 +335,28 @@ StatusCode GNNTrackFinder::initialize() {
       !checkScales(fmt::format("the edge feature computation ({}, in that order)", fmt::join(kEdgeFeatureInputs, ", ")),
                    kEdgeFeatureInputs.size(), edgeFeatureScales)) {
     return StatusCode::FAILURE;
+  }
+  // The dphi wrap-around of the edge features takes phi to be scaled by pi, as
+  // the ACORN training and Acts' makeEdgeFeatures() do. With any other scale
+  // (or none) it wraps at the wrong angle and every edge feature derived from
+  // dphi comes out wrong, so this is not left to the configuration. The
+  // tolerance admits the "3.14" such scales are commonly written as.
+  if (computeEdgeFeatures) {
+    constexpr float expectedPhiScale = OnnxMetricLearning::kEdgeFeaturePhiScale;
+    constexpr float phiScaleTolerance = 0.01f;
+    const auto phiPos =
+        static_cast<std::size_t>(std::ranges::find(kEdgeFeatureInputs, "phi") - kEdgeFeatureInputs.begin());
+    if (edgeFeatureScales.empty() || std::abs(edgeFeatureScales[phiPos] / expectedPhiScale - 1.f) > phiScaleTolerance) {
+      error() << fmt::format("The edge features need phi scaled by pi ({}), as the dphi wrap-around assumes, but "
+                             "EdgeFeatureScales gives {}. Set the phi entry of EdgeFeatureScales ({}, in that order) "
+                             "to pi.",
+                             expectedPhiScale,
+                             edgeFeatureScales.empty() ? std::string{"no scales"}
+                                                       : fmt::format("{}", edgeFeatureScales[phiPos]),
+                             kEdgeFeatureInputs)
+              << endmsg;
+      return StatusCode::FAILURE;
+    }
   }
   for (std::size_t i = 0; i < nEdgeClassifiers; ++i) {
     if (!checkScales(fmt::format("edge classifier {}", i), edgeClassifierFeaturesList[i].size(),

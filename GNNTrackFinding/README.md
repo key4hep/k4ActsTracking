@@ -36,8 +36,8 @@ produces an `edm4hep::TrackCollection` of fitted track candidates. Per event it
 3. **extracts the configured features** per hit (positions, time and CellID
    fields) into the flat `(nHits x nFeatures)` input tensor,
 4. runs the **graph construction**: a metric learning ONNX model embeds every
-   hit into a space in which a KD-tree (CPU) / FRNN (CUDA) radius + KNN search
-   builds the candidate edges (`OnnxMetricLearning`). Every edge is then
+   hit into a space in which a radius search (KD-tree on CPU, FRNN with an
+   additional KNN cap on CUDA) builds the candidate edges (`OnnxMetricLearning`). Every edge is then
    oriented from the hit closer to the interaction point to the one further out
    (`SortEdges`, see [Edge ordering](#edge-ordering)),
 5. runs one or more **edge classifiers** (ACTS `OnnxEdgeClassifier`) that score
@@ -122,8 +122,8 @@ k4run GNNTrackFinding/options/runGNNTrackFinding.py \
 | Property | Default | Description |
 | --- | --- | --- |
 | `NodeEmbeddingModelPath` | `""` | Path to the ONNX model of the metric learning / graph construction stage |
-| `EdgeBuildingRadius` | `0.1` | Radius parameter of the edge building in embedding space |
-| `EdgeBuildingKnn` | `100` | KNN parameter of the edge building in embedding space |
+| `EdgeBuildingRadius` | `1.6` | Radius in embedding space within which two hits are connected by an edge |
+| `EdgeBuildingKnn` | `500` | Maximum number of neighbours per hit. Only the CUDA (FRNN) edge building applies it; on CPU the KD-tree keeps every neighbour within the radius and uses this only to reserve memory |
 | `SortEdges` | `True` | Orient every built edge from the hit closer to the interaction point to the one further out, see [Edge ordering](#edge-ordering) |
 | `EdgeClassifierModelPath` | `[]` | Paths to the ONNX models of the edge classifiers |
 | `EdgeClassifierCut` | `[0.5]` | Score cut of each edge classifier |
@@ -138,15 +138,15 @@ list lengths are rejected in `initialize`.
 
 | Property | Default | Description |
 | --- | --- | --- |
-| `InputFeaturesEmbedding` | `"r,phi,z,t"` | Comma separated features for the embedding model |
-| `InputScalesEmbedding` | `"1,1,1,1"` | Comma separated scales, each feature is divided by its scale (so none may be zero) |
+| `InputFeaturesEmbedding` | `["r", "phi", "z", "t"]` | Features for the embedding model |
+| `InputScalesEmbedding` | `[1, 1, 1, 1]` | Scales of those features, each feature is divided by its scale (so none may be zero) |
 | `EmbeddingFixedInputLength` | `0` | If `> 0`, pad the embedding model input with all-zero rows up to this many nodes. `0` disables the padding |
 | `KeepEmbeddingPadding` | `False` | Keep those padding rows in the node features handed to the edge classifiers, see below |
 | `EdgeClassifierFixedInputLength` | `0` | If `> 0`, pad the edge index and edge features up to this many edges, see below |
-| `InputFeaturesEdgeClassifier` | `["r,phi,z,t"]` | Per classifier list of comma separated features, passed to the model in the order given. A feature may be listed more than once |
-| `InputScalesEdgeClassifier` | `["1,1,1,1"]` | Per classifier list of comma separated scales, each feature is divided by its scale (so none may be zero) |
+| `InputFeaturesEdgeClassifier` | `[["r", "phi", "z", "t"]]` | One list of features per classifier, passed to the model in the order given. A feature may be listed more than once |
+| `InputScalesEdgeClassifier` | `[[1, 1, 1, 1]]` | One list of scales per classifier, each feature is divided by its scale (so none may be zero) |
 | `ComputeEdgeFeatures` | `False` | Compute the six edge features a three-input classifier needs, see below |
-| `EdgeFeatureScales` | `""` | Scales of `r`, `phi`, `z`, `eta` used for that computation |
+| `EdgeFeatureScales` | `[]` | Scales of `r`, `phi`, `z`, `eta` used for that computation. Required with `ComputeEdgeFeatures`, and **the `phi` scale has to be pi** |
 
 The supported (case insensitive) feature names are
 
@@ -286,13 +286,20 @@ scales go **in that order**, whatever order the models take their own inputs in.
 
 ```python
 ComputeEdgeFeatures=True,
-EdgeFeatureScales="1000,3.14,1000,1",
+EdgeFeatureScales=[1000, 3.14, 1000, 1],
 ```
 
 `phislope` is `dphi / dr` clamped to `[-100, 100]` and `rphislope` is that times
 the mean radius of the two hits; edges between hits at the same radius get a flat
-zero for both. The `dphi` wrap-around assumes that `phi` is scaled by pi, as in
-the example above.
+zero for both.
+
+The `dphi` wrap-around takes `phi` to be scaled by pi: it multiplies the
+difference by pi, wraps it into `[-pi, pi]` and divides it by pi again. That is
+the convention of the ACORN training and of Acts' `makeEdgeFeatures()`, and with
+any other `phi` scale (or none at all) the wrap happens at the wrong angle. So
+`initialize` requires `EdgeFeatureScales` whenever `ComputeEdgeFeatures` is set,
+and rejects a `phi` scale that is not pi to within 1% (which admits the `3.14`
+above).
 
 The edge classifier scales its *node* input (`InputScalesEdgeClassifier`) but
 passes the edge input through as it is, so these have to be the scaling the
@@ -340,9 +347,14 @@ A non-zero overlap extends every bin into its successor, so that hits close to a
 bin boundary end up in both bins and tracks crossing the boundary can still be
 found.
 
-> **Note:** the phi bins do *not* wrap around, i.e. the last phi bin does not
-> overlap with the first one. Track candidates crossing `phi = +/- pi` can
-> therefore be split between two segments.
+Phi is periodic, so with a non-zero `PhiOverlap` the last phi bin also reaches
+across `phi = +/- pi` into the first one, and tracks crossing that boundary are
+found like any other. Theta does not wrap: the last theta bin ends at `pi`.
+
+Hits in an overlap region are run through the pipeline once per segment they
+fall into, so a track there can be found (and fitted) more than once. The
+output is not deduplicated, so run a duplicate removal downstream when using
+overlaps.
 
 ### Track candidates and fit
 
@@ -418,14 +430,7 @@ debugging on small inputs.
 Many parts of this are currently in a prototype stage to get some results. This
 also means that there is plenty of opportunity to improve on the current
 implementation. I keep this list here as a reminder for later
-- Generalize `mlutils::{flatten,getDimensions,totalSize}` to also handle
-  `std::vector<std::array>` which would probably offer better performance due to
-  the better memory layout.
-- Make the `ONNXInferenceModel::runInference` thread-safe such that it can be
-  marked as `const` to avoid the `mutable` statements in `operator()` of
-  Functional algorithms
 - The `OnnxMetricLearning` class should almost certainly be upstreamed to the
-  Acts GNN plugin.
+  Acts GNN plugin, together with the CPU edge feature computation and the edge
+  ordering.
 - Run the (independent) theta/phi segments concurrently instead of sequentially.
-- Make the phi segmentation wrap around, so that candidates crossing
-  `phi = +/- pi` are not split.
