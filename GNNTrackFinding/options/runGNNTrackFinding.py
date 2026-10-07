@@ -81,8 +81,8 @@ TrackFinder = GNNTrackFinder(
     # The features (and their scales) the embedding model has been trained with.
     # Supported names: x, y, z, r, phi, theta, eta, t (time), E (energy),
     # module_id, layer_id, system_id
-    InputFeaturesEmbedding="r,phi,z,t",
-    InputScalesEmbedding="1,1,1,1",
+    InputFeaturesEmbedding=["r", "phi", "z", "t"],
+    InputScalesEmbedding=[1.0, 1.0, 1.0, 1.0],
     # If the embedding model was exported with a fixed-size input, pad the hits
     # of each segment with all-zero rows up to that length (0 = no padding).
     EmbeddingFixedInputLength=0,
@@ -97,8 +97,8 @@ TrackFinder = GNNTrackFinder(
     # All four properties below are parallel lists with one entry per model, so
     # that several edge classifiers can be chained.
     EdgeClassifierModelPath=[str(args.modelBase / "edge_classifier-InteractionGNN.onnx")],
-    InputFeaturesEdgeClassifier=["r,phi,z,t"],
-    InputScalesEdgeClassifier=["1,1,1,1"],
+    InputFeaturesEdgeClassifier=[["r", "phi", "z", "t"]],
+    InputScalesEdgeClassifier=[[1.0, 1.0, 1.0, 1.0]],
     EdgeClassifierCut=[0.5],
     # --- Hit segmentation ----------------------------------------------------
     # The hits can be split into (theta, phi) segments that are run through the

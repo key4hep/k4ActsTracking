@@ -19,6 +19,7 @@
 #include "CCAndWalkTrackBuilding.h"
 
 #include "EdgeDirection.h"
+#include "HostTensorView.h"
 
 #include <fmt/format.h>
 
@@ -26,7 +27,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <numeric>
-#include <optional>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -144,20 +144,13 @@ std::vector<std::vector<int>> CCAndWalkTrackBuilding::operator()(PipelineTensors
 
   // Everything is walked on the host, so pull the tensors over if they are not
   // there already.
-  const ActsPlugins::ExecutionContext cpuCtx{ActsPlugins::Device::Cpu(), execContext.stream};
-  const auto toHost = [&cpuCtx](const auto& tensor) -> std::optional<std::decay_t<decltype(tensor)>> {
-    if (tensor.device().isCpu()) {
-      return std::nullopt;
-    }
-    return tensor.clone(cpuCtx);
-  };
-  const auto hostEdgeIndex = toHost(tensors.edgeIndex);
-  const auto hostScores = toHost(*tensors.edgeScores);
-  const auto hostNodeFeatures = toHost(tensors.nodeFeatures);
+  const gnntracking::HostTensorView<std::int64_t> hostEdgeIndex{tensors.edgeIndex, execContext};
+  const gnntracking::HostTensorView<float> hostScores{*tensors.edgeScores, execContext};
+  const gnntracking::HostTensorView<float> hostNodeFeatures{tensors.nodeFeatures, execContext};
 
-  const std::int64_t* edgeData = hostEdgeIndex ? hostEdgeIndex->data() : tensors.edgeIndex.data();
-  const float* scoreData = hostScores ? hostScores->data() : tensors.edgeScores->data();
-  const float* nodeData = hostNodeFeatures ? hostNodeFeatures->data() : tensors.nodeFeatures.data();
+  const std::int64_t* edgeData = hostEdgeIndex.data();
+  const float* scoreData = hostScores.data();
+  const float* nodeData = hostNodeFeatures.data();
 
   // Direct every edge outwards (see EdgeDirection.h). Only the real hits are
   // looked at: any padding rows the edge classifiers were given sit past them.
