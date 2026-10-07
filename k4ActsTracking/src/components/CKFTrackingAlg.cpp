@@ -785,7 +785,7 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
     if (!initialized) {
       initialized = true;
       debug() << "CKF parallel thread #" << ++ckfActiveThreads << " started (of " << m_numThreads.value()
-             << " requested)" << endmsg;
+              << " requested)" << endmsg;
     }
 
     // The magnetic-field cache is mutated on every field lookup, so each
@@ -842,7 +842,8 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
     parallelSeedingAndTracking(tbb::blocked_range<size_t>(0, groups.size()));
   }
 
-  debug() << "CKF: " << ckfActiveThreads.load() << " thread(s) active for " << groups.size() << " seed groups" << endmsg;
+  debug() << "CKF: " << ckfActiveThreads.load() << " thread(s) active for " << groups.size() << " seed groups"
+          << endmsg;
   debug() << "Track Collection Size: " << trackCollection.size() << endmsg;
   return std::make_tuple(std::move(seedCollection), std::move(trackCollection));
 }
