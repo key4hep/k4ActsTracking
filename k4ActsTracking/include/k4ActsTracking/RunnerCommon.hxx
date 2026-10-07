@@ -74,6 +74,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -449,7 +450,11 @@ void prepareTrackerHits(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geom
                         const edm4hep::TrackerHitPlaneCollection& trackerHits,
                         ACTSTracking::MeasurementContainer& measurements,
                         ACTSTracking::SourceLinkContainer& sourceLinks, ACTSTracking::HitContainer& hits,
-                        int numThreads, HitSink&& hitSink) {
+                        int numThreads, HitSink&& hitSink, bool useHitTime = false,
+                        const std::function<double(const edm4hep::TrackerHitPlane&)>& hitTimeResolutionFor = {}) {
+  if (useHitTime && !hitTimeResolutionFor) {
+    throw std::invalid_argument("prepareTrackerHits: useHitTime requires a hit time resolution function");
+  }
   const auto& cellIdToSurface = geo.cellIdToSurfaceMap();
 
   std::vector<std::pair<Acts::GeometryIdentifier, edm4hep::TrackerHitPlane>> sortedHits;
@@ -503,8 +508,21 @@ void prepareTrackerHits(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geom
 
     ACTSTracking::SourceLink sourceLink(surface->geometryId(), measurements.size());
     Acts::SourceLink srcWrap{sourceLink};
-    ACTSTracking::Measurement meas =
-        ACTSTracking::makeMeasurement(srcWrap, loc, localCov, Acts::eBoundLoc0, Acts::eBoundLoc1);
+    // Optionally measure the hit time as a third coordinate.
+    ACTSTracking::Measurement meas = [&] {
+      if (useHitTime) {
+        const double hitT = hitTime(hitPair.second);
+        Acts::Vector3 loc3;
+        loc3 << loc[0], loc[1], hitT;
+        const double timeRes = hitTimeResolutionFor(hitPair.second);
+        Acts::SquareMatrix3 cov3 = Acts::SquareMatrix3::Zero();
+        cov3(0, 0) = localCov(0, 0);
+        cov3(1, 1) = localCov(1, 1);
+        cov3(2, 2) = std::pow(timeRes * Acts::UnitConstants::ns, 2);
+        return ACTSTracking::makeMeasurement(srcWrap, loc3, cov3, Acts::eBoundLoc0, Acts::eBoundLoc1, Acts::eBoundTime);
+      }
+      return ACTSTracking::makeMeasurement(srcWrap, loc, localCov, Acts::eBoundLoc0, Acts::eBoundLoc1);
+    }();
 
     measurements.push_back(meas);
     hits.push_back(hitPair.second);
@@ -528,17 +546,17 @@ template <class Alg>
 std::optional<Acts::BoundTrackParameters>
 estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx,
                        const Acts::Surface& bottomSurface, const Acts::Vector3& bottomPos,
-                       const Acts::Vector3& middlePos, const Acts::Vector3& topPos, double t0,
-                       Acts::MagneticFieldProvider::Cache& magCache, double errPos, double errPhi, double errLambda,
-                       double errRelP, double errTime) {
+                       const Acts::Vector3& middlePos, const Acts::Vector3& topPos,
+                       const edm4hep::TrackerHit& bottomHit, Acts::MagneticFieldProvider::Cache& magCache,
+                       double errPos, double errPhi, double errLambda, double errRelP, double errTime) {
   // Magnetic field at the seed (bottom space point) position
   Acts::Result<Acts::Vector3> seedField = geo.magneticField()->getField(bottomPos, magCache);
   if (!seedField.ok()) {
     throw std::runtime_error("Field lookup error: " + std::to_string(seedField.error().value()));
   }
 
-  Acts::Result<Acts::BoundVector> optParams =
-      Acts::estimateTrackParamsFromSeed(geoCtx, bottomSurface, bottomPos, t0, middlePos, topPos, *seedField);
+  Acts::Result<Acts::BoundVector> optParams = Acts::estimateTrackParamsFromSeed(
+      geoCtx, bottomSurface, bottomPos, hitTime(bottomHit), middlePos, topPos, *seedField);
   if (!optParams.ok()) {
     alg.debug() << "Failed estimation of track parameters for seed." << endmsg;
     return std::nullopt;
@@ -627,8 +645,7 @@ estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geome
   }
 
   return estimateSeedParameters(alg, geo, geoCtx, *bottomSurface, bottom.pos, middle.pos, top.pos,
-                                hitContainer[bottom.sl.index()].getTime(), magCache, errPos, errPhi, errLambda, errRelP,
-                                errTime);
+                                hitContainer[bottom.sl.index()], magCache, errPos, errPhi, errLambda, errRelP, errTime);
 }
 
 } // namespace ACTSTracking
