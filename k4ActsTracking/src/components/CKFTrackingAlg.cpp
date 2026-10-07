@@ -842,7 +842,7 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
     parallelSeedingAndTracking(tbb::blocked_range<size_t>(0, groups.size()));
   }
 
-  info() << "CKF: " << ckfActiveThreads.load() << " thread(s) active for " << groups.size() << " seed groups" << endmsg;
+  debug() << "CKF: " << ckfActiveThreads.load() << " thread(s) active for " << groups.size() << " seed groups" << endmsg;
   debug() << "Track Collection Size: " << trackCollection.size() << endmsg;
   return std::make_tuple(std::move(seedCollection), std::move(trackCollection));
 }
