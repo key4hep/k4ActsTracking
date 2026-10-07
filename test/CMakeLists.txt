@@ -174,7 +174,7 @@ add_k4run_test(reco_MAIA_Gen3
   FIXTURES_REQUIRED sim_maia_fixture
 )
 
-add_k4run_test(outsideInMAIA
+add_k4run_test(reco_MAIA_Gen3_outsideInTracking
   OPTIONS_FILE ${CMAKE_CURRENT_LIST_DIR}/options/MAIA_CKFTrackingAlg.py
   EXTRA_ARGS --compactFile=${_maia_compact}
              --IOSvc.Input particle_gun_MAIA_SIM.edm4hep.root
