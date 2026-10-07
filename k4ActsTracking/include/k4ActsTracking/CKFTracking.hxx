@@ -36,17 +36,18 @@ namespace ACTSTracking {
  * \param errLambda Polar angle (lambda) error [rad].
  * \param errRelP  Relative momentum error (dimensionless fraction).
  * \param errTime  Time error [ACTS units].
+ * \param errQOverP Absolute q/p error, added in quadrature to the relative one [ACTS units].
  * \return         5×5 diagonal bound covariance matrix.
  */
 inline Acts::BoundMatrix makeInitialCovariance(double p, double errPos, double errPhi, double errLambda, double errRelP,
-                                               double errTime) {
+                                               double errTime, double errQOverP = 0) {
   Acts::BoundMatrix cov = Acts::BoundMatrix::Zero();
   cov(Acts::eBoundLoc0, Acts::eBoundLoc0) = std::pow(errPos, 2);
   cov(Acts::eBoundLoc1, Acts::eBoundLoc1) = std::pow(errPos, 2);
   cov(Acts::eBoundTime, Acts::eBoundTime) = std::pow(errTime, 2);
   cov(Acts::eBoundPhi, Acts::eBoundPhi) = std::pow(errPhi, 2);
   cov(Acts::eBoundTheta, Acts::eBoundTheta) = std::pow(errLambda, 2);
-  cov(Acts::eBoundQOverP, Acts::eBoundQOverP) = std::pow(errRelP * p / (p * p), 2);
+  cov(Acts::eBoundQOverP, Acts::eBoundQOverP) = std::pow(errRelP / p, 2) + std::pow(errQOverP, 2);
   return cov;
 }
 
