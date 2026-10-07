@@ -784,7 +784,7 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
     auto& initialized = ckfThreadInit.local();
     if (!initialized) {
       initialized = true;
-      info() << "CKF parallel thread #" << ++ckfActiveThreads << " started (of " << m_numThreads.value()
+      debug() << "CKF parallel thread #" << ++ckfActiveThreads << " started (of " << m_numThreads.value()
              << " requested)" << endmsg;
     }
 
