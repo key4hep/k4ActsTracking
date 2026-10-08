@@ -543,12 +543,11 @@ void prepareTrackerHits(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geom
  *         field-lookup failure throws, matching the tracking algorithms.
  */
 template <class Alg>
-std::optional<Acts::BoundTrackParameters>
-estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx,
-                       const Acts::Surface& bottomSurface, const Acts::Vector3& bottomPos,
-                       const Acts::Vector3& middlePos, const Acts::Vector3& topPos,
-                       const edm4hep::TrackerHit& bottomHit, Acts::MagneticFieldProvider::Cache& magCache,
-                       double errPos, double errPhi, double errLambda, double errRelP, double errTime) {
+std::optional<Acts::BoundTrackParameters> estimateSeedParameters(
+    const Alg& alg, const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx, const Acts::Surface& bottomSurface,
+    const Acts::Vector3& bottomPos, const Acts::Vector3& middlePos, const Acts::Vector3& topPos,
+    const edm4hep::TrackerHit& bottomHit, Acts::MagneticFieldProvider::Cache& magCache, double errPos, double errPhi,
+    double errLambda, double errRelP, double errTime, double errQOverP = 0) {
   // Magnetic field at the seed (bottom space point) position
   Acts::Result<Acts::Vector3> seedField = geo.magneticField()->getField(bottomPos, magCache);
   if (!seedField.ok()) {
@@ -565,7 +564,8 @@ estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geome
   const Acts::BoundVector& params = *optParams;
   float p = std::abs(1.f / params[Acts::eBoundQOverP]);
 
-  Acts::BoundMatrix cov = ACTSTracking::makeInitialCovariance(p, errPos, errPhi, errLambda, errRelP, errTime);
+  Acts::BoundMatrix cov =
+      ACTSTracking::makeInitialCovariance(p, errPos, errPhi, errLambda, errRelP, errTime, errQOverP);
 
   return Acts::BoundTrackParameters(bottomSurface.getSharedPtr(), params, cov, Acts::ParticleHypothesis::pion());
 }
@@ -629,7 +629,7 @@ std::optional<Acts::BoundTrackParameters>
 estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx,
                        const std::vector<SeedHit>& hits, const ACTSTracking::HitContainer& hitContainer,
                        Acts::MagneticFieldProvider::Cache& magCache, double errPos, double errPhi, double errLambda,
-                       double errRelP, double errTime) {
+                       double errRelP, double errTime, double errQOverP = 0) {
   if (hits.empty()) {
     return std::nullopt;
   }
@@ -645,7 +645,8 @@ estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geome
   }
 
   return estimateSeedParameters(alg, geo, geoCtx, *bottomSurface, bottom.pos, middle.pos, top.pos,
-                                hitContainer[bottom.sl.index()], magCache, errPos, errPhi, errLambda, errRelP, errTime);
+                                hitContainer[bottom.sl.index()], magCache, errPos, errPhi, errLambda, errRelP, errTime,
+                                errQOverP);
 }
 
 } // namespace ACTSTracking
