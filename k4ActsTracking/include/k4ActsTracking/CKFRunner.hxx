@@ -170,13 +170,6 @@ public:
     double chi2CutOff = 15;
     std::int32_t numMeasurementsCutOff = 10;
     double chi2CutOffOutlier = std::numeric_limits<double>::max();
-
-    /// Run the first CKF pass backward (outside-in): from the OUTER seed SP
-    /// inward, through the seed's middle and inner SPs towards the beamline.
-    /// Combined with doTwoWayCKF, the second (forward) pass extends the track
-    /// outward past the outer seed SP. When true, the caller must build seeds
-    /// whose bound parameters live on the TOP (outer) SP's surface -- see
-    /// estimateSeedParameters(..., propagateBackward).
     bool propagateBackward = false;
     bool extrapolateToCalo = false;
     std::size_t maxSteps = kDefaultMaxPropagationSteps;
@@ -289,7 +282,6 @@ public:
 
     Acts::PropagatorPlainOptions pOptions{m_geoCtx, m_magCtx};
     pOptions.maxSteps = m_maxSteps;
-    // Backward (outside-in) first pass: from the outer seed SP inward.
     if (m_propagateBackward) {
       pOptions.direction = Acts::Direction::Backward();
     }
