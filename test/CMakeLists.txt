@@ -260,6 +260,25 @@ add_k4run_test(ckf_tracking_CLD_o2_v08
   FIXTURES_REQUIRED reco_CLD_fixture
 )
 
+add_k4run_test(vertexing_CLD_o2_v08
+  WORKING_DIRECTORY ${_cld_dir}
+  OPTIONS_FILE ${CMAKE_CURRENT_LIST_DIR}/options/CLD_Vertexing.py
+  EXTRA_ARGS --compactFile ${_cld_compact}
+             --IOSvc.Input particle_gun_CLD_o2_v08_REC.edm4hep.root
+             --IOSvc.Output particle_gun_CLD_o2_v08_VTX.edm4hep.root
+  USE_TEST_ENV
+  FIXTURES_REQUIRED reco_CLD_fixture
+  FIXTURES_SETUP vertexing_CLD_fixture
+)
+
+# k4run succeeds even when no vertex is found, so check the vertexing output
+add_test(NAME check_vertexing_CLD_o2_v08
+  WORKING_DIRECTORY ${_cld_dir}
+  COMMAND python ${CMAKE_CURRENT_LIST_DIR}/scripts/check_vertexing.py
+                 particle_gun_CLD_o2_v08_VTX.edm4hep.root
+)
+set_tests_properties(check_vertexing_CLD_o2_v08 PROPERTIES FIXTURES_REQUIRED vertexing_CLD_fixture)
+
 
 # === ILD chain ===
 set(_ild_compact $ENV{k4geo_DIR}/FCCee/ILD_FCCee/compact/ILD_FCCee_v01/ILD_FCCee_v01.xml)
