@@ -352,7 +352,7 @@ public:
           const auto anchor = findTwoWayAnchor(constSmoothed);
 
           if (!anchor.has_value()) {
-            alg.warning() << "TwoWayCKF: no anchor measurement found, falling back to single-pass output." << endmsg;
+            alg.debug() << "TwoWayCKF: no anchor measurement found, falling back to single-pass output." << endmsg;
           } else {
             const auto anchorIdx = anchor->index();
 
@@ -373,11 +373,11 @@ public:
             const bool secondEmpty =
                 !secondResult.ok() || secondResult.value().empty() || secondResult.value().begin()->nTrackStates() == 0;
             if (secondEmpty) {
-              alg.warning() << "TwoWayCKF: second pass "
-                            << (!secondResult.ok() ? std::string("FAILED: ") + secondResult.error().message()
-                                : secondResult.value().empty() ? std::string("returned EMPTY")
-                                                               : std::string("returned a track with no states"))
-                            << ", falling back to single-pass output." << endmsg;
+              alg.debug() << "TwoWayCKF: second pass "
+                          << (!secondResult.ok()             ? std::string("FAILED: ") + secondResult.error().message()
+                              : secondResult.value().empty() ? std::string("returned EMPTY")
+                                                             : std::string("returned a track with no states"))
+                          << ", falling back to single-pass output." << endmsg;
             } else {
               auto secondTrack = tracks.makeTrack();
               secondTrack.copyFrom(*secondResult.value().begin());
