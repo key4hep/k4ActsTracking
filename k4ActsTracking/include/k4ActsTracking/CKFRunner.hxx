@@ -384,15 +384,12 @@ public:
               if (m_propagateBackward) {
                 // Outside-in stitching: second pass = forward from outermost
                 // first-pass measurement.
-                //   secondTrack.trackStates() walks stem->tip = inner->outer;
-                //   the first element is the CKF's start-surface reference
-                //   state at the anchor -- link its .previous() to the
-                //   first-pass anchor so the inner-detector chain continues
-                //   from there.
-                for (auto st : secondTrack.trackStates()) {
-                  st.previous() = anchorIdx;
-                  break;
-                }
+                //   secondTrack walks stem->tip = inner->outer. The CKF
+                //   creates no state on the anchor surface, so the stem is
+                //   the first new state outside the anchor -- link its
+                //   .previous() to the first-pass anchor so the
+                //   inner-detector chain continues from there.
+                tracks.trackStateContainer().getTrackState(secondTrack.stemIndex()).previous() = anchorIdx;
                 // The backward first pass built .previous() links going
                 // OUTWARD (perigee -> ... -> anchor). Flip those to INWARD
                 // so a single .previous() walk from the stitched tip lands
@@ -412,18 +409,13 @@ public:
               } else {
                 // Inside-out + backward stitching.
                 //   Second pass = backward from innermost first-pass
-                //   measurement. After reverseTrackStates(): tipIndex() is
-                //   the reference state at the start surface (duplicate of
-                //   anchor). Skip it and splice at the first real inner
-                //   state (== that head's .previous()).
-                secondTrack.reverseTrackStates();
-                const auto firstInnerIdx = (*secondTrack.trackStatesReversed().begin()).previous();
-                for (auto st : smoothed.trackStatesReversed()) {
-                  if (st.index() == anchorIdx) {
-                    st.previous() = firstInnerIdx;
-                    break;
-                  }
-                }
+                //   measurement. The CKF creates no state on the anchor
+                //   surface, so after reverseTrackStates() tipIndex() is the
+                //   second-pass state next to the anchor: link the anchor's
+                //   .previous() to it. reverseTrackStates(true) also inverts
+                //   the Jacobians so the chain stays valid if re-smoothed.
+                secondTrack.reverseTrackStates(true);
+                tracks.trackStateContainer().getTrackState(anchorIdx).previous() = secondTrack.tipIndex();
                 secondTrack.tipIndex() = smoothed.tipIndex();
               }
 
