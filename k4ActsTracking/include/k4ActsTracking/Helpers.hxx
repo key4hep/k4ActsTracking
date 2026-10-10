@@ -35,6 +35,7 @@
 #include <GaudiKernel/StatusCode.h>
 
 // ACTS
+#include <Acts/Definitions/Units.hpp>
 #include <Acts/EventData/BoundTrackParameters.hpp>
 #include <Acts/EventData/FreeTrackParameters.hpp>
 #include <Acts/EventData/ParticleHypothesis.hpp>
@@ -69,6 +70,12 @@ using CaloFacePropagator = Acts::Propagator<Acts::EigenStepper<>, Acts::Navigato
 
 using TrackResult =
     Acts::TrackContainer<Acts::VectorTrackContainer, Acts::VectorMultiTrajectory, std::shared_ptr>::TrackProxy;
+
+/// Hit time in Acts native units; use this for every hit time passed to ACTS.
+template <class Hit>
+double hitTime(const Hit& hit) {
+  return static_cast<double>(hit.getTime()) * Acts::UnitConstants::ns;
+}
 
 //! Get path to a resource file
 /**

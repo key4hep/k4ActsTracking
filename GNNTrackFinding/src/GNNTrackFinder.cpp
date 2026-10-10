@@ -19,8 +19,8 @@
 #include "GNNTrackFinder.h"
 
 #include "CCAndWalkTrackBuilding.h"
-#include "ClassifiedEdgePrinting.h"
 #include "EdgeDirection.h"
+#include "EdgePrintingHook.h"
 #include "OnnxMetricLearning.h"
 #include "PaddedEdgeRemoval.h"
 
@@ -201,6 +201,7 @@ GNNTrackFinder::GNNTrackFinder(const std::string& name, ISvcLocator* svcLoc)
 
 StatusCode GNNTrackFinder::initialize() {
   m_logger = makeActsGaudiLogger(this);
+  m_edgeLogger = m_logger->clone(name() + ".Edges");
   m_monitoringHist.createHistogram(*this);
 
   m_actsGeoSvc = svcLoc()->service<IActsGeoSvc>("ActsGeoSvc");
@@ -469,8 +470,6 @@ void GNNTrackFinder::buildPipeline(const std::vector<float>& embeddingScales,
                                  // vector is what tells OnnxMetricLearning not to order the edges
                                  .distanceFeatureIndices =
                                      m_sortEdges.value() ? m_distanceFeatureIndices : std::vector<std::size_t>{},
-                                 // The edge features are a pipeline output, so the full dump covers them too
-                                 .printAllEdgeFeatures = m_detailedDebugOut.value(),
                                  .fixedInputLength = m_embeddingFixedInputLength.value(),
                                  .keepPadding = m_keepEmbeddingPadding.value(),
                                  .fixedEdgeLength = m_edgeClassifierFixedInputLength.value(),
@@ -478,6 +477,11 @@ void GNNTrackFinder::buildPipeline(const std::vector<float>& embeddingScales,
                                  .knnVal = m_edgeBuildingKnn.value(),
                                  .device = m_runDevice},
       m_logger->clone(name() + ".MetricLearning"));
+
+  // The EdgePrintingHook labels its output by the stage it follows, in the
+  // order GnnPipeline::run() calls it: graph construction, then every link of
+  // the classifier chain.
+  m_pipelineStageNames = {"graph construction"};
 
   std::vector<std::shared_ptr<ActsPlugins::EdgeClassificationBase>> edgeClassifiers{};
   edgeClassifiers.reserve(m_edgeClassifierModelPath.size());
@@ -492,23 +496,14 @@ void GNNTrackFinder::buildPipeline(const std::vector<float>& embeddingScales,
                                                 // CUDA execution provider.
                                                 .device = m_runDevice},
         m_logger->clone(name() + fmt::format(".EdgeClassifier{}", i))));
-
-    // The score is the one thing the graph construction cannot log, so a
-    // pass-through stage prints the classified edges with it. Only added when
-    // the output would be printed at all, so that a production run keeps the
-    // pipeline it always had.
-    if (m_logger->level() <= Acts::Logging::DEBUG) {
-      edgeClassifiers.push_back(std::make_shared<ClassifiedEdgePrinting>(
-          ClassifiedEdgePrinting::Config{.numEdgesShown = OnnxMetricLearning::kNumEdgesShown,
-                                         .printAll = m_detailedDebugOut.value()},
-          m_logger->clone(name() + fmt::format(".EdgeClassifier{}Edges", i))));
-    }
+    m_pipelineStageNames.push_back(fmt::format("edge classifier {}", i));
   }
 
   // The padding edges have to be gone before the track building, so this runs
   // as the last link of the classifier chain.
   if (m_edgeClassifierFixedInputLength.value() > 0) {
     edgeClassifiers.push_back(std::make_shared<PaddedEdgeRemoval>(m_logger->clone(name() + ".PaddedEdgeRemoval")));
+    m_pipelineStageNames.push_back("padded edge removal");
   }
 
   std::shared_ptr<ActsPlugins::TrackBuildingBase> trackBuilder{};
@@ -631,7 +626,18 @@ GNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*
       }
     }
 
-    auto segmentCandIdcs = m_pipeline->run(embeddingInputs, {}, segmentHitIdcs, m_runDevice);
+    // The graph after every stage is only printed at DEBUG. The hook counts the
+    // stages it has seen, so every run gets a fresh one.
+    std::optional<EdgePrintingHook> edgePrinting{};
+    if (m_edgeLogger->doPrint(Acts::Logging::DEBUG)) {
+      edgePrinting.emplace(
+          EdgePrintingHook::Config{.stageNames = m_pipelineStageNames, .printAll = m_detailedDebugOut.value()},
+          *m_edgeLogger);
+    }
+    const ActsPlugins::GnnHook noHook{};
+    const ActsPlugins::GnnHook& hook = edgePrinting.has_value() ? *edgePrinting : noHook;
+
+    auto segmentCandIdcs = m_pipeline->run(embeddingInputs, {}, segmentHitIdcs, m_runDevice, hook);
     debug() << fmt::format("Received {} track candidates", segmentCandIdcs.size()) << endmsg;
 
     // Full detailed output of track candidates

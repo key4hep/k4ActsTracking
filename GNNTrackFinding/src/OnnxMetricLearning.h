@@ -44,9 +44,6 @@ public:
   static constexpr std::size_t kNumEdgeFeatureInputs = 4;
   /// Number of edge features it produces, see Config::edgeFeatureIndices
   static constexpr std::size_t kNumEdgeFeatures = 6;
-  /// How many edges the DEBUG dump of the computed edge features shows,
-  /// unless Config::printAllEdgeFeatures asks for all of them
-  static constexpr std::size_t kNumEdgesShown = 5;
   /// The scale the edge feature computation takes phi to be divided by: the
   /// dphi wrap-around un-scales the difference by it, wraps it into [-pi, pi]
   /// and scales it back. This is the convention of the ACORN training and of
@@ -75,10 +72,6 @@ public:
     /// full per-hit feature vector, by which every built edge is oriented (see
     /// EdgeDirection.h). Empty leaves the edges as the edge building left them.
     std::vector<std::size_t> distanceFeatureIndices{};
-    /// Whether the DEBUG dump of the computed edge features covers every edge
-    /// instead of the first kNumEdgesShown ones. Only has an effect if edge
-    /// features are computed at all and the logger prints DEBUG.
-    bool printAllEdgeFeatures{false};
     /// If > 0, the model input is padded with all-zero rows up to this many
     /// nodes, for models exported with a fixed-size input. The embedding of the
     /// padding rows is discarded before the edge building. 0 disables it.
@@ -125,8 +118,9 @@ public:
 
 private:
   /// @p edgeList with every edge oriented from the hit closer to the
-  /// interaction point to the one further out, and with the columns
-  /// deduplicated. The ordering is gnntracking::pointsOutward() over the
+  /// interaction point to the one further out. The edge list is expected to
+  /// hold every pair of hits once, as the edge building leaves it, and still
+  /// does afterwards. The ordering is gnntracking::pointsOutward() over the
   /// unscaled node values selected by Config::distanceFeatureIndices, the same
   /// one CCAndWalkTrackBuilding directs the classified graph by. Returns
   /// @p edgeList unchanged if no distance features are configured.

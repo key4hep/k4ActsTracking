@@ -476,17 +476,14 @@ torch::Tensor OnnxMetricLearning::orderEdgesByDistance(const std::vector<float>&
   using torch::indexing::Slice;
   edgeList.index_put_({Slice(), flipMask}, edgeList.index({Slice(), flipMask}).flip(0));
 
-  // Collapse a pair of hits that ended up in the graph in both directions, as
-  // Acts' postprocessEdgeTensor() does after its own orientation. That one
-  // already deduplicated, so this normally only gives the columns a canonical
-  // order, which keeps the graph reproducible from run to run.
-  const int64_t numEdges = edgeList.size(1);
-  edgeList = std::get<0>(torch::unique_dim(edgeList, -1, false));
+  // No deduplication is needed afterwards: Acts' postprocessEdgeTensor() has
+  // already reduced the graph to one column per pair of hits (in a canonical,
+  // sorted order, so the graph is reproducible from run to run), and flipping
+  // a column keeps it the only one of its pair.
 
   // The flips are only counted when this is printed: .item() waits for the
   // device. flipMask is a tensor of its own, so the flip above left it intact.
-  ACTS_DEBUG(fmt::format("Oriented {} of {} edges outwards, {} duplicate(s) collapsed", flipMask.sum().item<int64_t>(),
-                         numEdges, numEdges - edgeList.size(1)));
+  ACTS_DEBUG(fmt::format("Oriented {} of {} edges outwards", flipMask.sum().item<int64_t>(), edgeList.size(1)));
 
   return edgeList;
 }
@@ -550,25 +547,7 @@ std::optional<torch::Tensor> OnnxMetricLearning::buildEdgeFeatures(const std::ve
   auto edgeFeatures = torch::stack({dr, dphi, dz, deta, phislope, rphislope}, 1).contiguous();
 
   // The features go to the classifier unscaled, so this is what the model
-  // actually sees. Printing a handful of them (all of them with
-  // Config::printAllEdgeFeatures) is the way to spot a mismatch with the scales
-  // the model was trained with.
-  if (logger().doPrint(Acts::Logging::DEBUG)) {
-    const int64_t numEdges = edgeFeatures.size(0);
-    const int64_t numShown = config().printAllEdgeFeatures ? numEdges : std::min<int64_t>(kNumEdgesShown, numEdges);
-    // Pulling the shown rows over in one go, so that a CUDA run does not
-    // synchronise once per printed value.
-    const auto shownFeatures = edgeFeatures.slice(0, 0, numShown).to(torch::kCPU).contiguous();
-    const auto shownEdges = edgeList.slice(1, 0, numShown).to(torch::kCPU).contiguous();
-
-    ACTS_DEBUG(fmt::format("Edge features (dr, dphi, dz, deta, phislope, rphislope) of {} of {} built edges:", numShown,
-                           numEdges));
-    for (int64_t e = 0; e < numShown; ++e) {
-      const float* values = shownFeatures[e].data_ptr<float>();
-      ACTS_DEBUG(fmt::format("  edge {} ({} -> {}): {}", e, shownEdges[0][e].item<int64_t>(),
-                             shownEdges[1][e].item<int64_t>(), fmt::join(std::span(values, kNumEdgeFeatures), ", ")));
-    }
-  }
-
+  // actually sees. The EdgePrintingHook logs them at DEBUG, which is the way to
+  // spot a mismatch with the scales the model was trained with.
   return edgeFeatures;
 }

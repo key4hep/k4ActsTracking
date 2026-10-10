@@ -74,6 +74,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -449,7 +450,11 @@ void prepareTrackerHits(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geom
                         const edm4hep::TrackerHitPlaneCollection& trackerHits,
                         ACTSTracking::MeasurementContainer& measurements,
                         ACTSTracking::SourceLinkContainer& sourceLinks, ACTSTracking::HitContainer& hits,
-                        int numThreads, HitSink&& hitSink) {
+                        int numThreads, HitSink&& hitSink, bool useHitTime = false,
+                        const std::function<double(const edm4hep::TrackerHitPlane&)>& hitTimeResolutionFor = {}) {
+  if (useHitTime && !hitTimeResolutionFor) {
+    throw std::invalid_argument("prepareTrackerHits: useHitTime requires a hit time resolution function");
+  }
   const auto& cellIdToSurface = geo.cellIdToSurfaceMap();
 
   std::vector<std::pair<Acts::GeometryIdentifier, edm4hep::TrackerHitPlane>> sortedHits;
@@ -503,8 +508,21 @@ void prepareTrackerHits(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geom
 
     ACTSTracking::SourceLink sourceLink(surface->geometryId(), measurements.size());
     Acts::SourceLink srcWrap{sourceLink};
-    ACTSTracking::Measurement meas =
-        ACTSTracking::makeMeasurement(srcWrap, loc, localCov, Acts::eBoundLoc0, Acts::eBoundLoc1);
+    // Optionally measure the hit time as a third coordinate.
+    ACTSTracking::Measurement meas = [&] {
+      if (useHitTime) {
+        const double hitT = hitTime(hitPair.second);
+        Acts::Vector3 loc3;
+        loc3 << loc[0], loc[1], hitT;
+        const double timeRes = hitTimeResolutionFor(hitPair.second);
+        Acts::SquareMatrix3 cov3 = Acts::SquareMatrix3::Zero();
+        cov3(0, 0) = localCov(0, 0);
+        cov3(1, 1) = localCov(1, 1);
+        cov3(2, 2) = std::pow(timeRes * Acts::UnitConstants::ns, 2);
+        return ACTSTracking::makeMeasurement(srcWrap, loc3, cov3, Acts::eBoundLoc0, Acts::eBoundLoc1, Acts::eBoundTime);
+      }
+      return ACTSTracking::makeMeasurement(srcWrap, loc, localCov, Acts::eBoundLoc0, Acts::eBoundLoc1);
+    }();
 
     measurements.push_back(meas);
     hits.push_back(hitPair.second);
@@ -515,11 +533,48 @@ void prepareTrackerHits(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geom
 }
 
 /**
+ * @brief Bound seed parameters at the space point the CKF starts from.
+ *
+ * Inside-out: the start is the bottom SP, where Acts::estimateTrackParamsFromSeed
+ * evaluates the parameters anyway; @p startSurface is the bottom SP's surface.
+ *
+ * Outside-in (@p propagateBackward): the start is the top SP. The same three-point
+ * estimate is moved there: the position becomes the top SP and the direction the
+ * helix tangent at the top SP, not the direction at the bottom SP.
+ *
+ * @param t0 Time of the start SP.
+ */
+inline Acts::Result<Acts::BoundVector>
+estimateSeedParamsAtStart(const Acts::GeometryContext& geoCtx, const Acts::Surface& startSurface,
+                          const Acts::Vector3& bottomPos, double t0, const Acts::Vector3& middlePos,
+                          const Acts::Vector3& topPos, const Acts::Vector3& bField, bool propagateBackward) {
+  if (!propagateBackward) {
+    return Acts::estimateTrackParamsFromSeed(geoCtx, startSurface, bottomPos, t0, middlePos, topPos, bField);
+  }
+  Acts::Vector3 topTangent = Acts::Vector3::Zero();
+  Acts::FreeVector freeParams =
+      Acts::estimateTrackParamsFromSeed(bottomPos, t0, middlePos, topPos, bField, nullptr, nullptr, &topTangent);
+  freeParams.segment<3>(Acts::eFreePos0) = topPos;
+  freeParams.segment<3>(Acts::eFreeDir0) = topTangent;
+  return Acts::transformFreeToBoundParameters(freeParams, startSurface, geoCtx);
+}
+
+/**
  * @brief Estimate initial bound track parameters from a three-point seed.
  *
- * Evaluates the magnetic field at the bottom position, calls
- * Acts::estimateTrackParamsFromSeed on the bottom/middle/top positions and
- * builds a diagonal initial covariance.
+ * Evaluates the magnetic field at the start (bottom or top) space point,
+ * calls Acts::estimateTrackParamsFromSeed on the bottom/middle/top positions
+ * and builds a diagonal initial covariance.
+ *
+ * @param startSurface      Surface on which the returned bound parameters are
+ *                          expressed. For inside-out this is the bottom (inner)
+ *                          SP's surface; with @p propagateBackward it is the top
+ *                          (outer) SP's surface.
+ * @param startHit          Hit of the start SP; gives the seed time.
+ * @param propagateBackward When true (backward, outside-in CKF), express the
+ *                          parameters at the top SP (position and helix
+ *                          tangent) on @p startSurface instead of at the bottom
+ *                          SP; see estimateSeedParamsAtStart.
  *
  * @return The estimated parameters, or std::nullopt if the estimation fails. A
  *         field-lookup failure throws, matching the tracking algorithms.
@@ -527,18 +582,20 @@ void prepareTrackerHits(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geom
 template <class Alg>
 std::optional<Acts::BoundTrackParameters>
 estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx,
-                       const Acts::Surface& bottomSurface, const Acts::Vector3& bottomPos,
-                       const Acts::Vector3& middlePos, const Acts::Vector3& topPos, double t0,
+                       const Acts::Surface& startSurface, const Acts::Vector3& bottomPos,
+                       const Acts::Vector3& middlePos, const Acts::Vector3& topPos, const edm4hep::TrackerHit& startHit,
                        Acts::MagneticFieldProvider::Cache& magCache, double errPos, double errPhi, double errLambda,
-                       double errRelP, double errTime) {
-  // Magnetic field at the seed (bottom space point) position
-  Acts::Result<Acts::Vector3> seedField = geo.magneticField()->getField(bottomPos, magCache);
+                       double errRelP, double errTime, bool propagateBackward = false) {
+  // Magnetic field at the seed start position (bottom SP for inside-out,
+  // top SP for outside-in).
+  const Acts::Vector3& seedPos = propagateBackward ? topPos : bottomPos;
+  Acts::Result<Acts::Vector3> seedField = geo.magneticField()->getField(seedPos, magCache);
   if (!seedField.ok()) {
     throw std::runtime_error("Field lookup error: " + std::to_string(seedField.error().value()));
   }
 
-  Acts::Result<Acts::BoundVector> optParams =
-      Acts::estimateTrackParamsFromSeed(geoCtx, bottomSurface, bottomPos, t0, middlePos, topPos, *seedField);
+  Acts::Result<Acts::BoundVector> optParams = estimateSeedParamsAtStart(
+      geoCtx, startSurface, bottomPos, hitTime(startHit), middlePos, topPos, *seedField, propagateBackward);
   if (!optParams.ok()) {
     alg.debug() << "Failed estimation of track parameters for seed." << endmsg;
     return std::nullopt;
@@ -549,7 +606,7 @@ estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geome
 
   Acts::BoundMatrix cov = ACTSTracking::makeInitialCovariance(p, errPos, errPhi, errLambda, errRelP, errTime);
 
-  return Acts::BoundTrackParameters(bottomSurface.getSharedPtr(), params, cov, Acts::ParticleHypothesis::pion());
+  return Acts::BoundTrackParameters(startSurface.getSharedPtr(), params, cov, Acts::ParticleHypothesis::pion());
 }
 
 /// A hit belonging to a seed candidate: global position, transverse radius and
@@ -599,19 +656,22 @@ std::vector<SeedHit> collectSeedHits(const HitRange& candidateHits,
  *
  * Convenience overload for candidates whose hits were collected with
  * collectSeedHits(): it picks the innermost / middle / outermost hit as the
- * three-point seed, resolves the surface of the innermost hit and takes the
- * seed time from the corresponding entry of @p hitContainer.
+ * three-point seed, resolves the surface of the start hit and takes the seed
+ * time from the corresponding entry of @p hitContainer. The start hit is the
+ * innermost one, or the outermost one with @p propagateBackward.
  *
- * @param hits Radius-ordered seed hits.
+ * @param hits              Radius-ordered seed hits.
+ * @param propagateBackward Express the seed at the outermost hit, for a
+ *                          backward (outside-in) CKF; see the other overload.
  * @return The estimated parameters, or std::nullopt if there are no hits, the
- *         innermost hit's surface is unknown or the estimation itself fails.
+ *         start hit's surface is unknown or the estimation itself fails.
  */
 template <class Alg>
 std::optional<Acts::BoundTrackParameters>
 estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx,
                        const std::vector<SeedHit>& hits, const ACTSTracking::HitContainer& hitContainer,
                        Acts::MagneticFieldProvider::Cache& magCache, double errPos, double errPhi, double errLambda,
-                       double errRelP, double errTime) {
+                       double errRelP, double errTime, bool propagateBackward = false) {
   if (hits.empty()) {
     return std::nullopt;
   }
@@ -619,16 +679,17 @@ estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geome
   const SeedHit& bottom = hits.front();
   const SeedHit& middle = hits[hits.size() / 2];
   const SeedHit& top = hits.back();
+  const SeedHit& start = propagateBackward ? top : bottom;
 
-  const Acts::Surface* bottomSurface = geo.trackingGeometry()->findSurface(bottom.sl.geometryId());
-  if (bottomSurface == nullptr) {
-    alg.warning() << "Surface with geoID " << bottom.sl.geometryId() << " not found in tracking geometry" << endmsg;
+  const Acts::Surface* startSurface = geo.trackingGeometry()->findSurface(start.sl.geometryId());
+  if (startSurface == nullptr) {
+    alg.warning() << "Surface with geoID " << start.sl.geometryId() << " not found in tracking geometry" << endmsg;
     return std::nullopt;
   }
 
-  return estimateSeedParameters(alg, geo, geoCtx, *bottomSurface, bottom.pos, middle.pos, top.pos,
-                                hitContainer[bottom.sl.index()].getTime(), magCache, errPos, errPhi, errLambda, errRelP,
-                                errTime);
+  return estimateSeedParameters(alg, geo, geoCtx, *startSurface, bottom.pos, middle.pos, top.pos,
+                                hitContainer[start.sl.index()], magCache, errPos, errPhi, errLambda, errRelP, errTime,
+                                propagateBackward);
 }
 
 } // namespace ACTSTracking
