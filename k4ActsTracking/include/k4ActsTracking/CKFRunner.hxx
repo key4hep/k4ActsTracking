@@ -356,7 +356,14 @@ public:
                                                    cov2, params2.particleHypothesis());
             }
 
-            auto secondResult = trackFinder.findTracks(params2, secondOptions, tracks);
+            // Start the second pass from a root branch carrying the first-pass
+            // summary (nMeasurements/nHoles/nOutliers/chi2/nDoF) but no states:
+            // the CKF then increments these counters, so the stitched track
+            // ends up with the totals for both passes, and the branch stopper
+            // sees the full track rather than just the second-pass part
+            auto secondRoot = tracks.makeTrack();
+            secondRoot.copyFromWithoutStates(smoothed);
+            auto secondResult = trackFinder.findTracks(params2, secondOptions, tracks, secondRoot);
             // The second pass can also return a track with no states at all
             // (first seen once endcap-disk seeding was enabled). Copying it
             // leaves secondTrack without a stem index, so trackStates() below
