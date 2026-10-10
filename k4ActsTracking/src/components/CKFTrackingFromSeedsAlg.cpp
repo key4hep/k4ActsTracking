@@ -95,10 +95,7 @@ struct CKFTrackingFromSeedsAlg final
 private:
   /// @name Run control
   ///@{
-  Gaudi::Property<bool> m_propagateBackward{
-      this, "PropagateBackward", false,
-      "Find tracks outside-in: start the CKF at the outermost hit of each input candidate and propagate backward "
-      "toward the beamline."};
+  Gaudi::Property<bool> m_propagateBackward{this, "PropagateBackward", false, "Extrapolates tracks towards beamline."};
   Gaudi::Property<bool> m_extrapolateToCalo{
       this, "ExtrapolateToCalo", true,
       "Extrapolate fitted tracks to the calorimeter face and add an AtCalorimeter track state."};
@@ -264,8 +261,7 @@ CKFTrackingFromSeedsAlg::operator()(const edm4hep::TrackerHitPlaneCollection& tr
 
       std::optional<Acts::BoundTrackParameters> paramseed = ACTSTracking::estimateSeedParameters(
           *this, *m_actsGeoSvc, geoCtx, hits, hitContainer, magCacheLocal, m_initialTrackError_pos,
-          m_initialTrackError_phi, m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time,
-          m_propagateBackward);
+          m_initialTrackError_phi, m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time);
       if (!paramseed) {
         continue;
       }
