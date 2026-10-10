@@ -190,7 +190,16 @@ private:
   /// @name Run control
   ///@{
   Gaudi::Property<bool> m_runCKF{this, "RunCKF", true, "Run tracking using CKF. False means stop at seeding."};
-  Gaudi::Property<bool> m_propagateBackward{this, "PropagateBackward", false, "Extrapolates tracks towards beamline."};
+  Gaudi::Property<bool> m_doTwoWayCKF{this, "DoTwoWayCKF", false,
+                                      "Run two-way CKF: first pass + smooth + second pass in opposite direction."};
+  Gaudi::Property<bool> m_inflateCovarianceTwoWay{this, "InflateCovarianceTwoWay", true,
+                                                  "Inflate covariance before the second CKF pass."};
+  Gaudi::Property<double> m_twoWayInflateCovarianceFactor{this, "TwoWayInflateCovarianceFactor", 100.0,
+                                                          "Covariance inflation factor for the second CKF pass."};
+  Gaudi::Property<bool> m_propagateBackward{
+      this, "PropagateBackward", false,
+      "Find tracks outside-in: start the CKF at the outermost seed SP and propagate backward through the other seed "
+      "SPs toward the beamline."};
   Gaudi::Property<bool> m_extrapolateToCalo{
       this, "ExtrapolateToCalo", true,
       "Extrapolate fitted tracks to the calorimeter face and add an AtCalorimeter track state."};
@@ -586,6 +595,9 @@ StatusCode CKFTrackingAlg::initialize() {
                                                       .bsMinMeasurements = m_bsMinMeasurements,
                                                       .bsPtMin = m_bsPtMin,
                                                       .bsPtMinMeasurements = m_bsPtMinMeasurements,
+                                                      .doTwoWayCKF = m_doTwoWayCKF,
+                                                      .inflateCovarianceTwoWay = m_inflateCovarianceTwoWay,
+                                                      .twoWayInflateCovarianceFactor = m_twoWayInflateCovarianceFactor,
                                                       .referenceSurface = referenceSurface});
 
   return StatusCode::SUCCESS;
@@ -960,17 +972,21 @@ CKFTrackingAlg::seedsToParameters(const Acts::SeedContainer& seeds, const Acts::
     const Acts::ConstSpacePointProxy middleSp = spacePoints[spIndices[1]];
     const Acts::ConstSpacePointProxy topSp = spacePoints[spIndices[2]];
 
-    const ACTSTracking::SourceLink& bottomSL = sourceLinkOf(bottomSp);
-    const Acts::Surface* surface = m_actsGeoSvc->trackingGeometry()->findSurface(bottomSL.geometryId());
+    // PropagateBackward: start the (backward) CKF from the OUTER SP, so we need
+    // bound parameters expressed on the top surface, not the bottom one.
+    // Inside-out (default): start from the inner SP.
+    const Acts::ConstSpacePointProxy& startSp = m_propagateBackward ? topSp : bottomSp;
+    const ACTSTracking::SourceLink& startSL = sourceLinkOf(startSp);
+    const Acts::Surface* surface = m_actsGeoSvc->trackingGeometry()->findSurface(startSL.geometryId());
     if (surface == nullptr) {
-      warning() << "Surface with geoID " << bottomSL.geometryId() << " not found in tracking geometry" << endmsg;
+      warning() << "Surface with geoID " << startSL.geometryId() << " not found in tracking geometry" << endmsg;
       continue;
     }
 
     std::optional<Acts::BoundTrackParameters> paramseed = ACTSTracking::estimateSeedParameters(
         *this, *m_actsGeoSvc, geoCtx, *surface, position(bottomSp), position(middleSp), position(topSp),
-        hits[bottomSL.index()], magCache, m_initialTrackError_pos, m_initialTrackError_phi, m_initialTrackError_lambda,
-        m_initialTrackError_relP, m_initialTrackError_time);
+        hits[startSL.index()], magCache, m_initialTrackError_pos, m_initialTrackError_phi, m_initialTrackError_lambda,
+        m_initialTrackError_relP, m_initialTrackError_time, m_propagateBackward);
     if (!paramseed) {
       continue;
     }
@@ -978,9 +994,9 @@ CKFTrackingAlg::seedsToParameters(const Acts::SeedContainer& seeds, const Acts::
 
     auto seedTrackState = ACTSTracking::makeSeedTrackState(*this, *m_actsGeoSvc, geoCtx, *paramseed, magCache);
 
-    ACTSTracking::appendSeedTrack(
-        seedCollection, m_seedMutex, seedTrackState,
-        std::array{hits[bottomSL.index()], hits[sourceLinkOf(middleSp).index()], hits[sourceLinkOf(topSp).index()]});
+    ACTSTracking::appendSeedTrack(seedCollection, m_seedMutex, seedTrackState,
+                                  std::array{hits[sourceLinkOf(bottomSp).index()], hits[sourceLinkOf(middleSp).index()],
+                                             hits[sourceLinkOf(topSp).index()]});
 
     debug() << "Seed Parameters" << std::endl << *paramseed << endmsg;
   }

@@ -167,8 +167,7 @@ def make_ckf_tracking(
     technical tests! This will not work for any meaningful tracking!
     """
 
-    return CKFTrackingAlg(
-        "CKFTracking",
+    props = dict(
         RunCKF=True,
         CKF_Chi2CutOff=10,
         SeedFinding_RMax=150,
@@ -184,8 +183,9 @@ def make_ckf_tracking(
         InputTrackerHitCollection=hit_merger.OutputCollection,
         InputTrackerHitRelationCollection=hit_rel_merger.OutputCollection,
         OutputLevel=INFO,
-        **ckf_args,
     )
+    props.update(ckf_args)
+    return CKFTrackingAlg("CKFTracking", **props)
 
 
 def make_telescope_ckf_tracking(

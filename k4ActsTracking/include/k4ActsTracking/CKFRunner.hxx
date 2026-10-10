@@ -124,6 +124,30 @@ void appendSeedTrack(edm4hep::TrackCollection& seedCollection, std::mutex& seedM
 }
 
 /**
+ * @brief Anchor of the two-way CKF: the first non-outlier measurement of @p track.
+ *
+ * Walks the track forward (stem to tip), so the anchor is where the first CKF
+ * pass started: the innermost measurement for an inside-out first pass, the
+ * outermost for an outside-in one. The second pass runs from there in the
+ * opposite direction. The track must be forward-linked (copyFrom() does that).
+ *
+ * @return The anchor state, or std::nullopt if the track has no such state.
+ */
+template <class track_proxy_t>
+std::optional<typename track_proxy_t::ConstTrackStateProxy> findTwoWayAnchor(const track_proxy_t& track) {
+  // A named range: find_if on a temporary range would return std::ranges::dangling.
+  auto states = track.trackStates();
+  auto it = std::ranges::find_if(states, [](const auto& st) {
+    return st.typeFlags().test(Acts::TrackStateFlag::HasMeasurement) &&
+           !st.typeFlags().test(Acts::TrackStateFlag::IsOutlier);
+  });
+  if (it == states.end()) {
+    return std::nullopt;
+  }
+  return typename track_proxy_t::ConstTrackStateProxy{*it};
+}
+
+/**
  * @brief Owns the ACTS Combinatorial Kalman Filter and runs it over seeds.
  *
  * Owns the event-independent propagators and CKF (built once) and runs the
@@ -146,6 +170,11 @@ public:
     double chi2CutOff = 15;
     std::int32_t numMeasurementsCutOff = 10;
     double chi2CutOffOutlier = std::numeric_limits<double>::max();
+
+    /// Run the CKF backward (outside-in): from the OUTER seed SP inward,
+    /// through the seed's middle and inner SPs towards the beamline. When
+    /// true, the caller must build seeds whose bound parameters live on the
+    /// TOP (outer) SP's surface -- see estimateSeedParameters(..., propagateBackward).
     bool propagateBackward = false;
     bool extrapolateToCalo = false;
     std::size_t maxSteps = kDefaultMaxPropagationSteps;
@@ -164,6 +193,22 @@ public:
     int bsMinMeasurements = 6;
     double bsPtMin = 0.0; ///< GeV; <= 0 disables the pT branch stop
     int bsPtMinMeasurements = 3;
+
+    /// Two-way CKF: after smoothing the first pass, run a second CKF pass in
+    /// the opposite direction from the smoothed innermost/outermost state and
+    /// splice its states onto the first-pass chain. The stitched track then
+    /// goes through the same reference-surface extrapolation as the single-
+    /// pass output. Disabled by default.
+    bool doTwoWayCKF = false;
+
+    /// Inflate the covariance passed to the second pass so the acceptance
+    /// window is not artificially tight after smoothing. Ignored when
+    /// doTwoWayCKF is false.
+    bool inflateCovarianceTwoWay = true;
+
+    /// Multiplicative inflation applied to the second-pass covariance when
+    /// inflateCovarianceTwoWay is true.
+    double twoWayInflateCovarianceFactor = 100.0;
 
     /// Surface the fitted tracks are extrapolated to for the AtIP track state.
     /// When null (the default) a PerigeeSurface at the origin is used, i.e. the
@@ -189,8 +234,9 @@ public:
       : m_geo(geo), m_geoCtx(Acts::GeometryContext::dangerouslyDefaultConstruct()), m_maxSteps(cfg.maxSteps),
         m_propagateBackward(cfg.propagateBackward), m_useBranchStopper(cfg.useBranchStopper),
         m_bsMaxHoles(cfg.bsMaxHoles), m_bsMaxOutliers(cfg.bsMaxOutliers), m_bsMinMeasurements(cfg.bsMinMeasurements),
-        m_bsPtMin(cfg.bsPtMin), m_bsPtMinMeasurements(cfg.bsPtMinMeasurements),
-        m_measSelConfig(makeSelectorConfig(cfg)),
+        m_bsPtMin(cfg.bsPtMin), m_bsPtMinMeasurements(cfg.bsPtMinMeasurements), m_doTwoWayCKF(cfg.doTwoWayCKF),
+        m_inflateCovarianceTwoWay(cfg.inflateCovarianceTwoWay),
+        m_twoWayInflateCovarianceFactor(cfg.twoWayInflateCovarianceFactor), m_measSelConfig(makeSelectorConfig(cfg)),
         m_trackFinder(std::make_unique<CombKalmanFilter>(makePropagator(geo, false))),
         m_referenceSurface(cfg.referenceSurface
                                ? cfg.referenceSurface
@@ -241,10 +287,25 @@ public:
 
     Acts::PropagatorPlainOptions pOptions{m_geoCtx, m_magCtx};
     pOptions.maxSteps = m_maxSteps;
+    // Backward (outside-in): from the outer seed SP inward.
     if (m_propagateBackward) {
       pOptions.direction = Acts::Direction::Backward();
     }
-    const CKFTrackFinderOptions ckfOptions(m_geoCtx, m_magCtx, m_calCtx, extensions, pOptions);
+    CKFTrackFinderOptions ckfOptions(m_geoCtx, m_magCtx, m_calCtx, extensions, pOptions);
+    ckfOptions.targetSurface = m_propagateBackward ? m_referenceSurface.get() : nullptr;
+
+    // Two-way CKF: second pass propagates opposite to the first pass.
+    //   Inside-out first pass  -> backward second pass (toward perigee).
+    //   Outside-in first pass  -> forward second pass  (into outer tracker).
+    // skipPrePropagationUpdate: the second pass re-seeds from the smoothed
+    // anchor of the first pass, so the CKF must not re-apply the pre-
+    // propagation Kalman update.
+    Acts::PropagatorPlainOptions secondPOptions{m_geoCtx, m_magCtx};
+    secondPOptions.maxSteps = m_maxSteps;
+    secondPOptions.direction = m_propagateBackward ? Acts::Direction::Forward() : Acts::Direction::Backward();
+    CKFTrackFinderOptions secondOptions(m_geoCtx, m_magCtx, m_calCtx, extensions, secondPOptions);
+    secondOptions.targetSurface = m_propagateBackward ? nullptr : m_referenceSurface.get();
+    secondOptions.skipPrePropagationUpdate = true;
 
     auto trackContainer = std::make_shared<Acts::VectorTrackContainer>();
     auto trackStateContainer = std::make_shared<Acts::VectorMultiTrajectory>();
@@ -257,44 +318,171 @@ public:
     for (std::size_t iseed = 0; iseed < paramseeds.size(); ++iseed) {
       tracks.clear();
       auto result = trackFinder.findTracks(paramseeds.at(iseed), ckfOptions, tracks);
-      if (result.ok()) {
-        const auto& fitOutput = result.value();
-        for (const CKFTrackContainer::TrackProxy& trackItem : fitOutput) {
-          auto trackTip = tracks.makeTrack();
-          trackTip.copyFrom(trackItem);
-          auto smoothResult = Acts::smoothTrack(m_geoCtx, trackTip);
-          if (!smoothResult.ok()) {
-            alg.warning() << "Track smoothing error: " << smoothResult.error() << endmsg;
-            continue;
-          }
+      if (!result.ok()) {
+        alg.warning() << "Track fit error: " << result.error() << endmsg;
+        continue;
+      }
 
-          // Extrapolate the smoothed track to the reference surface (the IP
-          // perigee by default, or a beam-perpendicular plane for telescope
-          // clients) so its track-level parameters (and hence the AtIP edm4hep
-          // TrackState) are defined there, not at the innermost measurement
-          // surface. Must happen before ACTS2edm4hep_track, which fills the
-          // AtIP state.
-          typename CKFPropagator::template Options<> exOptions(m_geoCtx, m_magCtx);
-          exOptions.maxSteps = m_maxSteps;
-          const CKFPropagator& extrapolator = *m_extrapolator;
-          auto exResult = Acts::extrapolateTrackToReferenceSurface(
-              trackTip, *m_referenceSurface, extrapolator, exOptions, Acts::TrackExtrapolationStrategy::firstOrLast);
-          if (!exResult.ok()) {
-            alg.warning() << "Reference-surface extrapolation error: " << exResult.error() << endmsg;
-            continue;
-          }
+      for (const CKFTrackContainer::TrackProxy& trackItem : result.value()) {
+        auto smoothed = tracks.makeTrack();
+        smoothed.copyFrom(trackItem);
+        auto smoothResult = Acts::smoothTrack(m_geoCtx, smoothed);
+        if (!smoothResult.ok()) {
+          alg.warning() << "Track smoothing error: " << smoothResult.error() << endmsg;
+          continue;
+        }
 
-          auto track = ACTSTracking::ACTS2edm4hep_track(m_geoCtx, m_magCtx, trackTip, hits, m_geo.magneticField());
+        // ---------------------------------------------------------------
+        // Optional two-way CKF: run a second pass in the opposite
+        // direction from the smoothed innermost/outermost state, then
+        // splice its states onto the first-pass chain so a single
+        // .previous() walk covers both passes. The stitched track goes
+        // through the same reference-surface extrapolation as the
+        // single-pass path.
+        //   Inside-out (forward first pass): anchor = innermost measurement;
+        //     second (backward) pass extends the chain toward perigee.
+        //   Outside-in (backward first pass): anchor = outermost measurement;
+        //     second (forward) pass extends the chain into the outer tracker.
+        // ---------------------------------------------------------------
+        std::optional<CKFTrackContainer::TrackProxy> stitchedOpt;
+        if (m_doTwoWayCKF) {
+          using ConstTP = CKFTrackContainer::ConstTrackProxy;
 
-          m_caloAppender.addCaloState(alg, trackTip, track, magCache, caloMonitor);
+          ConstTP constSmoothed(smoothed);
+          const auto anchor = findTwoWayAnchor(constSmoothed);
 
-          {
-            std::lock_guard lock{trackMutex};
-            trackCollection.push_back(track);
+          if (!anchor.has_value()) {
+            alg.debug() << "TwoWayCKF: no anchor measurement found, falling back to single-pass output." << endmsg;
+          } else {
+            const auto anchorIdx = anchor->index();
+
+            Acts::BoundTrackParameters params2 = constSmoothed.createParametersFromState(*anchor);
+            if (m_inflateCovarianceTwoWay) {
+              auto cov2 = *params2.covariance();
+              cov2 *= m_twoWayInflateCovarianceFactor;
+              params2 = Acts::BoundTrackParameters(params2.referenceSurface().getSharedPtr(), params2.parameters(),
+                                                   cov2, params2.particleHypothesis());
+            }
+
+            // Start the second pass from a root branch carrying the first-pass
+            // summary (nMeasurements/nHoles/nOutliers/chi2/nDoF) but no states:
+            // the CKF then increments these counters, so the stitched track
+            // ends up with the totals for both passes, and the branch stopper
+            // sees the full track rather than just the second-pass part
+            auto secondRoot = tracks.makeTrack();
+            secondRoot.copyFromWithoutStates(smoothed);
+            auto secondResult = trackFinder.findTracks(params2, secondOptions, tracks, secondRoot);
+            // The second pass can also return a track with no states at all
+            // (first seen once endcap-disk seeding was enabled). Copying it
+            // leaves secondTrack without a stem index, so trackStates() below
+            // throws "Track has no stem index" and the whole event aborts;
+            // now treating it like an empty result instead. Additionally, if
+            // the CKF returns  multiple branches, choose the best one
+            // explicitly: most measurements, then lowest chi2.
+            const CKFTrackContainer::TrackProxy* bestSecondTrack = nullptr;
+            std::size_t nStatefulSecondCandidates = 0;
+            if (secondResult.ok()) {
+              const auto& secondCandidates = secondResult.value();
+              for (std::size_t candidateIndex = 0; candidateIndex < secondCandidates.size(); ++candidateIndex) {
+                const auto& candidate = secondCandidates[candidateIndex];
+                if (candidate.nTrackStates() == 0) {
+                  continue;
+                }
+                ++nStatefulSecondCandidates;
+                if (bestSecondTrack == nullptr || candidate.nMeasurements() > bestSecondTrack->nMeasurements() ||
+                    (candidate.nMeasurements() == bestSecondTrack->nMeasurements() &&
+                     candidate.chi2() < bestSecondTrack->chi2())) {
+                  bestSecondTrack = &candidate;
+                }
+              }
+            }
+            const bool secondEmpty = !secondResult.ok() || bestSecondTrack == nullptr;
+            if (secondEmpty) {
+              alg.debug() << "TwoWayCKF: second pass "
+                          << (!secondResult.ok()             ? std::string("FAILED: ") + secondResult.error().message()
+                              : secondResult.value().empty() ? std::string("returned EMPTY")
+                                                             : std::string("returned no tracks with states"))
+                          << ", falling back to single-pass output." << endmsg;
+            } else {
+              auto secondTrack = tracks.makeTrack();
+              secondTrack.copyFrom(*bestSecondTrack);
+
+              if (m_propagateBackward) {
+                // Outside-in stitching: second pass = forward from outermost
+                // first-pass measurement.
+                //   secondTrack walks stem->tip = inner->outer. The CKF
+                //   creates no state on the anchor surface, so the stem is
+                //   the first new state outside the anchor -- link its
+                //   .previous() to the first-pass anchor so the
+                //   inner-detector chain continues from there.
+                tracks.trackStateContainer().getTrackState(secondTrack.stemIndex()).previous() = anchorIdx;
+                // The backward first pass built .previous() links going
+                // OUTWARD (perigee -> ... -> anchor). Flip those to INWARD
+                // so a single .previous() walk from the stitched tip lands
+                // at perigee.
+                Acts::TrackIndexType prevStateIdx = Acts::kTrackIndexInvalid;
+                for (auto st : smoothed.trackStates()) {
+                  if (prevStateIdx != Acts::kTrackIndexInvalid) {
+                    tracks.trackStateContainer().getTrackState(prevStateIdx).previous() = st.index();
+                  }
+                  prevStateIdx = st.index();
+                }
+                if (prevStateIdx != Acts::kTrackIndexInvalid) {
+                  tracks.trackStateContainer().getTrackState(prevStateIdx).previous() = Acts::kTrackIndexInvalid;
+                }
+                // secondTrack.tipIndex() already points at the outermost
+                // (OT) state.
+              } else {
+                // Inside-out + backward stitching.
+                //   Second pass = backward from innermost first-pass
+                //   measurement. The CKF creates no state on the anchor
+                //   surface, so after reverseTrackStates() tipIndex() is the
+                //   second-pass state next to the anchor: link the anchor's
+                //   .previous() to it. reverseTrackStates(true) also inverts
+                //   the Jacobians so the chain stays valid if re-smoothed.
+                secondTrack.reverseTrackStates(true);
+                tracks.trackStateContainer().getTrackState(anchorIdx).previous() = secondTrack.tipIndex();
+                secondTrack.tipIndex() = smoothed.tipIndex();
+              }
+
+              stitchedOpt = secondTrack;
+            }
           }
         }
-      } else {
-        alg.warning() << "Track fit error: " << result.error() << endmsg;
+
+        // Pick the track to emit: stitched (if two-way succeeded), else
+        // smoothed. Both go through the same reference-surface extrapolation
+        // + calo-face append + edm4hep conversion below, so the caller sees
+        // the same output shape regardless of two-way mode.
+        CKFTrackContainer::TrackProxy trackTip = stitchedOpt.value_or(smoothed);
+
+        // Extrapolate the (stitched or smoothed) track to the reference
+        // surface (the IP perigee by default, or a beam-perpendicular plane
+        // for telescope clients) so its track-level parameters (and hence
+        // the AtIP edm4hep TrackState) are defined there, not at the
+        // innermost measurement surface. Must happen before
+        // ACTS2edm4hep_track, which fills the AtIP state.
+        typename CKFPropagator::template Options<> exOptions(m_geoCtx, m_magCtx);
+        exOptions.maxSteps = m_maxSteps;
+        const CKFPropagator& extrapolator = *m_extrapolator;
+        auto exResult = Acts::extrapolateTrackToReferenceSurface(trackTip, *m_referenceSurface, extrapolator, exOptions,
+                                                                 Acts::TrackExtrapolationStrategy::firstOrLast);
+        if (!exResult.ok()) {
+          alg.warning() << "Reference-surface extrapolation error: " << exResult.error() << endmsg;
+          continue;
+        }
+
+        auto track = ACTSTracking::ACTS2edm4hep_track(m_geoCtx, m_magCtx, trackTip, hits, m_geo.magneticField());
+
+        // Calo-face state is only appended to the final (stitched or
+        // single-pass) output track, so it runs at most once per emitted
+        // track regardless of two-way mode.
+        m_caloAppender.addCaloState(alg, trackTip, track, magCache, caloMonitor);
+
+        {
+          std::lock_guard lock{trackMutex};
+          trackCollection.push_back(track);
+        }
       }
     }
   }
@@ -353,6 +541,9 @@ private:
   int m_bsMinMeasurements = 6;
   double m_bsPtMin = 0.0;
   int m_bsPtMinMeasurements = 3;
+  bool m_doTwoWayCKF = false;
+  bool m_inflateCovarianceTwoWay = true;
+  double m_twoWayInflateCovarianceFactor = 100.0;
   Acts::MeasurementSelector::Config m_measSelConfig;
 
   std::unique_ptr<CombKalmanFilter> m_trackFinder;
