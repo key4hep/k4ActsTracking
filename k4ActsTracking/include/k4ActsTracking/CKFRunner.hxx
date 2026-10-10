@@ -368,18 +368,38 @@ public:
             // (first seen once endcap-disk seeding was enabled). Copying it
             // leaves secondTrack without a stem index, so trackStates() below
             // throws "Track has no stem index" and the whole event aborts;
-            // now treating it like an empty result instead.
-            const bool secondEmpty =
-                !secondResult.ok() || secondResult.value().empty() || secondResult.value().begin()->nTrackStates() == 0;
+            // now treating it like an empty result instead. Additionally, if
+            // the CKF returns  multiple branches, choose the best one
+            // explicitly: most measurements, then lowest chi2.
+            const CKFTrackContainer::TrackProxy* bestSecondTrack = nullptr;
+            std::size_t nStatefulSecondCandidates = 0;
+            std::size_t bestSecondTrackIndex = 0;
+            if (secondResult.ok()) {
+              const auto& secondCandidates = secondResult.value();
+              for (std::size_t candidateIndex = 0; candidateIndex < secondCandidates.size(); ++candidateIndex) {
+                const auto& candidate = secondCandidates[candidateIndex];
+                if (candidate.nTrackStates() == 0) {
+                  continue;
+                }
+                ++nStatefulSecondCandidates;
+                if (bestSecondTrack == nullptr || candidate.nMeasurements() > bestSecondTrack->nMeasurements() ||
+                    (candidate.nMeasurements() == bestSecondTrack->nMeasurements() &&
+                     candidate.chi2() < bestSecondTrack->chi2())) {
+                  bestSecondTrack = &candidate;
+                  bestSecondTrackIndex = candidateIndex;
+                }
+              }
+            }
+            const bool secondEmpty = !secondResult.ok() || bestSecondTrack == nullptr;
             if (secondEmpty) {
               alg.debug() << "TwoWayCKF: second pass "
                           << (!secondResult.ok()             ? std::string("FAILED: ") + secondResult.error().message()
                               : secondResult.value().empty() ? std::string("returned EMPTY")
-                                                             : std::string("returned a track with no states"))
+                                                             : std::string("returned no tracks with states"))
                           << ", falling back to single-pass output." << endmsg;
             } else {
               auto secondTrack = tracks.makeTrack();
-              secondTrack.copyFrom(*secondResult.value().begin());
+              secondTrack.copyFrom(*bestSecondTrack);
 
               if (m_propagateBackward) {
                 // Outside-in stitching: second pass = forward from outermost
