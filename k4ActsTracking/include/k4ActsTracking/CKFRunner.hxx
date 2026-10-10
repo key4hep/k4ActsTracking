@@ -285,7 +285,8 @@ public:
     if (m_propagateBackward) {
       pOptions.direction = Acts::Direction::Backward();
     }
-    const CKFTrackFinderOptions ckfOptions(m_geoCtx, m_magCtx, m_calCtx, extensions, pOptions);
+    CKFTrackFinderOptions ckfOptions(m_geoCtx, m_magCtx, m_calCtx, extensions, pOptions);
+    ckfOptions.targetSurface = m_propagateBackward ? m_referenceSurface.get() : nullptr;
 
     // Two-way CKF: second pass propagates opposite to the first pass.
     //   Inside-out first pass  -> backward second pass (toward perigee).
@@ -297,6 +298,7 @@ public:
     secondPOptions.maxSteps = m_maxSteps;
     secondPOptions.direction = m_propagateBackward ? Acts::Direction::Forward() : Acts::Direction::Backward();
     CKFTrackFinderOptions secondOptions(m_geoCtx, m_magCtx, m_calCtx, extensions, secondPOptions);
+    secondOptions.targetSurface = m_propagateBackward ? nullptr : m_referenceSurface.get();
     secondOptions.skipPrePropagationUpdate = true;
 
     auto trackContainer = std::make_shared<Acts::VectorTrackContainer>();
@@ -373,7 +375,6 @@ public:
             // explicitly: most measurements, then lowest chi2.
             const CKFTrackContainer::TrackProxy* bestSecondTrack = nullptr;
             std::size_t nStatefulSecondCandidates = 0;
-            std::size_t bestSecondTrackIndex = 0;
             if (secondResult.ok()) {
               const auto& secondCandidates = secondResult.value();
               for (std::size_t candidateIndex = 0; candidateIndex < secondCandidates.size(); ++candidateIndex) {
@@ -386,7 +387,6 @@ public:
                     (candidate.nMeasurements() == bestSecondTrack->nMeasurements() &&
                      candidate.chi2() < bestSecondTrack->chi2())) {
                   bestSecondTrack = &candidate;
-                  bestSecondTrackIndex = candidateIndex;
                 }
               }
             }
