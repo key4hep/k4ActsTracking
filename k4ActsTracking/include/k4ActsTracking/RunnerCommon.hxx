@@ -442,6 +442,11 @@ inline Acts::SquareMatrix2 hitLocalCovariance(const Acts::GeometryContext& geoCt
   const Acts::SquareMatrix2 rot{{ex.dot(u), ex.dot(v)},
                                 {ey.dot(u), ey.dot(v)}};
   // clang-format on
+  // u/v must be an orthonormal basis of the surface plane, e.g. not left at the edm4hep default (0, 0)
+  if (std::abs(std::abs(rot.determinant()) - 1.0) > 1e-3) {
+    throw std::runtime_error("hitLocalCovariance: hit u/v axes do not span the surface plane (|det| = " +
+                             std::to_string(std::abs(rot.determinant())) + "), check the digitizer U/V");
+  }
   Acts::SquareMatrix2 uvCov = Acts::SquareMatrix2::Zero();
   uvCov(0, 0) = std::pow(hit.getDu() * Acts::UnitConstants::mm, 2);
   uvCov(1, 1) = std::pow(hit.getDv() * Acts::UnitConstants::mm, 2);
