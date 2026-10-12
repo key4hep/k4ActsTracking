@@ -19,8 +19,9 @@
 #
 """Compare a geantino scan against the material re-measured from the map.
 
-Step 5 of doc/material_mapping.md. Takes the Geant4 scan (the truth) and the
-output of ``material_validation.py`` (the mapped geometry, re-measured by
+Step 5 of doc/material_mapping.md. Takes the scan (the truth, from
+``material_recording.py`` or a Geant4 recording) and the output of
+``material_validation.py`` (the mapped geometry, re-measured by
 propagation) and reports how faithfully the map reproduces the material.
 
 Both files are in the same ``material_tracks`` format and, because the validation
@@ -28,7 +29,7 @@ propagates the scan's own directions in order, entry *i* of one is the same
 geantino as entry *i* of the other. The comparison is therefore track by track,
 with no binning or sampling differences in the way.
 
-  python3 compare_material_tracks.py geant4_material_tracks.root \\
+  python3 compare_material_tracks.py material_tracks.root \\
       propagated_material_tracks.root -o validation/
 
 Produces, in the output directory:
@@ -102,7 +103,7 @@ def plot_profile(ax_top, ax_bot, var, scan_v, prop_v, x0_scan, x0_prop, bins, lo
     cs, ms, es = profile(scan_v, x0_scan, bins, lo, hi)
     cp, mp, ep = profile(prop_v, x0_prop, bins, lo, hi)
 
-    ax_top.errorbar(cs, ms, yerr=es, fmt="o-", ms=3, label="Geant4 scan (truth)")
+    ax_top.errorbar(cs, ms, yerr=es, fmt="o-", ms=3, label="scan (truth)")
     ax_top.errorbar(cp, mp, yerr=ep, fmt="s-", ms=3, label="mapped geometry")
     ax_top.set_ylabel(r"$\langle X/X_0 \rangle$")
     ax_top.legend()
@@ -125,7 +126,7 @@ def main():
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    p.add_argument("scan", help="Geant4 geantino scan ROOT file")
+    p.add_argument("scan", help="geantino scan ROOT file (MaterialRecordingAlg or Geant4)")
     p.add_argument("propagated", help="output of material_validation.py")
     p.add_argument("-o", "--output-dir", default="material_validation")
     p.add_argument("--tree-name", default="material_tracks")
@@ -181,7 +182,7 @@ def main():
     ]:
         fig, (a, b) = plt.subplots(2, 1, sharex=True, height_ratios=[3, 1], figsize=(7, 6))
         plot_profile(a, b, None, var_s, var_p, x0_s, x0_p, args.bins, lo_, hi_, xlabel)
-        a.set_title("Material: Geant4 scan vs mapped geometry")
+        a.set_title("Material: scan vs mapped geometry")
         fig.tight_layout()
         fig.savefig(out / fname, dpi=140)
         plt.close(fig)
@@ -223,7 +224,7 @@ def main():
 
     tot_s, tot_p = x0_s.sum(), x0_p.sum()
     print(f"tracks compared        : {n}")
-    print(f"<X/X0> Geant4 scan     : {x0_s.mean():.4f}")
+    print(f"<X/X0> scan            : {x0_s.mean():.4f}")
     print(f"<X/X0> mapped geometry : {x0_p.mean():.4f}")
     print(f"integral ratio         : {tot_p / tot_s:.4f}" if tot_s > 0 else "integral ratio: n/a")
     if finite.size:

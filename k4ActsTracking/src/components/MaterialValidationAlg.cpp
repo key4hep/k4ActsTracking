@@ -50,8 +50,8 @@
 #include <vector>
 
 /// Re-measures the material of the tracking geometry by propagating geantinos
-/// through it, so the result can be compared against the Geant4 scan the map was
-/// built from.
+/// through it, so the result can be compared against the scan the map was built
+/// from.
 ///
 /// This is step 5 of doc/material_mapping.md, the physics validation. Run it with
 /// @c ActsGeoSvc.MaterialMapFile pointing at the map under test: the geometry
@@ -59,8 +59,8 @@
 /// reconstruction will actually see.
 ///
 /// Directions are not sampled independently. They are taken from the same scan
-/// file the map was produced from, so every propagated track has a Geant4
-/// counterpart at the same entry index and the comparison is track by track,
+/// file the map was produced from, so every propagated track has a counterpart
+/// in the scan at the same entry index and the comparison is track by track,
 /// with no binning or sampling differences to confound it.
 ///
 /// The output is written in the same format as the scan (a `material_tracks`
