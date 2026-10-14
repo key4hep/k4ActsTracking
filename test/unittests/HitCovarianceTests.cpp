@@ -39,6 +39,8 @@ namespace {
 constexpr double kDu = 0.05;
 constexpr double kDv = 1.0;
 constexpr double kHalfPi = std::numbers::pi / 2;
+// edm4hep stores u/v and du/dv as float
+constexpr double kTol = 1e-6;
 
 std::shared_ptr<Acts::PlaneSurface> makePlane(double rotationAboutNormal) {
   Acts::Transform3 transform = Acts::Transform3::Identity();
@@ -64,16 +66,16 @@ Acts::SquareMatrix2 covariance(const Acts::PlaneSurface& surface, const edm4hep:
 
 TEST_CASE("hitLocalCovariance u/v aligned with the local axes", "[hitcov]") {
   const auto cov = covariance(*makePlane(0.), makeHit(kHalfPi, 0.f, kHalfPi, kHalfPi));
-  REQUIRE_THAT(cov(0, 0), WithinAbs(kDu * kDu, 1e-9));
-  REQUIRE_THAT(cov(1, 1), WithinAbs(kDv * kDv, 1e-6));
-  REQUIRE_THAT(cov(0, 1), WithinAbs(0., 1e-6));
+  REQUIRE_THAT(cov(0, 0), WithinAbs(kDu * kDu, kTol));
+  REQUIRE_THAT(cov(1, 1), WithinAbs(kDv * kDv, kTol));
+  REQUIRE_THAT(cov(0, 1), WithinAbs(0., kTol));
 }
 
 TEST_CASE("hitLocalCovariance u/v swapped with respect to the local axes", "[hitcov]") {
   const auto cov = covariance(*makePlane(0.), makeHit(kHalfPi, kHalfPi, kHalfPi, 0.f));
-  REQUIRE_THAT(cov(0, 0), WithinAbs(kDv * kDv, 1e-6));
-  REQUIRE_THAT(cov(1, 1), WithinAbs(kDu * kDu, 1e-6));
-  REQUIRE_THAT(cov(0, 1), WithinAbs(0., 1e-6));
+  REQUIRE_THAT(cov(0, 0), WithinAbs(kDv * kDv, kTol));
+  REQUIRE_THAT(cov(1, 1), WithinAbs(kDu * kDu, kTol));
+  REQUIRE_THAT(cov(0, 1), WithinAbs(0., kTol));
 }
 
 TEST_CASE("hitLocalCovariance surface rotated by 45 degrees about its normal", "[hitcov]") {
@@ -81,11 +83,11 @@ TEST_CASE("hitLocalCovariance surface rotated by 45 degrees about its normal", "
   const auto cov = covariance(*makePlane(std::numbers::pi / 4), makeHit(kHalfPi, 0.f, kHalfPi, kHalfPi));
   const double sum = kDu * kDu + kDv * kDv;
   const double diff = kDu * kDu - kDv * kDv;
-  REQUIRE_THAT(cov(0, 0), WithinAbs(sum / 2, 1e-6));
-  REQUIRE_THAT(cov(1, 1), WithinAbs(sum / 2, 1e-6));
-  REQUIRE_THAT(cov(0, 1), WithinAbs(-diff / 2, 1e-6));
-  REQUIRE_THAT(cov(1, 0), WithinAbs(cov(0, 1), 1e-12));
-  REQUIRE_THAT(cov.trace(), WithinAbs(sum, 1e-6));
+  REQUIRE_THAT(cov(0, 0), WithinAbs(sum / 2, kTol));
+  REQUIRE_THAT(cov(1, 1), WithinAbs(sum / 2, kTol));
+  REQUIRE_THAT(cov(0, 1), WithinAbs(-diff / 2, kTol));
+  REQUIRE_THAT(cov(1, 0), WithinAbs(cov(0, 1), kTol));
+  REQUIRE_THAT(cov.trace(), WithinAbs(sum, kTol));
 }
 
 TEST_CASE("hitLocalCovariance rejects unset u/v", "[hitcov]") {
