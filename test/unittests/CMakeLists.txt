@@ -77,7 +77,7 @@ endif()
 # module; that test environment does not apply here because test discovery
 # happens at build time. DL_PATHS is what sets the CMake 3.22 floor of this
 # project.
-add_executable(unittest_k4ActsTracking CellIDSelectionTests.cpp HitFeatureTests.cpp)
+add_executable(unittest_k4ActsTracking CellIDSelectionTests.cpp HitFeatureTests.cpp HitCovarianceTests.cpp)
 target_link_libraries(unittest_k4ActsTracking PUBLIC k4ActsTracking PRIVATE Catch2::Catch2WithMain)
 # Catch2 TEST_CASE/SECTION macros expand __COUNTER__ at the call site in user
 # code, so marking Catch2 headers as system includes is not sufficient to
