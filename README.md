@@ -83,10 +83,17 @@ The Gaudi plugin module `k4ActsTrackingPlugins` provides, among others:
 * **`CKFTrackingFromSeedsAlg`** — runs the same CKF, but seeded from an existing
   input track collection (e.g. candidates from an upstream pattern-recognition
   stage) instead of the internal seed finder.
-* **`MaterialMappingAlg`** — projects a recorded Geant4 geantino scan onto the
+* **`MaterialRecordingAlg`** — records the material along straight
+  (geantino) rays through the DD4hep geometry, using the TGeo navigator, up to
+  the calorimeter face, in the format `MaterialMappingAlg` reads. Needs no
+  Geant4, GDML export or ACTS Python bindings; see
+  [doc/material_mapping.md](doc/material_mapping.md).
+* **`MaterialMappingAlg`** — projects a recorded geantino scan onto the
   material surfaces designated by the blueprint and writes the resulting
   material map. Runs alongside `ActsGeoSvc` so the map matches the geometry it
   was built from; see [doc/material_mapping.md](doc/material_mapping.md).
+* **`MaterialValidationAlg`** — re-measures the material of the mapped geometry
+  along the scan's directions, for comparison with the scan.
 * **`ACTSDuplicateRemoval`** — removes duplicate tracks produced by the CKF.
 * **`FilterTracksAlg`** — applies quality cuts to a track collection.
 * **`TrackTruthAlg`** — associates reconstructed tracks with truth particles.

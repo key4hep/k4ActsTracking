@@ -28,11 +28,12 @@ Usage:
 
   k4run material_mapping.py \\
       --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \\
-      --inputFiles geant4_material_tracks.root \\
+      --inputFiles material_tracks.root \\
       --outputFile MAIA_v0_gen3_material_map.json
 
 --inputFiles also takes directories, which is the convenient way to consume a
-scan that was split across batch jobs by examples/material_recording_chunk.py:
+scan that was split across batch jobs (material_recording.py with one --seed per
+job):
 
   k4run material_mapping.py \\
       --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \\
@@ -42,6 +43,9 @@ scan that was split across batch jobs by examples/material_recording_chunk.py:
 Every *.root file directly inside such a directory is mapped, in sorted order.
 Files and directories can be mixed freely. MaterialMappingAlg chains them, so
 there is no hadd step.
+
+Recorded material behind the ECAL inner face is not mapped (--maxR/--maxZ
+override that; keep them equal to the recording's).
 
 Do NOT pass --materialMapFile here: the mapping needs the geometry to still
 carry its proto-material placeholders, which is what a loaded map replaces.
@@ -77,6 +81,19 @@ parser.add_argument(
     help="Stop after this many tracks; negative (default) processes everything",
 )
 
+parser.add_argument(
+    "--maxR",
+    type=float,
+    default=-1.0,
+    help="Recorded material at a larger radius [mm] is not mapped; default: the ECAL barrel inner face",
+)
+parser.add_argument(
+    "--maxZ",
+    type=float,
+    default=-1.0,
+    help="Recorded material at a larger |z| [mm] is not mapped; default: the ECAL endcap inner face",
+)
+
 args = parser.parse_known_args()[0]
 
 mapping = MaterialMappingAlg(
@@ -85,6 +102,8 @@ mapping = MaterialMappingAlg(
     TreeName=args.treeName,
     OutputFile=args.outputFile,
     MaxTracks=args.maxTracks,
+    MaxR=args.maxR,
+    MaxZ=args.maxZ,
     OutputLevel=INFO,
 )
 

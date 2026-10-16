@@ -16,6 +16,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "MaterialScanRegion.h"
 #include "MaterialSurfaces.h"
 
 #include "k4ActsTracking/ActsGaudiLogger.h"
@@ -42,13 +43,14 @@
 
 #include <fmt/format.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
 
-/// Projects the material recorded by a Geant4 geantino scan onto the material
+/// Projects the material recorded by a geantino scan onto the material
 /// receivers designated by the blueprint, and writes the resulting map.
 ///
 /// This is step 3 of the workflow in doc/material_mapping.md. It has to run in
@@ -57,6 +59,9 @@
 /// assigned by the blueprint traversal order, so a map is only meaningful for
 /// the exact geometry it was produced against. Producing it in an external ACTS
 /// job would key it on a completely different volume numbering.
+///
+/// The recorded material is clipped to @c MaterialScanRegion (by default the
+/// region in front of the ECAL inner face) before mapping.
 ///
 /// The algorithm is a one-shot job rather than an event loop: it reads every
 /// recorded track from the input file on the first event, so run it with
@@ -83,7 +88,7 @@ struct MaterialMappingAlg final : public Gaudi::Algorithm {
   Gaudi::Property<bool> m_prePostStepInfo{
       this, "PrePostStepInfo", true,
       "Whether the input carries pre- and post-step positions. Must match the recording job's "
-      "RootMaterialTrackWriter.prePostStep, which is True for a Geant4 scan."};
+      "RootMaterialTrackWriter.prePostStep, which is True for both MaterialRecordingAlg and a Geant4 scan."};
   Gaudi::Property<bool> m_surfaceInfo{
       this, "SurfaceInfo", false,
       "Whether the input carries per-step surface information. Must match the recording job's "
@@ -91,6 +96,12 @@ struct MaterialMappingAlg final : public Gaudi::Algorithm {
   Gaudi::Property<bool> m_volumeInfo{this, "VolumeInfo", false,
                                      "Whether the input carries per-step volume information. Must match the recording "
                                      "job's RootMaterialTrackWriter.storeVolume."};
+  Gaudi::Property<double> m_maxR{this, "MaxR", -1.,
+                                 "Recorded material beyond this radius (mm) is not mapped. Non-positive (default): the "
+                                 "ECAL barrel inner face, or the tracking world if the detector has none."};
+  Gaudi::Property<double> m_maxZ{this, "MaxZ", -1.,
+                                 "Recorded material beyond this |z| (mm) is not mapped. Non-positive (default): the "
+                                 "ECAL endcap inner face, or the tracking world if the detector has none."};
 
 private:
   SmartIF<IActsGeoSvc> m_actsGeoSvc;
@@ -99,11 +110,15 @@ private:
   std::unique_ptr<Acts::MaterialMapper> m_mapper{nullptr};
   std::unique_ptr<TChain> m_chain{nullptr};
   std::unique_ptr<ActsPlugins::RootMaterialTrackIo> m_trackIo{nullptr};
+  MaterialScanRegion::Cylinder m_region;
 
   // Mutated from the const execute(); the algorithm is a one-shot job and is
   // not meant to be run concurrently.
   mutable std::unique_ptr<Acts::MaterialMapper::State> m_state{nullptr};
   mutable std::size_t m_nProcessed{0};
+  mutable double m_mappedX0{0.};
+  mutable double m_unmappedX0{0.};
+  mutable double m_clippedX0{0.};
   mutable bool m_done{false};
 
   Acts::GeometryContext m_gctx = Acts::GeometryContext::dangerouslyDefaultConstruct();
@@ -161,6 +176,16 @@ StatusCode MaterialMappingAlg::initialize() {
   m_mapper = std::make_unique<Acts::MaterialMapper>(mapperCfg, m_actsLogger->cloneWithSuffix("|Mapper"));
   m_state = m_mapper->createState(m_gctx);
 
+  const auto region = MaterialScanRegion::fromGeometry(*m_actsGeoSvc, m_maxR.value(), m_maxZ.value());
+  if (!region) {
+    error() << "No calorimeter face and no cylindrical tracking world to limit the mapping to; set MaxR and MaxZ."
+            << endmsg;
+    return StatusCode::FAILURE;
+  }
+  m_region = *region;
+  info() << fmt::format("Mapping recorded material at r < {:.1f} mm, |z| < {:.1f} mm.", m_region.r, m_region.halfZ)
+         << endmsg;
+
   m_chain = std::make_unique<TChain>(m_treeName.value().c_str());
   for (const auto& file : m_inputFiles.value()) {
     if (m_chain->Add(file.c_str()) == 0) {
@@ -206,8 +231,11 @@ StatusCode MaterialMappingAlg::execute(const EventContext&) const {
       warning() << fmt::format("Could not read entry {}, stopping here.", entry) << endmsg;
       break;
     }
-    const auto track = m_trackIo->read();
-    m_mapper->mapMaterial(*m_state, m_gctx, m_mctx, track);
+    auto track = m_trackIo->read();
+    m_clippedX0 += m_region.clip(track);
+    const auto [mapped, unmapped] = m_mapper->mapMaterial(*m_state, m_gctx, m_mctx, track);
+    m_mappedX0 += mapped.second.materialInX0;
+    m_unmappedX0 += unmapped.second.materialInX0;
     m_nProcessed++;
 
     if (m_nProcessed % 10000 == 0) {
@@ -216,6 +244,10 @@ StatusCode MaterialMappingAlg::execute(const EventContext&) const {
   }
 
   info() << fmt::format("Mapped {} recorded material tracks.", m_nProcessed) << endmsg;
+  info() << fmt::format("Material in x/X0 summed over all tracks: {:.4g} mapped, {:.4g} outside the region, {:.4g} on "
+                        "tracks crossing no receiver.",
+                        m_mappedX0, m_clippedX0, m_unmappedX0)
+         << endmsg;
   return StatusCode::SUCCESS;
 }
 
