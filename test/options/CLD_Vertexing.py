@@ -45,7 +45,7 @@ from _vertexing_helpers import make_vertexing
 # Beam-spot sizes (sigma x, y, z) [mm] per centre-of-mass energy [GeV]: the
 # collision region of the FCC Feasibility Study Report parameters
 # (arXiv:2505.00274, Table 2), as given in FCCeePhysicsPerformance's
-# General/README.md ("Summary table, FSR parameters (2025)"). 
+# General/README.md ("Summary table, FSR parameters (2025)").
 BEAM_SPOT_SIZES = {
     91: (6.36e-3, 28.3e-6, 0.424),
     160: (15.56e-3, 31.8e-6, 0.999),
