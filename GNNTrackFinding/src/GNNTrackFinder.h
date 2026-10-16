@@ -173,6 +173,9 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
                                                   "Initial track error for phi."};
   Gaudi::Property<double> m_initialTrackError_relP{this, "InitialTrackError_RelP", 0.25,
                                                    "Initial track error for momentum (relative)."};
+  Gaudi::Property<double> m_initialTrackError_qOverP{
+      this, "InitialTrackError_QOverP", 0 / Acts::UnitConstants::GeV,
+      "Initial track error for q/p (absolute), added in quadrature to the relative one."};
   Gaudi::Property<double> m_initialTrackError_lambda{this, "InitialTrackError_Lambda", 1 * Acts::UnitConstants::degree,
                                                      "Initial track error for lambda."};
   Gaudi::Property<double> m_initialTrackError_time{this, "InitialTrackError_Time", 100 * Acts::UnitConstants::ns,
