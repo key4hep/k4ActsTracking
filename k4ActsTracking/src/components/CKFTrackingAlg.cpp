@@ -107,7 +107,7 @@ std::optional<Acts::BoundTrackParameters>
 estimateStraightLineSeedParameters(const Acts::GeometryContext& geoCtx, const Acts::Surface& bottomSurface,
                                    const Acts::Vector3& bottomPos, const Acts::Vector3& topPos,
                                    const edm4hep::TrackerHit& bottomHit, double nominalP, double errPos, double errPhi,
-                                   double errLambda, double errRelP, double errTime) {
+                                   double errLambda, double errRelP, double errTime, double errQOverP) {
   const Acts::Vector3 dir = (topPos - bottomPos).normalized();
 
   // The bottom position is derived from the surface, so it lies on it; use a
@@ -125,7 +125,8 @@ estimateStraightLineSeedParameters(const Acts::GeometryContext& geoCtx, const Ac
   params[Acts::eBoundQOverP] = 1.0 / nominalP; // charge sign is irrelevant at B = 0
   params[Acts::eBoundTime] = ACTSTracking::hitTime(bottomHit);
 
-  Acts::BoundMatrix cov = ACTSTracking::makeInitialCovariance(nominalP, errPos, errPhi, errLambda, errRelP, errTime);
+  Acts::BoundMatrix cov =
+      ACTSTracking::makeInitialCovariance(nominalP, errPos, errPhi, errLambda, errRelP, errTime, errQOverP);
   return Acts::BoundTrackParameters(bottomSurface.getSharedPtr(), params, cov, Acts::ParticleHypothesis::pion());
 }
 } // namespace
@@ -399,6 +400,9 @@ private:
                                                   "Initial track error for phi."};
   Gaudi::Property<double> m_initialTrackError_relP{this, "InitialTrackError_RelP", 0.25,
                                                    "Initial track error for momentum (relative)."};
+  Gaudi::Property<double> m_initialTrackError_qOverP{
+      this, "InitialTrackError_QOverP", 0 / Acts::UnitConstants::GeV,
+      "Initial track error for q/p (absolute), added in quadrature to the relative one."};
   Gaudi::Property<double> m_initialTrackError_lambda{this, "InitialTrackError_Lambda", 1 * Acts::UnitConstants::degree,
                                                      "Initial track error for lambda."};
   Gaudi::Property<double> m_initialTrackError_time{this, "InitialTrackError_Time", 100 * Acts::UnitConstants::ns,
@@ -970,7 +974,7 @@ CKFTrackingAlg::seedsToParameters(const Acts::SeedContainer& seeds, const Acts::
     std::optional<Acts::BoundTrackParameters> paramseed = ACTSTracking::estimateSeedParameters(
         *this, *m_actsGeoSvc, geoCtx, *surface, position(bottomSp), position(middleSp), position(topSp),
         hits[bottomSL.index()], magCache, m_initialTrackError_pos, m_initialTrackError_phi, m_initialTrackError_lambda,
-        m_initialTrackError_relP, m_initialTrackError_time);
+        m_initialTrackError_relP, m_initialTrackError_time, m_initialTrackError_qOverP);
     if (!paramseed) {
       continue;
     }
@@ -1075,7 +1079,8 @@ void CKFTrackingAlg::runTelescopeSeeding(const std::vector<SeedInput>& seedInput
 
         std::optional<Acts::BoundTrackParameters> paramseed = estimateStraightLineSeedParameters(
             geoCtx, *surface, bottom, top, hits[bottomSL.index()], nominalP, m_initialTrackError_pos,
-            m_initialTrackError_phi, m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time);
+            m_initialTrackError_phi, m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time,
+            m_initialTrackError_qOverP);
         if (!paramseed) {
           continue;
         }

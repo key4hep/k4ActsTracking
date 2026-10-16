@@ -698,7 +698,7 @@ GNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*
     // initial parameters are estimated.
     std::optional<Acts::BoundTrackParameters> startParams = ACTSTracking::estimateSeedParameters(
         *this, *m_actsGeoSvc, geoCtx, hits, hitContainer, magCache, m_initialTrackError_pos, m_initialTrackError_phi,
-        m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time);
+        m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time, m_initialTrackError_qOverP);
     if (!startParams) {
       continue;
     }
