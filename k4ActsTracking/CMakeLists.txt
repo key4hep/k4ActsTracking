@@ -48,6 +48,7 @@ set(_plugin_sources
   src/components/CKFTrackingFromSeedsAlg.cpp
   src/components/MaterialMappingAlg.cpp
   src/components/MaterialValidationAlg.cpp
+  src/components/VertexFindingAlg.cpp
 )
 
 gaudi_add_module(k4ActsTrackingPlugins
