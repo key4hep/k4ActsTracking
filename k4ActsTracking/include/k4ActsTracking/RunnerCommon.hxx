@@ -607,26 +607,16 @@ estimateSeedParamsAtStart(const Acts::GeometryContext& geoCtx, const Acts::Surfa
  *         field-lookup failure throws, matching the tracking algorithms.
  */
 template <class Alg>
-<<<<<<< HEAD
 std::optional<Acts::BoundTrackParameters>
 estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx,
                        const Acts::Surface& startSurface, const Acts::Vector3& bottomPos,
                        const Acts::Vector3& middlePos, const Acts::Vector3& topPos, const edm4hep::TrackerHit& startHit,
                        Acts::MagneticFieldProvider::Cache& magCache, double errPos, double errPhi, double errLambda,
-                       double errRelP, double errTime, bool propagateBackward = false) {
+                       double errRelP, double errTime, bool propagateBackward = false, double errQOverP = 0) {
   // Magnetic field at the seed start position (bottom SP for inside-out,
   // top SP for outside-in).
   const Acts::Vector3& seedPos = propagateBackward ? topPos : bottomPos;
   Acts::Result<Acts::Vector3> seedField = geo.magneticField()->getField(seedPos, magCache);
-=======
-std::optional<Acts::BoundTrackParameters> estimateSeedParameters(
-    const Alg& alg, const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx, const Acts::Surface& bottomSurface,
-    const Acts::Vector3& bottomPos, const Acts::Vector3& middlePos, const Acts::Vector3& topPos,
-    const edm4hep::TrackerHit& bottomHit, Acts::MagneticFieldProvider::Cache& magCache, double errPos, double errPhi,
-    double errLambda, double errRelP, double errTime, double errQOverP = 0) {
-  // Magnetic field at the seed (bottom space point) position
-  Acts::Result<Acts::Vector3> seedField = geo.magneticField()->getField(bottomPos, magCache);
->>>>>>> upstream
   if (!seedField.ok()) {
     throw std::runtime_error("Field lookup error: " + std::to_string(seedField.error().value()));
   }

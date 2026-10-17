@@ -151,6 +151,8 @@ public:
     /// through the seed's middle and inner SPs towards the beamline. When
     /// true, the caller must build seeds whose bound parameters live on the
     /// TOP (outer) SP's surface -- see estimateSeedParameters(..., propagateBackward).
+    /// The found tracks are reversed after smoothing, so the output is
+    /// ordered inside-out (AtFirstHit = innermost hit) in either direction.
     bool propagateBackward = false;
     bool extrapolateToCalo = false;
     std::size_t maxSteps = kDefaultMaxPropagationSteps;
@@ -272,6 +274,12 @@ public:
           if (!smoothResult.ok()) {
             alg.warning() << "Track smoothing error: " << smoothResult.error() << endmsg;
             continue;
+          }
+
+          // A backward pass leaves the innermost state at the tip. Reverse the
+          // states so the track is ordered inside-out like a forward one
+          if (m_propagateBackward) {
+            trackTip.reverseTrackStates(true);
           }
 
           // Extrapolate the smoothed track to the reference surface (the IP
