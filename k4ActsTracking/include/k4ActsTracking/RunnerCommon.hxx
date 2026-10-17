@@ -581,7 +581,7 @@ estimateSeedParamsAtStart(const Acts::GeometryContext& geoCtx, const Acts::Surfa
   Acts::Result<Acts::FreeVector> freeParams =
       Acts::estimateTrackParamsFromSpacePoints(spacePoints, bField, t0, 0, {}, referenceIndex);
   if (!freeParams.ok()) {
-    return freeParams.error();
+    return Acts::Result<Acts::BoundVector>::failure(freeParams.error());
   }
   return Acts::transformFreeToBoundParameters(*freeParams, startSurface, geoCtx);
 }
