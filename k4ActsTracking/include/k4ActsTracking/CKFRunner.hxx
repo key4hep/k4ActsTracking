@@ -96,15 +96,18 @@ using CombKalmanFilter = Acts::CombinatorialKalmanFilter<CKFPropagator, CKFTrack
 
 /**
  * @brief Convert estimated seed parameters into an edm4hep seed TrackState.
+ *
+ * @param location AtFirstHit for seeds at the bottom (inner) SP; AtLastHit for
+ *                 outside-in seeds, whose parameters are at the top (outer) SP.
  */
 template <class Alg>
 edm4hep::TrackState makeSeedTrackState(const Alg& /*alg*/, const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx,
                                        const Acts::BoundTrackParameters& paramseed,
-                                       Acts::MagneticFieldProvider::Cache& magCache) {
+                                       Acts::MagneticFieldProvider::Cache& magCache,
+                                       std::int32_t location = edm4hep::TrackState::AtFirstHit) {
   // The centralised converter re-expresses the seed parameters at an ad-hoc
   // perigee and evaluates the local field at their position itself.
-  return ActsPlugins::EDM4hepUtil::writeTrackState(geoCtx, edm4hep::TrackState::AtFirstHit, paramseed,
-                                                   *geo.magneticField(), magCache);
+  return ActsPlugins::EDM4hepUtil::writeTrackState(geoCtx, location, paramseed, *geo.magneticField(), magCache);
 }
 
 /**
@@ -237,6 +240,8 @@ public:
     /// through the seed's middle and inner SPs towards the beamline. When
     /// true, the caller must build seeds whose bound parameters live on the
     /// TOP (outer) SP's surface -- see estimateSeedParameters(..., propagateBackward).
+    /// The found tracks are reversed after smoothing, so the output is
+    /// ordered inside-out (AtFirstHit = innermost hit) in either direction.
     bool propagateBackward = false;
     bool extrapolateToCalo = false;
     std::size_t maxSteps = kDefaultMaxPropagationSteps;
@@ -381,6 +386,8 @@ public:
       pOptions.direction = Acts::Direction::Backward();
     }
     CKFTrackFinderOptions ckfOptions(m_geoCtx, m_magCtx, m_calCtx, extensions, pOptions);
+    // Stop the inward pass at the reference surface, so it does not run on
+    // into the opposite side of the vertex detector.
     ckfOptions.targetSurface = m_propagateBackward ? m_referenceSurface.get() : nullptr;
 
     // Two-way CKF: second pass propagates opposite to the first pass.
@@ -435,7 +442,8 @@ public:
         //   Inside-out (forward first pass): anchor = innermost measurement;
         //     second (backward) pass extends the chain toward perigee.
         //   Outside-in (backward first pass): anchor = outermost measurement;
-        //     second (forward) pass extends the chain into the outer tracker.
+        //     second (forward) pass extends the chain into the outer tracker
+        //     and is smoothed before the stitch.
         // ---------------------------------------------------------------
         std::optional<CKFTrackContainer::TrackProxy> stitchedOpt;
         if (m_doTwoWayCKF) {
@@ -473,7 +481,6 @@ public:
             // the CKF returns  multiple branches, choose the best one
             // explicitly: most measurements, then lowest chi2.
             const CKFTrackContainer::TrackProxy* bestSecondTrack = nullptr;
-            std::size_t nStatefulSecondCandidates = 0;
             if (secondResult.ok()) {
               const auto& secondCandidates = secondResult.value();
               for (std::size_t candidateIndex = 0; candidateIndex < secondCandidates.size(); ++candidateIndex) {
@@ -481,7 +488,6 @@ public:
                 if (candidate.nTrackStates() == 0) {
                   continue;
                 }
-                ++nStatefulSecondCandidates;
                 if (bestSecondTrack == nullptr || candidate.nMeasurements() > bestSecondTrack->nMeasurements() ||
                     (candidate.nMeasurements() == bestSecondTrack->nMeasurements() &&
                      candidate.chi2() < bestSecondTrack->chi2())) {
@@ -500,45 +506,30 @@ public:
               auto secondTrack = tracks.makeTrack();
               secondTrack.copyFrom(*bestSecondTrack);
 
-              if (m_propagateBackward) {
-                // Outside-in stitching: second pass = forward from outermost
-                // first-pass measurement.
-                //   secondTrack walks stem->tip = inner->outer. The CKF
-                //   creates no state on the anchor surface, so the stem is
-                //   the first new state outside the anchor -- link its
-                //   .previous() to the first-pass anchor so the
-                //   inner-detector chain continues from there.
-                tracks.trackStateContainer().getTrackState(secondTrack.stemIndex()).previous() = anchorIdx;
-                // The backward first pass built .previous() links going
-                // OUTWARD (perigee -> ... -> anchor). Flip those to INWARD
-                // so a single .previous() walk from the stitched tip lands
-                // at perigee.
-                Acts::TrackIndexType prevStateIdx = Acts::kTrackIndexInvalid;
-                for (auto st : smoothed.trackStates()) {
-                  if (prevStateIdx != Acts::kTrackIndexInvalid) {
-                    tracks.trackStateContainer().getTrackState(prevStateIdx).previous() = st.index();
-                  }
-                  prevStateIdx = st.index();
-                }
-                if (prevStateIdx != Acts::kTrackIndexInvalid) {
-                  tracks.trackStateContainer().getTrackState(prevStateIdx).previous() = Acts::kTrackIndexInvalid;
-                }
-                // secondTrack.tipIndex() already points at the outermost
-                // (OT) state.
+              // Outside-in: the forward second pass found the outer-tracker
+              // hits, where the calo extrapolation starts, so they need
+              // smoothed parameters. Smooth the second pass on its own rather
+              // than the full stitched track:
+              const Acts::Result<void> secondSmoothResult =
+                  m_propagateBackward ? Acts::smoothTrack(m_geoCtx, secondTrack) : Acts::Result<void>::success();
+              if (!secondSmoothResult.ok()) {
+                alg.warning() << "TwoWayCKF: second-pass smoothing error: " << secondSmoothResult.error()
+                              << ", falling back to single-pass output." << endmsg;
               } else {
-                // Inside-out + backward stitching.
-                //   Second pass = backward from innermost first-pass
-                //   measurement. The CKF creates no state on the anchor
-                //   surface, so after reverseTrackStates() tipIndex() is the
-                //   second-pass state next to the anchor: link the anchor's
-                //   .previous() to it. reverseTrackStates(true) also inverts
-                //   the Jacobians so the chain stays valid if re-smoothed.
+                // Same stitching for both directions. The CKF creates no
+                // state on the anchor surface, so after reverseTrackStates()
+                // tipIndex() is the second-pass state next to the anchor: link
+                // the anchor's .previous() to it and keep the first-pass tip.
+                // A .previous() walk from the tip then runs through the first
+                // pass, the anchor and the second pass: outermost -> innermost
+                // for inside-out, innermost -> outermost for outside-in
                 secondTrack.reverseTrackStates(true);
                 tracks.trackStateContainer().getTrackState(anchorIdx).previous() = secondTrack.tipIndex();
                 secondTrack.tipIndex() = smoothed.tipIndex();
-              }
+                secondTrack.linkForward();
 
-              stitchedOpt = secondTrack;
+                stitchedOpt = secondTrack;
+              }
             }
           }
         }
@@ -548,6 +539,14 @@ public:
         // + calo-face append + edm4hep conversion below, so the caller sees
         // the same output shape regardless of two-way mode.
         CKFTrackContainer::TrackProxy trackTip = stitchedOpt.value_or(smoothed);
+
+        // A backward first pass leaves the innermost state at the tip, with or
+        // without a stitched second pass. Reverse the states so the track is
+        // ordered inside-out like a forward one. Only after the two-way step,
+        // which needs the first pass
+        if (m_propagateBackward) {
+          trackTip.reverseTrackStates(true);
+        }
 
         // Extrapolate the (stitched or smoothed) track to the reference
         // surface (the IP perigee by default, or a beam-perpendicular plane

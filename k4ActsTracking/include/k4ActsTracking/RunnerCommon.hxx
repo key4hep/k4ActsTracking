@@ -71,6 +71,7 @@
 
 // Standard
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstddef>
@@ -562,36 +563,35 @@ void prepareTrackerHits(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geom
 /**
  * @brief Bound seed parameters at the space point the CKF starts from.
  *
- * Inside-out: the start is the bottom SP, where Acts::estimateTrackParamsFromSeed
- * evaluates the parameters anyway; @p startSurface is the bottom SP's surface.
+ * Fits the helix through the three SPs with Acts::estimateTrackParamsFromSpacePoints
+ * (identical to Acts::estimateTrackParamsFromSeed for three SPs) and expresses it
+ * at the start SP: the bottom SP for inside-out, the top SP for outside-in
+ * (@p propagateBackward), i.e. its position and the helix tangent there.
+ * @p startSurface is that SP's surface.
  *
- * Outside-in (@p propagateBackward): the start is the top SP. The same three-point
- * estimate is moved there: the position becomes the top SP and the direction the
- * helix tangent at the top SP, not the direction at the bottom SP.
- *
- * @param t0 Time of the start SP.
+ * @param t0     Time of the start SP.
+ * @param bField Field at the start SP, assumed homogeneous over the seed.
  */
 inline Acts::Result<Acts::BoundVector>
 estimateSeedParamsAtStart(const Acts::GeometryContext& geoCtx, const Acts::Surface& startSurface,
                           const Acts::Vector3& bottomPos, double t0, const Acts::Vector3& middlePos,
                           const Acts::Vector3& topPos, const Acts::Vector3& bField, bool propagateBackward) {
-  if (!propagateBackward) {
-    return Acts::estimateTrackParamsFromSeed(geoCtx, startSurface, bottomPos, t0, middlePos, topPos, bField);
+  const std::array<Acts::Vector3, 3> spacePoints{bottomPos, middlePos, topPos};
+  const std::size_t referenceIndex = propagateBackward ? 2 : 0;
+  Acts::Result<Acts::FreeVector> freeParams =
+      Acts::estimateTrackParamsFromSpacePoints(spacePoints, bField, t0, 0, {}, referenceIndex);
+  if (!freeParams.ok()) {
+    return Acts::Result<Acts::BoundVector>::failure(freeParams.error());
   }
-  Acts::Vector3 topTangent = Acts::Vector3::Zero();
-  Acts::FreeVector freeParams =
-      Acts::estimateTrackParamsFromSeed(bottomPos, t0, middlePos, topPos, bField, nullptr, nullptr, &topTangent);
-  freeParams.segment<3>(Acts::eFreePos0) = topPos;
-  freeParams.segment<3>(Acts::eFreeDir0) = topTangent;
-  return Acts::transformFreeToBoundParameters(freeParams, startSurface, geoCtx);
+  return Acts::transformFreeToBoundParameters(*freeParams, startSurface, geoCtx);
 }
 
 /**
  * @brief Estimate initial bound track parameters from a three-point seed.
  *
  * Evaluates the magnetic field at the start (bottom or top) space point,
- * calls Acts::estimateTrackParamsFromSeed on the bottom/middle/top positions
- * and builds a diagonal initial covariance.
+ * estimates the parameters there from the bottom/middle/top positions (see
+ * estimateSeedParamsAtStart) and builds a diagonal initial covariance.
  *
  * @param startSurface      Surface on which the returned bound parameters are
  *                          expressed. For inside-out this is the bottom (inner)
@@ -614,7 +614,7 @@ estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geome
                        Acts::MagneticFieldProvider::Cache& magCache, double errPos, double errPhi, double errLambda,
                        double errRelP, double errTime, bool propagateBackward = false, double errQOverP = 0) {
   // Magnetic field at the seed start position (bottom SP for inside-out,
-  // top SP for outside-in).
+  // top SP for outside-in), assumed homogeneous over the seed.
   const Acts::Vector3& seedPos = propagateBackward ? topPos : bottomPos;
   Acts::Result<Acts::Vector3> seedField = geo.magneticField()->getField(seedPos, magCache);
   if (!seedField.ok()) {
