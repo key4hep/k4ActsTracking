@@ -92,15 +92,18 @@ using CombKalmanFilter = Acts::CombinatorialKalmanFilter<CKFPropagator, CKFTrack
 
 /**
  * @brief Convert estimated seed parameters into an edm4hep seed TrackState.
+ *
+ * @param location AtFirstHit for seeds at the bottom (inner) SP; AtLastHit for
+ *                 outside-in seeds, whose parameters are at the top (outer) SP.
  */
 template <class Alg>
 edm4hep::TrackState makeSeedTrackState(const Alg& /*alg*/, const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx,
                                        const Acts::BoundTrackParameters& paramseed,
-                                       Acts::MagneticFieldProvider::Cache& magCache) {
+                                       Acts::MagneticFieldProvider::Cache& magCache,
+                                       std::int32_t location = edm4hep::TrackState::AtFirstHit) {
   // The centralised converter re-expresses the seed parameters at an ad-hoc
   // perigee and evaluates the local field at their position itself.
-  return ActsPlugins::EDM4hepUtil::writeTrackState(geoCtx, edm4hep::TrackState::AtFirstHit, paramseed,
-                                                   *geo.magneticField(), magCache);
+  return ActsPlugins::EDM4hepUtil::writeTrackState(geoCtx, location, paramseed, *geo.magneticField(), magCache);
 }
 
 /**
@@ -146,6 +149,13 @@ public:
     double chi2CutOff = 15;
     std::int32_t numMeasurementsCutOff = 10;
     double chi2CutOffOutlier = std::numeric_limits<double>::max();
+
+    /// Run the CKF backward (outside-in): from the OUTER seed SP inward,
+    /// through the seed's middle and inner SPs towards the beamline. When
+    /// true, the caller must build seeds whose bound parameters live on the
+    /// TOP (outer) SP's surface -- see estimateSeedParameters(..., propagateBackward).
+    /// The found tracks are reversed after smoothing, so the output is
+    /// ordered inside-out (AtFirstHit = innermost hit) in either direction.
     bool propagateBackward = false;
     bool extrapolateToCalo = false;
     std::size_t maxSteps = kDefaultMaxPropagationSteps;
@@ -241,10 +251,14 @@ public:
 
     Acts::PropagatorPlainOptions pOptions{m_geoCtx, m_magCtx};
     pOptions.maxSteps = m_maxSteps;
+    // Backward (outside-in): from the outer seed SP inward.
     if (m_propagateBackward) {
       pOptions.direction = Acts::Direction::Backward();
     }
-    const CKFTrackFinderOptions ckfOptions(m_geoCtx, m_magCtx, m_calCtx, extensions, pOptions);
+    CKFTrackFinderOptions ckfOptions(m_geoCtx, m_magCtx, m_calCtx, extensions, pOptions);
+    // Stop the inward pass at the reference surface, so it does not run on
+    // into the opposite side of the vertex detector.
+    ckfOptions.targetSurface = m_propagateBackward ? m_referenceSurface.get() : nullptr;
 
     auto trackContainer = std::make_shared<Acts::VectorTrackContainer>();
     auto trackStateContainer = std::make_shared<Acts::VectorMultiTrajectory>();
@@ -266,6 +280,12 @@ public:
           if (!smoothResult.ok()) {
             alg.warning() << "Track smoothing error: " << smoothResult.error() << endmsg;
             continue;
+          }
+
+          // A backward pass leaves the innermost state at the tip. Reverse the
+          // states so the track is ordered inside-out like a forward one
+          if (m_propagateBackward) {
+            trackTip.reverseTrackStates(true);
           }
 
           // Extrapolate the smoothed track to the reference surface (the IP
