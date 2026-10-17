@@ -144,12 +144,24 @@ parser.add_argument(
     action="store_true",
     help="Run the outside-in, two-way CKF seeded in the IT + OT instead of the default inside-out CKF",
 )
-outside_in = parser.parse_known_args()[0].outsideIn
+parser.add_argument(
+    "--twoWay",
+    action="store_true",
+    help="Add a second, backward CKF pass to the inside-out CKF (outside-in is always two-way)",
+)
+cli_args = parser.parse_known_args()[0]
+
+if cli_args.outsideIn:
+    selected_properties = ckf_outsidein_properties
+elif cli_args.twoWay:
+    selected_properties = {**ckf_properties, "DoTwoWayCKF": True}
+else:
+    selected_properties = ckf_properties
 
 ckf_tracking = make_ckf_tracking(
     hit_merger,
     hit_rel_merger,
-    **(ckf_outsidein_properties if outside_in else ckf_properties),
+    **selected_properties,
 )
 algList.append(ckf_tracking)
 
