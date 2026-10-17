@@ -996,7 +996,9 @@ CKFTrackingAlg::seedsToParameters(const Acts::SeedContainer& seeds, const Acts::
     }
     paramseeds.push_back(*paramseed);
 
-    auto seedTrackState = ACTSTracking::makeSeedTrackState(*this, *m_actsGeoSvc, geoCtx, *paramseed, magCache);
+    auto seedTrackState = ACTSTracking::makeSeedTrackState(*this, *m_actsGeoSvc, geoCtx, *paramseed, magCache,
+                                                           m_propagateBackward ? edm4hep::TrackState::AtLastHit
+                                                                               : edm4hep::TrackState::AtFirstHit);
 
     ACTSTracking::appendSeedTrack(seedCollection, m_seedMutex, seedTrackState,
                                   std::array{hits[sourceLinkOf(bottomSp).index()], hits[sourceLinkOf(middleSp).index()],

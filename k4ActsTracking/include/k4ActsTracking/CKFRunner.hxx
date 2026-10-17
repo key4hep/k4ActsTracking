@@ -92,15 +92,18 @@ using CombKalmanFilter = Acts::CombinatorialKalmanFilter<CKFPropagator, CKFTrack
 
 /**
  * @brief Convert estimated seed parameters into an edm4hep seed TrackState.
+ *
+ * @param location AtFirstHit for seeds at the bottom (inner) SP; AtLastHit for
+ *                 outside-in seeds, whose parameters are at the top (outer) SP.
  */
 template <class Alg>
 edm4hep::TrackState makeSeedTrackState(const Alg& /*alg*/, const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx,
                                        const Acts::BoundTrackParameters& paramseed,
-                                       Acts::MagneticFieldProvider::Cache& magCache) {
+                                       Acts::MagneticFieldProvider::Cache& magCache,
+                                       std::int32_t location = edm4hep::TrackState::AtFirstHit) {
   // The centralised converter re-expresses the seed parameters at an ad-hoc
   // perigee and evaluates the local field at their position itself.
-  return ActsPlugins::EDM4hepUtil::writeTrackState(geoCtx, edm4hep::TrackState::AtFirstHit, paramseed,
-                                                   *geo.magneticField(), magCache);
+  return ActsPlugins::EDM4hepUtil::writeTrackState(geoCtx, location, paramseed, *geo.magneticField(), magCache);
 }
 
 /**
@@ -175,6 +178,8 @@ public:
     /// through the seed's middle and inner SPs towards the beamline. When
     /// true, the caller must build seeds whose bound parameters live on the
     /// TOP (outer) SP's surface -- see estimateSeedParameters(..., propagateBackward).
+    /// The found tracks are reversed after smoothing, so the output is
+    /// ordered inside-out (AtFirstHit = innermost hit) in either direction.
     bool propagateBackward = false;
     bool extrapolateToCalo = false;
     std::size_t maxSteps = kDefaultMaxPropagationSteps;
@@ -292,6 +297,8 @@ public:
       pOptions.direction = Acts::Direction::Backward();
     }
     CKFTrackFinderOptions ckfOptions(m_geoCtx, m_magCtx, m_calCtx, extensions, pOptions);
+    // Stop the inward pass at the reference surface, so it does not run on
+    // into the opposite side of the vertex detector.
     ckfOptions.targetSurface = m_propagateBackward ? m_referenceSurface.get() : nullptr;
 
     // Two-way CKF: second pass propagates opposite to the first pass.
@@ -455,6 +462,14 @@ public:
         // + calo-face append + edm4hep conversion below, so the caller sees
         // the same output shape regardless of two-way mode.
         CKFTrackContainer::TrackProxy trackTip = stitchedOpt.value_or(smoothed);
+
+        // A backward pass leaves the innermost state at the tip. Reverse the
+        // states so the track is ordered inside-out like a forward one. Only
+        // after the two-way step, which needs the first pass in CKF order; the
+        // outside-in stitch already leaves the outermost state at the tip.
+        if (m_propagateBackward && !stitchedOpt) {
+          trackTip.reverseTrackStates(true);
+        }
 
         // Extrapolate the (stitched or smoothed) track to the reference
         // surface (the IP perigee by default, or a beam-perpendicular plane
