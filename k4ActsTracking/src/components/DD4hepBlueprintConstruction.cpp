@@ -183,7 +183,7 @@ const auto UngroupedInnerTrackerSpec = TrackerSpec{
 
 const auto SETSpec = TrackerSpec{
     .barrelContainer = "SET",
-    .barrelAxes = "XYZ",
+    .barrelAxes = "YZX",
     .barrelFilter = std::regex{"set_ladder_(\\d)_\\d_\\d+"},
     .endcapContainer = "<unused>",
     .endcapAxes = "XYZ",

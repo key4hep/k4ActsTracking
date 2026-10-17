@@ -1,3 +1,97 @@
+# v00-06
+
+* 2026-10-16 Jackson Carl Burzynski ([PR#125](https://github.com/Key4hep/k4ActsTracking/pull/125))
+  - Add `InitialTrackError_QOverP` to `CKFTrackingAlg` and `GNNTrackFinder`: an absolute initial q/p error added in quadrature to the relative one from `InitialTrackError_RelP`. The default of 0 keeps the old behaviour
+
+* 2026-10-15 Jackson Carl Burzynski ([PR#124](https://github.com/Key4hep/k4ActsTracking/pull/124))
+  Fix the hit covariance in `prepareTrackerHits`: rotate `du`/`dv` from the hit's u/v axes into the surface's local frame instead of assigning them directly to loc0/loc1
+
+* 2026-10-14 Jackson Carl Burzynski ([PR#131](https://github.com/Key4hep/k4ActsTracking/pull/131))
+  - Make sure that the `SET` sensor axes for the ILD blueprints are properly oriented to make them have a proper orthonormal base in the ACTS geometry
+
+* 2026-10-08 Juan Miguel Carceller ([PR#126](https://github.com/Key4hep/k4ActsTracking/pull/126))
+  - Run ACTS master CI directly in the Key4hep job container, mount CVMFS explicitly, and pin its actions to the latest release commits.
+
+* 2026-10-07 Mark Larson ([PR#123](https://github.com/Key4hep/k4ActsTracking/pull/123))
+  - Adds an example of how to log how many Threading Building Blocks (TBB) threads are running within the parallel seeding + CKF, allowing seeing whether NumThreads > 1 (and thus that multi threading is working as expected)
+
+* 2026-10-07 Juan Miguel Carceller ([PR#122](https://github.com/Key4hep/k4ActsTracking/pull/122))
+  - Remove `ACTSSeededCKFTrackingAlg` and its unused geometry helpers. Use `CKFTrackingAlg` instead.
+
+* 2026-10-07 Juan Miguel Carceller ([PR#120](https://github.com/Key4hep/k4ActsTracking/pull/120))
+  - Reduce CKFTrackingAlg.cpp compile memory by removing unused ACTS headers.
+
+* 2026-10-07 Federico Meloni ([PR#117](https://github.com/Key4hep/k4ActsTracking/pull/117))
+  - GNNTrackFinding: print the graph after every pipeline stage through a `GnnHook` (`EdgePrintingHook`) passed to `GnnPipeline::run`, instead of the `ClassifiedEdgePrinting`. The pipeline now runs the same stages whatever the output level.
+  - The output goes to the `GNNTrackFinder.Edges` logger and now also covers the graph as built.
+
+* 2026-10-07 Federico Meloni ([PR#113](https://github.com/Key4hep/k4ActsTracking/pull/113))
+  - GNNTrackFinding: remove the unused `mlutils::{flatten,getDimensions,totalSize}` helpers and templated `runInference` overloads from `ONNXInferenceModel.h`.
+  - GNNTrackFinding: use native Gaudi list properties instead of comma-separated strings. Old string configurations are rejected at configuration time. `parseList` / `parseMultiList` are removed.
+  - Add a `HostTensorView` helper that replaces three copies of the host-copy code in the pipeline stages.
+  - Remove the edge deduplication from the edge ordering and from `CCAndWalkTrackBuilding`.
+
+* 2026-10-07 Jackson Carl Burzynski ([PR#72](https://github.com/Key4hep/k4ActsTracking/pull/72))
+  - Add optional time-aware (4D) tracking to `CKFTrackingAlg`. Hit time as a CKF measurement dimension with per-sensor time resolutions, and optional seed doublet and triplet time cuts using the ACTS seeding time support. Requires digitised times without the time-of-flight correction
+  - Convert all hit times to ACTS native units before passing them to ACTS, fixing seed t0 that was previously in raw ns
+
+* 2026-10-06 Federico Meloni ([PR#112](https://github.com/Key4hep/k4ActsTracking/pull/112))
+  - `EdgeBuildingKnn` is now an `int` and must be > 0. Its documentation now says that only the CUDA (FRNN) edge building caps the neighbours at this value; the CPU KD-tree only uses it to reserve memory.
+  - ONNX model loading errors now carry the model path and the onnxruntime message and reach the Gaudi log, instead of being printed to stderr.
+  - Fix CUDA-targeted embedding outputs in host memory staying on the CPU (latent, not reachable with the current output binding).
+  - README: document that overlapping segments can produce duplicate tracks, and remove outdated items from the future-improvements list.
+
+* 2026-10-05 Federico Meloni ([PR#111](https://github.com/Key4hep/k4ActsTracking/pull/111))
+  - GNNTrackFinding: require Acts >= 48.1.0 (or main) when `K4ACTSTRACKING_BUILD_GNN` is on, for [acts#5646](https://github.com/acts-project/acts/pull/5646) (node feature selection/scaling in `OnnxEdgeClassifier`) and [acts#6142](https://github.com/acts-project/acts/pull/6142) (features passed in the configured order). Checked after `find_package` rather than passed to it, since Acts declares `SameMajorVersion` compatibility, which would reject later major versions and main (999.999.999).
+  - Drop the fallback to the pre-`ActsPlugins` Gnn headers and namespace aliases.
+  - Edge classifier input features are now passed to the model in the order given and may be repeated.
+  - Reject zero input scales (embedding, edge features, edge classifiers) in `initialize()`, instead of an exception or infinite inputs at the first event.
+
+* 2026-10-02 Federico Meloni ([PR#110](https://github.com/Key4hep/k4ActsTracking/pull/110))
+  - Remove wget-based data retrieval in favour of ExternalData
+
+* 2026-10-02 Baucki ([PR#94](https://github.com/Key4hep/k4ActsTracking/pull/94))
+  - Small change to ONNXInferenceModel adding a dedicated CUDA path, binding ONNX outputs directly to CUDA device
+  - Small fix to OnnxMetricLearning to ensure output tensor is on the correct device for buildEdgesFRNN (ACTS) when running on CUDA
+  - Copy node feature input tensor for downstream pipeline (edge classifiers) directly into ACTS tensor on CUDA device memory to force ACTS' OnnxEdgeClassifier to run on CUDA (device is picked up from [input tensor](https://github.com/acts-project/acts/blob/main/Plugins/Gnn/src/OnnxEdgeClassifier.cpp#L115)); skips intermediate conversion to torch tensor to move to CUDA device (std::vector -> torchTensor -> ActsTensor)
+
+* 2026-09-24 Federico Meloni ([PR#95](https://github.com/Key4hep/k4ActsTracking/pull/95))
+  - Use the centralised ACTS EDM4hep converter (`ActsPlugins::EDM4hepUtil`) instead of the local conversion code. `ACTS2edm4hep_track` is now a thin wrapper around `writeTrack`, and the seed (`AtFirstHit`) and calorimeter (`AtCalorimeter`) track states are built with `writeTrackState`.
+  - Remove `ACTS2edm4hep_trackState`, whose LCIO parameter conversion and covariance packing are now provided by the ACTS plugin.
+  - Fix the track state covariance layout: it now follows the EDM4hep parameter order (`edm4hep::TrackParams`), so downstream consumers read the correct elements.
+  - Link against `Acts::PluginEDM4hep`.
+
+* 2026-09-23 Juan Miguel Carceller ([PR#106](https://github.com/Key4hep/k4ActsTracking/pull/106))
+  - Build the EDM4hep plugin in CI
+
+* 2026-09-23 Federico Meloni ([PR#105](https://github.com/Key4hep/k4ActsTracking/pull/105))
+  - Added pass-through stage `ClassifiedEdgePrinting` to ease the validation of the GNN pipeline with external frameworks
+
+* 2026-09-22 Federico Meloni ([PR#103](https://github.com/Key4hep/k4ActsTracking/pull/103))
+  - Added SortEdges flag to re-orient edges from the hit closer to the interaction point to the one further out, matching the convention used during training
+
+* 2026-09-19 Paul Gessinger ([PR#104](https://github.com/Key4hep/k4ActsTracking/pull/104))
+  - Adapt to https://github.com/acts-project/acts/pull/6123
+
+* 2026-09-18 Juan Miguel Carceller ([PR#102](https://github.com/Key4hep/k4ActsTracking/pull/102))
+  - Replace deprecated (https://github.com/acts-project/acts/pull/5738)  material-binning APIs with AxisSpec
+
+* 2026-09-17 Thomas Madlener ([PR#101](https://github.com/Key4hep/k4ActsTracking/pull/101))
+  - Enforce formatting of pyhton files via ruff in pre-commit and CI
+
+* 2026-09-17 Thomas Madlener ([PR#99](https://github.com/Key4hep/k4ActsTracking/pull/99))
+  - Update the `.clang-format` configuration to the one the rest of Key4hep uses
+  - Format all c++ files to comply
+
+* 2026-09-17 Juan Miguel Carceller ([PR#98](https://github.com/Key4hep/k4ActsTracking/pull/98))
+  - Fix k4ActsTracking compatibility with the current ACTS propagator and grid-bin finder APIs after https://github.com/acts-project/acts/pull/6004
+
+* 2026-09-17 Joshua Beirer ([PR#97](https://github.com/Key4hep/k4ActsTracking/pull/97))
+  - Fixed a cryptic Gaudi `TypeError`/`ValueError` when `--compactFile` was omitted in `CLD_CKFTracking.py`, `runGNNTrackFinding.py`, and `test_visualize_acts_geo.py` by making the argument required, with a clear error message.
+
+* 2026-09-17 Thomas Madlener ([PR#96](https://github.com/Key4hep/k4ActsTracking/pull/96))
+  - Make it possible to trigger the pre-commit workflow from the github UI
+
 # v00-05
 
 * 2026-08-12 Federico Meloni ([PR#93](https://github.com/key4hep/k4ActsTracking/pull/93))
