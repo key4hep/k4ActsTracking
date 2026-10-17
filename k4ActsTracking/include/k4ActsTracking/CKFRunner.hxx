@@ -72,6 +72,7 @@
 
 // Standard
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstddef>
@@ -80,7 +81,10 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <string>
+#include <tuple>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -147,6 +151,64 @@ std::optional<typename track_proxy_t::ConstTrackStateProxy> findTwoWayAnchor(con
   return typename track_proxy_t::ConstTrackStateProxy{*it};
 }
 
+/// Measurement indices (SourceLink::index()) of the three space points of a seed.
+using SeedMeasurements = std::array<std::size_t, 3>;
+
+/**
+ * @brief Flags the seeds whose measurements are all on an already found track.
+ *
+ * Port of SeedCoverage from ACTS Examples' TrackFindingAlgorithm, which backs
+ * its seedDeduplication option: the seeds are indexed by measurement once, then
+ * every output track marks the seeds whose measurements it all contains, and
+ * the CKF skips those seeds.
+ */
+class SeedCoverage {
+public:
+  explicit SeedCoverage(const std::vector<SeedMeasurements>& seeds)
+      : m_covered(seeds.size(), false), m_counts(seeds.size(), 0) {
+    for (std::size_t iSeed = 0; iSeed < seeds.size(); ++iSeed) {
+      for (const std::size_t measurement : seeds[iSeed]) {
+        m_measurementToSeeds[measurement].push_back(iSeed);
+      }
+    }
+  }
+
+  /// Flag every seed whose measurements @p track contains.
+  void addCoverageFrom(const CKFTrackContainer::TrackProxy& track) {
+    for (const auto& state : track.trackStatesReversed()) {
+      if (!state.hasUncalibratedSourceLink()) {
+        continue;
+      }
+      const auto it = m_measurementToSeeds.find(state.getUncalibratedSourceLink().get<SourceLink>().index());
+      if (it == m_measurementToSeeds.end()) {
+        continue;
+      }
+      for (const std::size_t iSeed : it->second) {
+        if (m_counts[iSeed] == 0) {
+          m_touched.push_back(iSeed);
+        }
+        if (++m_counts[iSeed] >= std::tuple_size_v<SeedMeasurements>) {
+          m_covered[iSeed] = true;
+        }
+      }
+    }
+
+    for (const std::size_t iSeed : m_touched) {
+      m_counts[iSeed] = 0;
+    }
+    m_touched.clear();
+  }
+
+  /// Whether an earlier track covers seed @p iSeed.
+  bool isCovered(std::size_t iSeed) const { return m_covered[iSeed]; }
+
+private:
+  std::unordered_map<std::size_t, std::vector<std::size_t>> m_measurementToSeeds;
+  std::vector<bool> m_covered;
+  std::vector<std::uint32_t> m_counts; ///< per seed: its measurements on the current track
+  std::vector<std::size_t> m_touched;  ///< seeds with a non-zero count, reset after each track
+};
+
 /**
  * @brief Owns the ACTS Combinatorial Kalman Filter and runs it over seeds.
  *
@@ -210,6 +272,16 @@ public:
     /// inflateCovarianceTwoWay is true.
     double twoWayInflateCovarianceFactor = 100.0;
 
+    /// Seed deduplication, as ACTS Examples' seedDeduplication: skip a seed
+    /// whose measurements are all on a track already output by the same
+    /// findTracks() call (see SeedCoverage). Only applies when findTracks() is
+    /// given the seeds' measurement indices. Disabled by default.
+    bool seedDeduplication = false;
+
+    /// Only output tracks with at least this many measurements mark seeds as
+    /// covered; 0 lets every output track do so.
+    std::size_t seedDeduplicationMinMeasurements = 0;
+
     /// Surface the fitted tracks are extrapolated to for the AtIP track state.
     /// When null (the default) a PerigeeSurface at the origin is used, i.e. the
     /// standard collider beamline parameterisation (d0/z0). A telescope client
@@ -236,7 +308,9 @@ public:
         m_bsMaxHoles(cfg.bsMaxHoles), m_bsMaxOutliers(cfg.bsMaxOutliers), m_bsMinMeasurements(cfg.bsMinMeasurements),
         m_bsPtMin(cfg.bsPtMin), m_bsPtMinMeasurements(cfg.bsPtMinMeasurements), m_doTwoWayCKF(cfg.doTwoWayCKF),
         m_inflateCovarianceTwoWay(cfg.inflateCovarianceTwoWay),
-        m_twoWayInflateCovarianceFactor(cfg.twoWayInflateCovarianceFactor), m_measSelConfig(makeSelectorConfig(cfg)),
+        m_twoWayInflateCovarianceFactor(cfg.twoWayInflateCovarianceFactor), m_seedDeduplication(cfg.seedDeduplication),
+        m_seedDeduplicationMinMeasurements(cfg.seedDeduplicationMinMeasurements),
+        m_measSelConfig(makeSelectorConfig(cfg)),
         m_trackFinder(std::make_unique<CombKalmanFilter>(makePropagator(geo, false))),
         m_referenceSurface(cfg.referenceSurface
                                ? cfg.referenceSurface
@@ -254,13 +328,28 @@ public:
   /// Run the CKF over @p paramseeds using the event-local @p measurements and
   /// @p sourceLinks, appending found tracks to @p trackCollection.
   /// @param caloMonitor Optional counters for the calorimeter-face extrapolation.
+  /// @param seedMeasurements Optional measurement indices of each seed, parallel
+  ///        to @p paramseeds. Needed for Config::seedDeduplication, which then
+  ///        acts across the seeds of this call.
   template <class Alg>
   void findTracks(const Alg& alg, const ACTSTracking::MeasurementContainer& measurements,
                   const ACTSTracking::SourceLinkContainer& sourceLinks, const ACTSTracking::HitContainer& hits,
                   const std::vector<Acts::BoundTrackParameters>& paramseeds,
                   Acts::MagneticFieldProvider::Cache& magCache, edm4hep::TrackCollection& trackCollection,
-                  std::mutex& trackMutex, const CaloExtrapMonitor* caloMonitor = nullptr) const {
+                  std::mutex& trackMutex, const CaloExtrapMonitor* caloMonitor = nullptr,
+                  const std::vector<SeedMeasurements>* seedMeasurements = nullptr) const {
     alg.debug() << "Starting CKF track finding with " << paramseeds.size() << " seeds." << endmsg;
+
+    // Seed deduplication: skip the seeds whose measurements are all on a track
+    // already output from an earlier seed of this call.
+    std::optional<SeedCoverage> seedCoverage;
+    if (m_seedDeduplication && seedMeasurements != nullptr) {
+      if (seedMeasurements->size() != paramseeds.size()) {
+        throw std::invalid_argument("CKFRunner::findTracks: seedMeasurements must be parallel to paramseeds");
+      }
+      seedCoverage.emplace(*seedMeasurements);
+    }
+    std::size_t nSeedsSkipped = 0;
 
     // Bind the event-local measurements / source links. These, and the
     // extensions/options that point at them, are per-call locals so concurrent
@@ -316,6 +405,10 @@ public:
     const CombKalmanFilter& trackFinder = *m_trackFinder;
 
     for (std::size_t iseed = 0; iseed < paramseeds.size(); ++iseed) {
+      if (seedCoverage && seedCoverage->isCovered(iseed)) {
+        ++nSeedsSkipped;
+        continue;
+      }
       tracks.clear();
       auto result = trackFinder.findTracks(paramseeds.at(iseed), ckfOptions, tracks);
       if (!result.ok()) {
@@ -483,8 +576,28 @@ public:
           std::lock_guard lock{trackMutex};
           trackCollection.push_back(track);
         }
+
+        if (seedCoverage && trackTip.nMeasurements() >= m_seedDeduplicationMinMeasurements) {
+          seedCoverage->addCoverageFrom(trackTip);
+        }
       }
     }
+
+    if (seedCoverage) {
+      m_nDedupSeeds += paramseeds.size();
+      m_nDedupSkipped += nSeedsSkipped;
+      alg.debug() << "Seed deduplication: skipped " << nSeedsSkipped << " of " << paramseeds.size() << " seeds."
+                  << endmsg;
+    }
+  }
+
+  /// Seed-deduplication totals over all findTracks() calls so far.
+  std::string seedDeduplicationSummary() const {
+    const std::size_t n = m_nDedupSeeds.load();
+    const std::size_t skipped = m_nDedupSkipped.load();
+    return fmt::format("Seed deduplication: skipped {} of {} seeds ({:.1f}%), all of whose hits were on an earlier "
+                       "track.",
+                       skipped, n, n > 0 ? 100.0 * static_cast<double>(skipped) / static_cast<double>(n) : 0.0);
   }
 
 private:
@@ -544,12 +657,18 @@ private:
   bool m_doTwoWayCKF = false;
   bool m_inflateCovarianceTwoWay = true;
   double m_twoWayInflateCovarianceFactor = 100.0;
+  bool m_seedDeduplication = false;
+  std::size_t m_seedDeduplicationMinMeasurements = 0;
   Acts::MeasurementSelector::Config m_measSelConfig;
 
   std::unique_ptr<CombKalmanFilter> m_trackFinder;
   std::shared_ptr<const Acts::Surface> m_referenceSurface;
   std::unique_ptr<CKFPropagator> m_extrapolator;
   CaloStateAppender m_caloAppender;
+
+  // Seed-deduplication totals, updated by concurrent findTracks() calls.
+  mutable std::atomic<std::size_t> m_nDedupSeeds{0};
+  mutable std::atomic<std::size_t> m_nDedupSkipped{0};
 };
 
 } // namespace ACTSTracking
