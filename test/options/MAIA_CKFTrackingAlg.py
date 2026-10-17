@@ -149,6 +149,11 @@ parser.add_argument(
     action="store_true",
     help="Add a second, backward CKF pass to the inside-out CKF (outside-in is always two-way)",
 )
+parser.add_argument(
+    "--seedDeduplication",
+    action="store_true",
+    help="Skip the CKF for seeds whose hits are all on an earlier track (SeedDeduplication)",
+)
 cli_args = parser.parse_known_args()[0]
 
 if cli_args.outsideIn:
@@ -157,6 +162,8 @@ elif cli_args.twoWay:
     selected_properties = {**ckf_properties, "DoTwoWayCKF": True}
 else:
     selected_properties = ckf_properties
+if cli_args.seedDeduplication:
+    selected_properties = {**selected_properties, "SeedDeduplication": True}
 
 ckf_tracking = make_ckf_tracking(
     hit_merger,
