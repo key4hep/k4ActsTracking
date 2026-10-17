@@ -68,6 +68,7 @@
 #include <tbb/enumerable_thread_specific.h>
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_sort.h>
+#include <tbb/partitioner.h>
 #include <tbb/task_arena.h>
 
 #include <fmt/ostream.h>
@@ -102,17 +103,19 @@ namespace {
 /// The seed direction is taken from the bottom->top space points; the momentum
 /// magnitude is not measurable without curvature, so a nominal value is used
 /// (it does not affect the straight-line propagation, only the covariance
-/// scale and the reported q/p).
-std::optional<Acts::BoundTrackParameters>
-estimateStraightLineSeedParameters(const Acts::GeometryContext& geoCtx, const Acts::Surface& bottomSurface,
-                                   const Acts::Vector3& bottomPos, const Acts::Vector3& topPos,
-                                   const edm4hep::TrackerHit& bottomHit, double nominalP, double errPos, double errPhi,
-                                   double errLambda, double errRelP, double errTime, double errQOverP) {
+/// scale and the reported q/p). The parameters are expressed at the start SP:
+/// the bottom one, or the top one with @p propagateBackward (outside-in), whose
+/// surface @p startSurface is and whose hit @p startHit gives the time.
+std::optional<Acts::BoundTrackParameters> estimateStraightLineSeedParameters(
+    const Acts::GeometryContext& geoCtx, const Acts::Surface& startSurface, const Acts::Vector3& bottomPos,
+    const Acts::Vector3& topPos, const edm4hep::TrackerHit& startHit, double nominalP, double errPos, double errPhi,
+    double errLambda, double errRelP, double errTime, double errQOverP, bool propagateBackward) {
   const Acts::Vector3 dir = (topPos - bottomPos).normalized();
+  const Acts::Vector3& startPos = propagateBackward ? topPos : bottomPos;
 
-  // The bottom position is derived from the surface, so it lies on it; use a
+  // The start position is derived from the surface, so it lies on it; use a
   // generous tolerance to guard against round-off in the global<->local map.
-  Acts::Result<Acts::Vector2> local = bottomSurface.globalToLocal(geoCtx, bottomPos, dir, 1 * Acts::UnitConstants::mm);
+  Acts::Result<Acts::Vector2> local = startSurface.globalToLocal(geoCtx, startPos, dir, 1 * Acts::UnitConstants::mm);
   if (!local.ok()) {
     return std::nullopt;
   }
@@ -123,11 +126,11 @@ estimateStraightLineSeedParameters(const Acts::GeometryContext& geoCtx, const Ac
   params[Acts::eBoundPhi] = Acts::VectorHelpers::phi(dir);
   params[Acts::eBoundTheta] = Acts::VectorHelpers::theta(dir);
   params[Acts::eBoundQOverP] = 1.0 / nominalP; // charge sign is irrelevant at B = 0
-  params[Acts::eBoundTime] = ACTSTracking::hitTime(bottomHit);
+  params[Acts::eBoundTime] = ACTSTracking::hitTime(startHit);
 
   Acts::BoundMatrix cov =
       ACTSTracking::makeInitialCovariance(nominalP, errPos, errPhi, errLambda, errRelP, errTime, errQOverP);
-  return Acts::BoundTrackParameters(bottomSurface.getSharedPtr(), params, cov, Acts::ParticleHypothesis::pion());
+  return Acts::BoundTrackParameters(startSurface.getSharedPtr(), params, cov, Acts::ParticleHypothesis::pion());
 }
 } // namespace
 
@@ -168,12 +171,14 @@ private:
 
   /// Convert the seeds found by the triplet seeder into ACTS bound track
   /// parameters and create the corresponding edm4hep seed tracks. The space
-  /// point indices stored in @p seeds reference @p spacePoints.
-  std::vector<Acts::BoundTrackParameters> seedsToParameters(const Acts::SeedContainer& seeds,
-                                                            const Acts::SpacePointContainer& spacePoints,
-                                                            const ACTSTracking::HitContainer& hits,
-                                                            edm4hep::TrackCollection& seedCollection,
-                                                            Acts::MagneticFieldProvider::Cache& magCache) const;
+  /// point indices stored in @p seeds reference @p spacePoints. The measurement
+  /// indices of each converted seed go to @p seedMeasurements, parallel to the
+  /// returned parameters.
+  std::vector<Acts::BoundTrackParameters>
+  seedsToParameters(const Acts::SeedContainer& seeds, const Acts::SpacePointContainer& spacePoints,
+                    const ACTSTracking::HitContainer& hits, edm4hep::TrackCollection& seedCollection,
+                    Acts::MagneticFieldProvider::Cache& magCache,
+                    std::vector<ACTSTracking::SeedMeasurements>& seedMeasurements) const;
 
   /// Straight-line telescope seeding for field-free planar geometries (e.g.
   /// LUXE). Groups the seed-selected space points into layers along z, forms
@@ -191,7 +196,16 @@ private:
   /// @name Run control
   ///@{
   Gaudi::Property<bool> m_runCKF{this, "RunCKF", true, "Run tracking using CKF. False means stop at seeding."};
-  Gaudi::Property<bool> m_propagateBackward{this, "PropagateBackward", false, "Extrapolates tracks towards beamline."};
+  Gaudi::Property<bool> m_doTwoWayCKF{this, "DoTwoWayCKF", false,
+                                      "Run two-way CKF: first pass + smooth + second pass in opposite direction."};
+  Gaudi::Property<bool> m_inflateCovarianceTwoWay{this, "InflateCovarianceTwoWay", true,
+                                                  "Inflate covariance before the second CKF pass."};
+  Gaudi::Property<double> m_twoWayInflateCovarianceFactor{this, "TwoWayInflateCovarianceFactor", 100.0,
+                                                          "Covariance inflation factor for the second CKF pass."};
+  Gaudi::Property<bool> m_propagateBackward{
+      this, "PropagateBackward", false,
+      "Find tracks outside-in: start the CKF at the outermost seed SP and propagate backward through the other seed "
+      "SPs toward the beamline."};
   Gaudi::Property<bool> m_extrapolateToCalo{
       this, "ExtrapolateToCalo", true,
       "Extrapolate fitted tracks to the calorimeter face and add an AtCalorimeter track state."};
@@ -431,6 +445,18 @@ private:
   Gaudi::Property<int> m_bsPtMinMeasurements{this, "BranchStopper_PtMinMeasurements", 3,
                                              "Minimum measurements before the pT branch stop is applied."};
   ///@}
+
+  /// @name Seed deduplication (ACTS Examples' seedDeduplication)
+  ///@{
+  Gaudi::Property<bool> m_seedDeduplication{
+      this, "SeedDeduplication", false,
+      "Skip the CKF for a seed whose three hits are all on a track already found from an earlier seed. Acts on the "
+      "seeds of one CKF task: the whole event with NumThreads = 1, otherwise each of a fixed set of contiguous "
+      "blocks of seeding-grid groups (about one per thread), so the result depends on NumThreads."};
+  Gaudi::Property<unsigned int> m_seedDeduplicationMinMeasurements{
+      this, "SeedDeduplication_MinMeasurements", 0,
+      "Only tracks with at least this many measurements mark seeds as covered; 0 = every output track."};
+  ///@}
   ///@}
 
   /// @name Seeding layer selection
@@ -576,21 +602,26 @@ StatusCode CKFTrackingAlg::initialize() {
     referenceSurface = Acts::Surface::makeShared<Acts::PlaneSurface>(refTransform);
   }
 
-  m_ckfRunner.emplace(*m_actsGeoSvc,
-                      ACTSTracking::CKFRunner::Config{.chi2CutOff = m_CKF_chi2CutOff,
-                                                      .numMeasurementsCutOff = m_CKF_numMeasurementsCutOff,
-                                                      .chi2CutOffOutlier = m_CKF_chi2CutOffOutlier,
-                                                      .propagateBackward = m_propagateBackward,
-                                                      .extrapolateToCalo = m_extrapolateToCalo,
-                                                      .maxSteps = m_maxPropagationSteps,
-                                                      .addEndcapCaloState = m_addEndcapCaloState,
-                                                      .useBranchStopper = m_useBranchStopper,
-                                                      .bsMaxHoles = m_bsMaxHoles,
-                                                      .bsMaxOutliers = m_bsMaxOutliers,
-                                                      .bsMinMeasurements = m_bsMinMeasurements,
-                                                      .bsPtMin = m_bsPtMin,
-                                                      .bsPtMinMeasurements = m_bsPtMinMeasurements,
-                                                      .referenceSurface = referenceSurface});
+  m_ckfRunner.emplace(*m_actsGeoSvc, ACTSTracking::CKFRunner::Config{
+                                         .chi2CutOff = m_CKF_chi2CutOff,
+                                         .numMeasurementsCutOff = m_CKF_numMeasurementsCutOff,
+                                         .chi2CutOffOutlier = m_CKF_chi2CutOffOutlier,
+                                         .propagateBackward = m_propagateBackward,
+                                         .extrapolateToCalo = m_extrapolateToCalo,
+                                         .maxSteps = m_maxPropagationSteps,
+                                         .addEndcapCaloState = m_addEndcapCaloState,
+                                         .useBranchStopper = m_useBranchStopper,
+                                         .bsMaxHoles = m_bsMaxHoles,
+                                         .bsMaxOutliers = m_bsMaxOutliers,
+                                         .bsMinMeasurements = m_bsMinMeasurements,
+                                         .bsPtMin = m_bsPtMin,
+                                         .bsPtMinMeasurements = m_bsPtMinMeasurements,
+                                         .doTwoWayCKF = m_doTwoWayCKF,
+                                         .inflateCovarianceTwoWay = m_inflateCovarianceTwoWay,
+                                         .twoWayInflateCovarianceFactor = m_twoWayInflateCovarianceFactor,
+                                         .seedDeduplication = m_seedDeduplication,
+                                         .seedDeduplicationMinMeasurements = m_seedDeduplicationMinMeasurements,
+                                         .referenceSurface = referenceSurface});
 
   return StatusCode::SUCCESS;
 }
@@ -598,6 +629,9 @@ StatusCode CKFTrackingAlg::initialize() {
 StatusCode CKFTrackingAlg::finalize() {
   if (m_extrapolateToCalo) {
     info() << m_caloMonitor.summary() << endmsg;
+  }
+  if (m_seedDeduplication) {
+    info() << m_ckfRunner->seedDeduplicationSummary() << endmsg;
   }
   return StatusCode::SUCCESS;
 }
@@ -915,18 +949,30 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
     }
 
     // Convert this task's seeds into bound track parameters and seed tracks.
+    std::vector<ACTSTracking::SeedMeasurements> seedMeasurements;
     std::vector<Acts::BoundTrackParameters> paramseeds =
-        seedsToParameters(seeds, spacePoints, hits, seedCollection, localMagCache);
+        seedsToParameters(seeds, spacePoints, hits, seedCollection, localMagCache, seedMeasurements);
 
     if (!m_runCKF)
       return;
 
     m_ckfRunner->findTracks(*this, measurements, sourceLinks, hits, paramseeds, localMagCache, trackCollection,
-                            m_trackMutex, &m_caloMonitor);
+                            m_trackMutex, &m_caloMonitor, &seedMeasurements);
   };
 
   tbb::task_arena arena(m_numThreads.value());
-  if (m_numThreads > 1) {
+  if (m_numThreads > 1 && m_seedDeduplication) {
+    // Seed deduplication only acts within one task's seeds, so split the groups
+    // into fixed contiguous blocks of at most ceil(groups / NumThreads) instead
+    // of TBB's dynamic split, which would make the result depend on scheduling.
+    // The groups run phi-major, so the seeds of one track mostly share a block.
+    const std::size_t nThreads = static_cast<std::size_t>(m_numThreads.value());
+    const std::size_t grain = std::max<std::size_t>(1, (groups.size() + nThreads - 1) / nThreads);
+    arena.execute([&] {
+      tbb::parallel_for(tbb::blocked_range<size_t>(0, groups.size(), grain), parallelSeedingAndTracking,
+                        tbb::simple_partitioner());
+    });
+  } else if (m_numThreads > 1) {
     arena.execute([&] { tbb::parallel_for(tbb::blocked_range<size_t>(0, groups.size()), parallelSeedingAndTracking); });
   } else {
     parallelSeedingAndTracking(tbb::blocked_range<size_t>(0, groups.size()));
@@ -941,11 +987,13 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
 std::vector<Acts::BoundTrackParameters>
 CKFTrackingAlg::seedsToParameters(const Acts::SeedContainer& seeds, const Acts::SpacePointContainer& spacePoints,
                                   const ACTSTracking::HitContainer& hits, edm4hep::TrackCollection& seedCollection,
-                                  Acts::MagneticFieldProvider::Cache& magCache) const {
+                                  Acts::MagneticFieldProvider::Cache& magCache,
+                                  std::vector<ACTSTracking::SeedMeasurements>& seedMeasurements) const {
   const Acts::GeometryContext geoCtx = Acts::GeometryContext::dangerouslyDefaultConstruct();
 
   std::vector<Acts::BoundTrackParameters> paramseeds;
   paramseeds.reserve(seeds.size());
+  seedMeasurements.reserve(seeds.size());
 
   auto position = [](const Acts::ConstSpacePointProxy& sp) {
     return Acts::Vector3(sp.xy()[0], sp.xy()[1], sp.zr()[0]);
@@ -964,27 +1012,35 @@ CKFTrackingAlg::seedsToParameters(const Acts::SeedContainer& seeds, const Acts::
     const Acts::ConstSpacePointProxy middleSp = spacePoints[spIndices[1]];
     const Acts::ConstSpacePointProxy topSp = spacePoints[spIndices[2]];
 
-    const ACTSTracking::SourceLink& bottomSL = sourceLinkOf(bottomSp);
-    const Acts::Surface* surface = m_actsGeoSvc->trackingGeometry()->findSurface(bottomSL.geometryId());
+    // PropagateBackward: start the (backward) CKF from the OUTER SP, so we need
+    // bound parameters expressed on the top surface, not the bottom one.
+    // Inside-out (default): start from the inner SP.
+    const Acts::ConstSpacePointProxy& startSp = m_propagateBackward ? topSp : bottomSp;
+    const ACTSTracking::SourceLink& startSL = sourceLinkOf(startSp);
+    const Acts::Surface* surface = m_actsGeoSvc->trackingGeometry()->findSurface(startSL.geometryId());
     if (surface == nullptr) {
-      warning() << "Surface with geoID " << bottomSL.geometryId() << " not found in tracking geometry" << endmsg;
+      warning() << "Surface with geoID " << startSL.geometryId() << " not found in tracking geometry" << endmsg;
       continue;
     }
 
     std::optional<Acts::BoundTrackParameters> paramseed = ACTSTracking::estimateSeedParameters(
         *this, *m_actsGeoSvc, geoCtx, *surface, position(bottomSp), position(middleSp), position(topSp),
-        hits[bottomSL.index()], magCache, m_initialTrackError_pos, m_initialTrackError_phi, m_initialTrackError_lambda,
-        m_initialTrackError_relP, m_initialTrackError_time, m_initialTrackError_qOverP);
+        hits[startSL.index()], magCache, m_initialTrackError_pos, m_initialTrackError_phi, m_initialTrackError_lambda,
+        m_initialTrackError_relP, m_initialTrackError_time, m_propagateBackward, m_initialTrackError_qOverP);
     if (!paramseed) {
       continue;
     }
     paramseeds.push_back(*paramseed);
+    seedMeasurements.push_back(
+        {sourceLinkOf(bottomSp).index(), sourceLinkOf(middleSp).index(), sourceLinkOf(topSp).index()});
 
-    auto seedTrackState = ACTSTracking::makeSeedTrackState(*this, *m_actsGeoSvc, geoCtx, *paramseed, magCache);
+    auto seedTrackState = ACTSTracking::makeSeedTrackState(*this, *m_actsGeoSvc, geoCtx, *paramseed, magCache,
+                                                           m_propagateBackward ? edm4hep::TrackState::AtLastHit
+                                                                               : edm4hep::TrackState::AtFirstHit);
 
-    ACTSTracking::appendSeedTrack(
-        seedCollection, m_seedMutex, seedTrackState,
-        std::array{hits[bottomSL.index()], hits[sourceLinkOf(middleSp).index()], hits[sourceLinkOf(topSp).index()]});
+    ACTSTracking::appendSeedTrack(seedCollection, m_seedMutex, seedTrackState,
+                                  std::array{hits[sourceLinkOf(bottomSp).index()], hits[sourceLinkOf(middleSp).index()],
+                                             hits[sourceLinkOf(topSp).index()]});
 
     debug() << "Seed Parameters" << std::endl << *paramseed << endmsg;
   }
@@ -1033,6 +1089,7 @@ void CKFTrackingAlg::runTelescopeSeeding(const std::vector<SeedInput>& seedInput
   auto pos = [&](std::size_t i) { return Acts::Vector3(seedInputs[i].x, seedInputs[i].y, seedInputs[i].z); };
 
   std::vector<Acts::BoundTrackParameters> paramseeds;
+  std::vector<ACTSTracking::SeedMeasurements> seedMeasurements;
 
   // -------------------------------------------------------------------------
   // 2. Form straight-line triplets over consecutive layer triplets. For each
@@ -1070,23 +1127,30 @@ void CKFTrackingAlg::runTelescopeSeeding(const std::vector<SeedInput>& seedInput
           continue;
         }
 
+        // PropagateBackward: start the (backward) CKF from the top SP, as in
+        // the cylindrical seeding path.
         const ACTSTracking::SourceLink& bottomSL = seedInputs[bi].sourceLink;
-        const Acts::Surface* surface = m_actsGeoSvc->trackingGeometry()->findSurface(bottomSL.geometryId());
+        const ACTSTracking::SourceLink& startSL = m_propagateBackward ? seedInputs[ti].sourceLink : bottomSL;
+        const Acts::Surface* surface = m_actsGeoSvc->trackingGeometry()->findSurface(startSL.geometryId());
         if (surface == nullptr) {
-          warning() << "Surface with geoID " << bottomSL.geometryId() << " not found in tracking geometry" << endmsg;
+          warning() << "Surface with geoID " << startSL.geometryId() << " not found in tracking geometry" << endmsg;
           continue;
         }
 
         std::optional<Acts::BoundTrackParameters> paramseed = estimateStraightLineSeedParameters(
-            geoCtx, *surface, bottom, top, hits[bottomSL.index()], nominalP, m_initialTrackError_pos,
+            geoCtx, *surface, bottom, top, hits[startSL.index()], nominalP, m_initialTrackError_pos,
             m_initialTrackError_phi, m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time,
-            m_initialTrackError_qOverP);
+            m_initialTrackError_qOverP, m_propagateBackward);
         if (!paramseed) {
           continue;
         }
         paramseeds.push_back(*paramseed);
+        seedMeasurements.push_back(
+            {bottomSL.index(), seedInputs[bestMid].sourceLink.index(), seedInputs[ti].sourceLink.index()});
 
-        auto seedTrackState = ACTSTracking::makeSeedTrackState(*this, *m_actsGeoSvc, geoCtx, *paramseed, magCache);
+        auto seedTrackState = ACTSTracking::makeSeedTrackState(*this, *m_actsGeoSvc, geoCtx, *paramseed, magCache,
+                                                               m_propagateBackward ? edm4hep::TrackState::AtLastHit
+                                                                                   : edm4hep::TrackState::AtFirstHit);
         ACTSTracking::appendSeedTrack(seedCollection, m_seedMutex, seedTrackState,
                                       std::array{hits[bottomSL.index()], hits[seedInputs[bestMid].sourceLink.index()],
                                                  hits[seedInputs[ti].sourceLink.index()]});
@@ -1102,7 +1166,7 @@ void CKFTrackingAlg::runTelescopeSeeding(const std::vector<SeedInput>& seedInput
   }
 
   m_ckfRunner->findTracks(*this, measurements, sourceLinks, hits, paramseeds, magCache, trackCollection, m_trackMutex,
-                          &m_caloMonitor);
+                          &m_caloMonitor, &seedMeasurements);
 }
 
 DECLARE_COMPONENT(CKFTrackingAlg);
