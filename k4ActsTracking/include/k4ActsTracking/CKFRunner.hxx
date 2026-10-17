@@ -255,7 +255,10 @@ public:
     if (m_propagateBackward) {
       pOptions.direction = Acts::Direction::Backward();
     }
-    const CKFTrackFinderOptions ckfOptions(m_geoCtx, m_magCtx, m_calCtx, extensions, pOptions);
+    CKFTrackFinderOptions ckfOptions(m_geoCtx, m_magCtx, m_calCtx, extensions, pOptions);
+    // Stop the inward pass at the reference surface, so it does not run on
+    // into the opposite side of the vertex detector.
+    ckfOptions.targetSurface = m_propagateBackward ? m_referenceSurface.get() : nullptr;
 
     auto trackContainer = std::make_shared<Acts::VectorTrackContainer>();
     auto trackStateContainer = std::make_shared<Acts::VectorMultiTrajectory>();
