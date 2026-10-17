@@ -24,6 +24,7 @@ import sys
 from Gaudi.Configuration import INFO
 from Gaudi.Configurables import DDPlanarDigi
 from k4FWCore import ApplicationMgr, IOSvc
+from k4FWCore.parseArgs import parser
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -101,18 +102,66 @@ hit_merger, hit_rel_merger = make_hit_mergers(
 )
 algList.extend([hit_merger, hit_rel_merger])
 
+ckf_properties = {
+    "seeding_cellids": ["system:1", "system:2,layer:1|2|3"],
+    # Keep hits with a chi2 up to this value as outliers instead of holes
+    "CKF_Chi2CutOffOutlier": 25,
+    # Terminate poor CKF branches early, aligned with a typical downstream
+    # track selection (at least 8 hits, at most 2 holes)
+    "UseBranchStopper": True,
+    "BranchStopper_MaxHoles": 2,
+    "BranchStopper_MaxOutliers": 2,
+    "BranchStopper_MinMeasurements": 8,
+}
+
+# Outside-in alternative: seeds in the IT + OT barrels and disks, a first CKF
+# pass towards the beamline, and a second (two-way) pass back out.
+ckf_outsidein_properties = {
+    **ckf_properties,
+    # Fewest outermost layers giving >= 3 seed points for |eta| < 2.44: IT
+    # barrel 2, IT disks 3-5, OT barrels 0-1 and all OT disks
+    "seeding_cellids": [
+        "system:3,layer:2",
+        "system:4,layer:3|4|5",
+        "system:5,layer:0|1",
+        "system:6",
+    ],
+    # Seed points outside RMax / ZMax are ignored: cover the whole IT + OT
+    "SeedFinding_RMax": 1600,
+    "SeedFinding_ZMax": 2300,
+    "SeedFinding_DeltaRMax": 400,
+    "SeedFinding_MinPt": 1500,
+    "PropagateBackward": True,
+    "DoTwoWayCKF": True,
+    "CKF_NumMeasurementsCutOff": 2,
+    "BranchStopper_MaxOutliers": 3,
+    "BranchStopper_PtMin": 0.5,
+    "BranchStopper_PtMinMeasurements": 4,
+}
+
+parser.add_argument(
+    "--outsideIn",
+    action="store_true",
+    help="Run the outside-in, two-way CKF seeded in the IT + OT instead of the default inside-out CKF",
+)
+parser.add_argument(
+    "--twoWay",
+    action="store_true",
+    help="Add a second, backward CKF pass to the inside-out CKF (outside-in is always two-way)",
+)
+cli_args = parser.parse_known_args()[0]
+
+if cli_args.outsideIn:
+    selected_properties = ckf_outsidein_properties
+elif cli_args.twoWay:
+    selected_properties = {**ckf_properties, "DoTwoWayCKF": True}
+else:
+    selected_properties = ckf_properties
+
 ckf_tracking = make_ckf_tracking(
     hit_merger,
     hit_rel_merger,
-    seeding_cellids=["system:1", "system:2,layer:1|2|3"],
-    # Keep hits with a chi2 up to this value as outliers instead of holes
-    CKF_Chi2CutOffOutlier=25,
-    # Terminate poor CKF branches early, aligned with a typical downstream
-    # track selection (at least 8 hits, at most 2 holes)
-    UseBranchStopper=True,
-    BranchStopper_MaxHoles=2,
-    BranchStopper_MaxOutliers=2,
-    BranchStopper_MinMeasurements=8,
+    **selected_properties,
 )
 algList.append(ckf_tracking)
 
