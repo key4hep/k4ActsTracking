@@ -983,7 +983,7 @@ CKFTrackingAlg::seedsToParameters(const Acts::SeedContainer& seeds, const Acts::
     std::optional<Acts::BoundTrackParameters> paramseed = ACTSTracking::estimateSeedParameters(
         *this, *m_actsGeoSvc, geoCtx, *surface, position(bottomSp), position(middleSp), position(topSp),
         hits[startSL.index()], magCache, m_initialTrackError_pos, m_initialTrackError_phi, m_initialTrackError_lambda,
-        m_initialTrackError_relP, m_initialTrackError_time, m_propagateBackward, m_initialTrackError_qOverP);
+        m_initialTrackError_relP, m_initialTrackError_time, m_initialTrackError_qOverP, m_propagateBackward);
     if (!paramseed) {
       continue;
     }

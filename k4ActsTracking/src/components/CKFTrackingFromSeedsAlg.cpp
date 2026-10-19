@@ -265,7 +265,7 @@ CKFTrackingFromSeedsAlg::operator()(const edm4hep::TrackerHitPlaneCollection& tr
       std::optional<Acts::BoundTrackParameters> paramseed = ACTSTracking::estimateSeedParameters(
           *this, *m_actsGeoSvc, geoCtx, hits, hitContainer, magCacheLocal, m_initialTrackError_pos,
           m_initialTrackError_phi, m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time,
-          m_propagateBackward);
+          /*errQOverP=*/0, m_propagateBackward);
       if (!paramseed) {
         continue;
       }
