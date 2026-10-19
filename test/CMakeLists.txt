@@ -182,7 +182,17 @@ add_k4run_test(reco_MAIA_Gen3_outsideInTracking
              --outsideIn
   USE_TEST_ENV
   FIXTURES_REQUIRED sim_maia_fixture
+  FIXTURES_SETUP reco_maia_outsidein_fixture
 )
+
+# Lightweight check on the outside-in output
+add_test(NAME check_MAIA_Gen3_outsideInTracking
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  COMMAND ${CMAKE_CURRENT_LIST_DIR}/scripts/outside_in_check_tracks.py
+          particle_gun_MAIA_CKFTracks_outsideIn.edm4hep.root
+)
+set_test_env(check_MAIA_Gen3_outsideInTracking)
+set_tests_properties(check_MAIA_Gen3_outsideInTracking PROPERTIES FIXTURES_REQUIRED reco_maia_outsidein_fixture)
 
 
 # === LUXE chain (self-contained: particle gun + digitization + CKF) ===
