@@ -564,7 +564,7 @@ void prepareTrackerHits(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geom
  * @brief Bound seed parameters at the space point the CKF starts from.
  *
  * Fits the helix through the three SPs with Acts::estimateTrackParamsFromSpacePoints
- * (identical to Acts::estimateTrackParamsFromSeed for three SPs) and expresses it
+ * (equivalent to Acts::estimateTrackParamsFromSeed for three SPs) and expresses it
  * at the start SP: the bottom SP for inside-out, the top SP for outside-in
  * (@p propagateBackward), i.e. its position and the helix tangent there.
  * @p startSurface is that SP's surface.
@@ -612,7 +612,7 @@ estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geome
                        const Acts::Surface& startSurface, const Acts::Vector3& bottomPos,
                        const Acts::Vector3& middlePos, const Acts::Vector3& topPos, const edm4hep::TrackerHit& startHit,
                        Acts::MagneticFieldProvider::Cache& magCache, double errPos, double errPhi, double errLambda,
-                       double errRelP, double errTime, bool propagateBackward = false, double errQOverP = 0) {
+                       double errRelP, double errTime, double errQOverP = 0, bool propagateBackward = false) {
   // Magnetic field at the seed start position (bottom SP for inside-out,
   // top SP for outside-in), assumed homogeneous over the seed.
   const Acts::Vector3& seedPos = propagateBackward ? topPos : bottomPos;
@@ -699,7 +699,7 @@ std::optional<Acts::BoundTrackParameters>
 estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx,
                        const std::vector<SeedHit>& hits, const ACTSTracking::HitContainer& hitContainer,
                        Acts::MagneticFieldProvider::Cache& magCache, double errPos, double errPhi, double errLambda,
-                       double errRelP, double errTime, bool propagateBackward = false, double errQOverP = 0) {
+                       double errRelP, double errTime, double errQOverP = 0, bool propagateBackward = false) {
   if (hits.empty()) {
     return std::nullopt;
   }
@@ -717,7 +717,7 @@ estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geome
 
   return estimateSeedParameters(alg, geo, geoCtx, *startSurface, bottom.pos, middle.pos, top.pos,
                                 hitContainer[start.sl.index()], magCache, errPos, errPhi, errLambda, errRelP, errTime,
-                                propagateBackward, errQOverP);
+                                errQOverP, propagateBackward);
 }
 
 } // namespace ACTSTracking
