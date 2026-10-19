@@ -497,11 +497,11 @@ public:
             }
             const bool secondEmpty = !secondResult.ok() || bestSecondTrack == nullptr;
             if (secondEmpty) {
-              alg.debug() << "TwoWayCKF: second pass "
-                          << (!secondResult.ok()             ? std::string("FAILED: ") + secondResult.error().message()
-                              : secondResult.value().empty() ? std::string("returned EMPTY")
-                                                             : std::string("returned no tracks with states"))
-                          << ", falling back to single-pass output." << endmsg;
+              alg.warning() << "TwoWayCKF: second pass "
+                            << (!secondResult.ok() ? std::string("FAILED: ") + secondResult.error().message()
+                                : secondResult.value().empty() ? std::string("returned EMPTY")
+                                                               : std::string("returned no tracks with states"))
+                            << ", falling back to single-pass output." << endmsg;
             } else {
               auto secondTrack = tracks.makeTrack();
               secondTrack.copyFrom(*bestSecondTrack);
@@ -560,7 +560,7 @@ public:
         auto exResult = Acts::extrapolateTrackToReferenceSurface(trackTip, *m_referenceSurface, extrapolator, exOptions,
                                                                  Acts::TrackExtrapolationStrategy::firstOrLast);
         if (!exResult.ok()) {
-          alg.warning() << "Reference-surface extrapolation error: " << exResult.error() << endmsg;
+          alg.debug() << "Reference-surface extrapolation error: " << exResult.error() << endmsg;
           continue;
         }
 
