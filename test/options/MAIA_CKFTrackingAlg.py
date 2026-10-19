@@ -133,10 +133,11 @@ ckf_outsidein_properties = {
     "SeedFinding_MinPt": 1500,
     "PropagateBackward": True,
     "DoTwoWayCKF": True,
-    "CKF_NumMeasurementsCutOff": 2,
-    "BranchStopper_MaxOutliers": 3,
-    "BranchStopper_PtMin": 0.5,
-    "BranchStopper_PtMinMeasurements": 4,
+    "CKF_NumMeasurementsCutOff": 1,
+    "UseBranchStopper": True,
+    "BranchStopper_MaxHoles": 2,
+    "BranchStopper_MaxOutliers": 2,
+    "BranchStopper_MinMeasurements": 8,
 }
 
 parser.add_argument(
