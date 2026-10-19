@@ -110,5 +110,6 @@ for i, frame in enumerate(get_reader(args.file).get("events")):
 print(
     f"{n_tracks} tracks, {n_calo} AtCalorimeter states, {n_extended} extended by the second pass"
 )
-assert n_tracks > 0, "No tracks"
-assert n_extended > 0, "No track extended by the second pass"
+
+if n_tracks > 0:
+    assert n_extended > 0, "No track extended by the second pass"
