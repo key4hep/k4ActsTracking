@@ -18,7 +18,6 @@
  */
 #include "ONNXInferenceModel.h"
 
-#include <iostream>
 #include <stdexcept>
 
 namespace mlutils {
@@ -40,24 +39,22 @@ ONNXInferenceModel::ONNXInferenceModel(const std::string& name, OrtLoggingLevel 
   }
 }
 
-bool ONNXInferenceModel::loadModel(const std::string& modelPath) {
+void ONNXInferenceModel::loadModel(const std::string& modelPath) {
+  cleanup();
   try {
-    cleanup();
-
     m_session = std::make_unique<Ort::Session>(*m_env, modelPath.c_str(), *m_sessionOptions);
     extractModelInfo();
     m_modelLoaded = true;
-
-    return true;
   } catch (const std::exception& e) {
-    std::cerr << "Error loading ONNX model: " << e.what() << std::endl;
-    m_modelLoaded = false;
-    return false;
+    // Leave the model in the "nothing loaded" state, whatever stage failed, and
+    // hand the onnxruntime message on: it says why, but not which model.
+    cleanup();
+    throw std::runtime_error("Could not load the " + m_envName + " ONNX model '" + modelPath + "': " + e.what());
   }
 }
 
 std::vector<Ort::Value> ONNXInferenceModel::runInference(const std::vector<float>& inputData,
-                                                         const std::vector<int64_t>& inputShape) {
+                                                         const std::vector<int64_t>& inputShape, int cudaDeviceIndex) {
   if (!m_modelLoaded) {
     throw std::runtime_error("Model not loaded");
   }
@@ -80,9 +77,24 @@ std::vector<Ort::Value> ONNXInferenceModel::runInference(const std::vector<float
       outputNames.push_back(name.c_str());
     }
 
-    // Run inference
-    return m_session->Run(Ort::RunOptions{nullptr}, inputNames.data(), &inputTensor, 1, outputNames.data(),
-                          outputNames.size());
+    if (cudaDeviceIndex < 0) {
+      // Run inference (CPU/default)
+      return m_session->Run(Ort::RunOptions{nullptr}, inputNames.data(), &inputTensor, 1, outputNames.data(),
+                            outputNames.size());
+    }
+
+    // CUDA: bind outputs explicitly to CUDA so result tensors stay on GPU.
+    Ort::IoBinding ioBinding(*m_session);
+    ioBinding.BindInput(inputNames.front(), inputTensor);
+
+    Ort::MemoryInfo cudaOutputMemoryInfo{"Cuda", OrtAllocatorType::OrtDeviceAllocator, cudaDeviceIndex,
+                                         OrtMemTypeDefault};
+    for (const auto* outputName : outputNames) {
+      ioBinding.BindOutput(outputName, cudaOutputMemoryInfo);
+    }
+
+    m_session->Run(Ort::RunOptions{nullptr}, ioBinding);
+    return ioBinding.GetOutputValues();
   } catch (const std::exception& e) {
     throw std::runtime_error("Inference failed: " + std::string(e.what()));
   }

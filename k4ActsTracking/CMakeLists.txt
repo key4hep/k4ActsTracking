@@ -37,13 +37,9 @@ install(TARGETS k4ActsTracking
 )
 
 set(_plugin_sources
-  src/components/ACTSAlgBase.cxx
   src/components/ACTSDuplicateRemoval.cxx
-  src/components/ACTSSeededCKFTrackingAlg.cxx
   src/components/ActsGeoSvc.cpp
   src/components/FilterTracksAlg.cxx
-  src/components/GeometryIdMappingTool.cxx
-  src/components/GeometryIdSelector.cxx
   src/components/SortTrackerHitsAlg.cxx
   src/components/TrackTruthAlg.cxx
   src/components/ActsTestPropagator.cpp

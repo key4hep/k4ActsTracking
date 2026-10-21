@@ -19,30 +19,15 @@
 #include "GNNTrackFinder.h"
 
 #include "CCAndWalkTrackBuilding.h"
-#include "ClassifiedEdgePrinting.h"
 #include "EdgeDirection.h"
+#include "EdgePrintingHook.h"
 #include "OnnxMetricLearning.h"
 #include "PaddedEdgeRemoval.h"
 
-#if __has_include("ActsPlugins/Gnn/Stages.hpp")
 #include <ActsPlugins/Gnn/BoostTrackBuilding.hpp>
 #include <ActsPlugins/Gnn/GnnPipeline.hpp>
 #include <ActsPlugins/Gnn/OnnxEdgeClassifier.hpp>
 #include <ActsPlugins/Gnn/Stages.hpp>
-#else
-#include <Acts/Plugins/Gnn/BoostTrackBuilding.hpp>
-#include <Acts/Plugins/Gnn/GnnPipeline.hpp>
-#include <Acts/Plugins/Gnn/OnnxEdgeClassifier.hpp>
-#include <Acts/Plugins/Gnn/Stages.hpp>
-namespace ActsPlugins {
-using BoostTrackBuilding = Acts::BoostTrackBuilding;
-using Device = Acts::Device;
-using EdgeClassificationBase = Acts::EdgeClassificationBase;
-using GnnPipeline = Acts::GnnPipeline;
-using OnnxEdgeClassifier = Acts::OnnxEdgeClassifier;
-using TrackBuildingBase = Acts::TrackBuildingBase;
-} // namespace ActsPlugins
-#endif
 
 #include <k4ActsTracking/ActsGaudiLogger.h>
 #include <k4ActsTracking/KFRunner.hxx>
@@ -216,6 +201,7 @@ GNNTrackFinder::GNNTrackFinder(const std::string& name, ISvcLocator* svcLoc)
 
 StatusCode GNNTrackFinder::initialize() {
   m_logger = makeActsGaudiLogger(this);
+  m_edgeLogger = m_logger->clone(name() + ".Edges");
   m_monitoringHist.createHistogram(*this);
 
   m_actsGeoSvc = svcLoc()->service<IActsGeoSvc>("ActsGeoSvc");
@@ -254,11 +240,17 @@ StatusCode GNNTrackFinder::initialize() {
     return StatusCode::FAILURE;
   }
 
-  const auto embeddingFeatures = mlutils::parseList<std::string>(m_inputFeaturesEmbedding.value());
-  const auto embeddingScales = mlutils::parseList<float>(m_inputScalesEmbedding.value());
-  const auto edgeFeatureScales = mlutils::parseList<float>(m_edgeFeatureScales.value());
-  const auto edgeClassifierFeaturesList = mlutils::parseMultiList<std::string>(m_inputFeaturesEdgeClassifier.value());
-  const auto edgeClassifierScalesList = mlutils::parseMultiList<float>(m_inputScalesEdgeClassifier.value());
+  const auto& embeddingFeatures = m_inputFeaturesEmbedding.value();
+  const auto& embeddingScales = m_inputScalesEmbedding.value();
+  const auto& edgeFeatureScales = m_edgeFeatureScales.value();
+  const auto& edgeClassifierFeaturesList = m_inputFeaturesEdgeClassifier.value();
+  // The property is double (Gaudi has no parser for nested float vectors), the
+  // Acts edge classifier takes float
+  std::vector<std::vector<float>> edgeClassifierScalesList{};
+  edgeClassifierScalesList.reserve(nEdgeClassifiers);
+  for (const auto& scales : m_inputScalesEdgeClassifier.value()) {
+    edgeClassifierScalesList.emplace_back(scales.begin(), scales.end());
+  }
 
   // The six edge features are defined in terms of r, phi, z and eta, so unlike
   // the model inputs there is nothing to select: all that is configurable is
@@ -266,6 +258,13 @@ StatusCode GNNTrackFinder::initialize() {
   const bool computeEdgeFeatures = m_computeEdgeFeatures.value();
   if (!computeEdgeFeatures && !edgeFeatureScales.empty()) {
     error() << "EdgeFeatureScales is set, but ComputeEdgeFeatures is false, so no edge features are computed" << endmsg;
+    return StatusCode::FAILURE;
+  }
+
+  // The KD-tree edge building reserves memory for this many neighbours per hit,
+  // so a non-positive value would wrap around to an enormous reservation
+  if (m_edgeBuildingKnn.value() <= 0) {
+    error() << fmt::format("EdgeBuildingKnn has to be > 0, got {}", m_edgeBuildingKnn.value()) << endmsg;
     return StatusCode::FAILURE;
   }
 
@@ -314,27 +313,55 @@ StatusCode GNNTrackFinder::initialize() {
   }
 
   // The models divide each feature by its scale, so there has to be exactly one
-  // scale per feature (or none at all, in which case no scaling is applied).
-  const auto checkScales = [this](const std::string& what, std::size_t nFeatures, std::size_t nScales) {
-    if (nScales == 0 || nFeatures == nScales) {
-      return true;
+  // non-zero scale per feature (or none at all, in which case no scaling is
+  // applied).
+  const auto checkScales = [this](const std::string& what, std::size_t nFeatures, const std::vector<float>& scales) {
+    if (!scales.empty() && nFeatures != scales.size()) {
+      error() << fmt::format("Number of input scales ({}) does not match the number of input features ({}) for {}",
+                             scales.size(), nFeatures, what)
+              << endmsg;
+      return false;
     }
-    error() << fmt::format("Number of input scales ({}) does not match the number of input features ({}) for {}",
-                           nScales, nFeatures, what)
-            << endmsg;
-    return false;
+    if (std::ranges::find(scales, 0.f) != scales.end()) {
+      error() << fmt::format("Input scales {} for {} contain a zero, features are divided by their scale", scales, what)
+              << endmsg;
+      return false;
+    }
+    return true;
   };
-  if (!checkScales("the node embedding model", embeddingFeatures.size(), embeddingScales.size())) {
+  if (!checkScales("the node embedding model", embeddingFeatures.size(), embeddingScales)) {
     return StatusCode::FAILURE;
   }
   if (computeEdgeFeatures &&
       !checkScales(fmt::format("the edge feature computation ({}, in that order)", fmt::join(kEdgeFeatureInputs, ", ")),
-                   kEdgeFeatureInputs.size(), edgeFeatureScales.size())) {
+                   kEdgeFeatureInputs.size(), edgeFeatureScales)) {
     return StatusCode::FAILURE;
+  }
+  // The dphi wrap-around of the edge features takes phi to be scaled by pi, as
+  // the ACORN training and Acts' makeEdgeFeatures() do. With any other scale
+  // (or none) it wraps at the wrong angle and every edge feature derived from
+  // dphi comes out wrong, so this is not left to the configuration. The
+  // tolerance admits the "3.14" such scales are commonly written as.
+  if (computeEdgeFeatures) {
+    constexpr float expectedPhiScale = OnnxMetricLearning::kEdgeFeaturePhiScale;
+    constexpr float phiScaleTolerance = 0.01f;
+    const auto phiPos =
+        static_cast<std::size_t>(std::ranges::find(kEdgeFeatureInputs, "phi") - kEdgeFeatureInputs.begin());
+    if (edgeFeatureScales.empty() || std::abs(edgeFeatureScales[phiPos] / expectedPhiScale - 1.f) > phiScaleTolerance) {
+      error() << fmt::format("The edge features need phi scaled by pi ({}), as the dphi wrap-around assumes, but "
+                             "EdgeFeatureScales gives {}. Set the phi entry of EdgeFeatureScales ({}, in that order) "
+                             "to pi.",
+                             expectedPhiScale,
+                             edgeFeatureScales.empty() ? std::string{"no scales"}
+                                                       : fmt::format("{}", edgeFeatureScales[phiPos]),
+                             kEdgeFeatureInputs)
+              << endmsg;
+      return StatusCode::FAILURE;
+    }
   }
   for (std::size_t i = 0; i < nEdgeClassifiers; ++i) {
     if (!checkScales(fmt::format("edge classifier {}", i), edgeClassifierFeaturesList[i].size(),
-                     edgeClassifierScalesList[i].size())) {
+                     edgeClassifierScalesList[i])) {
       return StatusCode::FAILURE;
     }
   }
@@ -443,8 +470,6 @@ void GNNTrackFinder::buildPipeline(const std::vector<float>& embeddingScales,
                                  // vector is what tells OnnxMetricLearning not to order the edges
                                  .distanceFeatureIndices =
                                      m_sortEdges.value() ? m_distanceFeatureIndices : std::vector<std::size_t>{},
-                                 // The edge features are a pipeline output, so the full dump covers them too
-                                 .printAllEdgeFeatures = m_detailedDebugOut.value(),
                                  .fixedInputLength = m_embeddingFixedInputLength.value(),
                                  .keepPadding = m_keepEmbeddingPadding.value(),
                                  .fixedEdgeLength = m_edgeClassifierFixedInputLength.value(),
@@ -452,6 +477,11 @@ void GNNTrackFinder::buildPipeline(const std::vector<float>& embeddingScales,
                                  .knnVal = m_edgeBuildingKnn.value(),
                                  .device = m_runDevice},
       m_logger->clone(name() + ".MetricLearning"));
+
+  // The EdgePrintingHook labels its output by the stage it follows, in the
+  // order GnnPipeline::run() calls it: graph construction, then every link of
+  // the classifier chain.
+  m_pipelineStageNames = {"graph construction"};
 
   std::vector<std::shared_ptr<ActsPlugins::EdgeClassificationBase>> edgeClassifiers{};
   edgeClassifiers.reserve(m_edgeClassifierModelPath.size());
@@ -466,23 +496,14 @@ void GNNTrackFinder::buildPipeline(const std::vector<float>& embeddingScales,
                                                 // CUDA execution provider.
                                                 .device = m_runDevice},
         m_logger->clone(name() + fmt::format(".EdgeClassifier{}", i))));
-
-    // The score is the one thing the graph construction cannot log, so a
-    // pass-through stage prints the classified edges with it. Only added when
-    // the output would be printed at all, so that a production run keeps the
-    // pipeline it always had.
-    if (m_logger->level() <= Acts::Logging::DEBUG) {
-      edgeClassifiers.push_back(std::make_shared<ClassifiedEdgePrinting>(
-          ClassifiedEdgePrinting::Config{.numEdgesShown = OnnxMetricLearning::kNumEdgesShown,
-                                         .printAll = m_detailedDebugOut.value()},
-          m_logger->clone(name() + fmt::format(".EdgeClassifier{}Edges", i))));
-    }
+    m_pipelineStageNames.push_back(fmt::format("edge classifier {}", i));
   }
 
   // The padding edges have to be gone before the track building, so this runs
   // as the last link of the classifier chain.
   if (m_edgeClassifierFixedInputLength.value() > 0) {
     edgeClassifiers.push_back(std::make_shared<PaddedEdgeRemoval>(m_logger->clone(name() + ".PaddedEdgeRemoval")));
+    m_pipelineStageNames.push_back("padded edge removal");
   }
 
   std::shared_ptr<ActsPlugins::TrackBuildingBase> trackBuilder{};
@@ -605,7 +626,18 @@ GNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*
       }
     }
 
-    auto segmentCandIdcs = m_pipeline->run(embeddingInputs, {}, segmentHitIdcs, m_runDevice);
+    // The graph after every stage is only printed at DEBUG. The hook counts the
+    // stages it has seen, so every run gets a fresh one.
+    std::optional<EdgePrintingHook> edgePrinting{};
+    if (m_edgeLogger->doPrint(Acts::Logging::DEBUG)) {
+      edgePrinting.emplace(
+          EdgePrintingHook::Config{.stageNames = m_pipelineStageNames, .printAll = m_detailedDebugOut.value()},
+          *m_edgeLogger);
+    }
+    const ActsPlugins::GnnHook noHook{};
+    const ActsPlugins::GnnHook& hook = edgePrinting.has_value() ? *edgePrinting : noHook;
+
+    auto segmentCandIdcs = m_pipeline->run(embeddingInputs, {}, segmentHitIdcs, m_runDevice, hook);
     debug() << fmt::format("Received {} track candidates", segmentCandIdcs.size()) << endmsg;
 
     // Full detailed output of track candidates
@@ -666,7 +698,7 @@ GNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*
     // initial parameters are estimated.
     std::optional<Acts::BoundTrackParameters> startParams = ACTSTracking::estimateSeedParameters(
         *this, *m_actsGeoSvc, geoCtx, hits, hitContainer, magCache, m_initialTrackError_pos, m_initialTrackError_phi,
-        m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time);
+        m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time, m_initialTrackError_qOverP);
     if (!startParams) {
       continue;
     }

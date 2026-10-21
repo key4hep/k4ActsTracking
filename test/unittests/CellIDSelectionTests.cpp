@@ -108,6 +108,26 @@ TEST_CASE("CellIDSelector::accept empty selection") {
   REQUIRE_FALSE(selector.accept(std::numeric_limits<dd4hep::CellID>::max()));
 }
 
+TEST_CASE("CellIDSelector::overlaps") {
+  const std::string encodingString = "system:8,side:-2,layer:5,module:7,sensor:10";
+  const auto sel = [&](const std::vector<std::string>& selections) {
+    return CellIDSelector{encodingString, selections};
+  };
+
+  // Different values of the same field never overlap
+  REQUIRE_FALSE(sel({"system:1"}).overlaps(sel({"system:2"})));
+  REQUIRE_FALSE(sel({"system:1|2"}).overlaps(sel({"system:3|4|5|6"})));
+  // A shared value, or a selection contained in another, overlaps
+  REQUIRE(sel({"system:1|2"}).overlaps(sel({"system:2|3"})));
+  REQUIRE(sel({"system:1"}).overlaps(sel({"system:1,layer:0"})));
+  // Constraints on different fields can be satisfied together
+  REQUIRE(sel({"system:1"}).overlaps(sel({"layer:3"})));
+  REQUIRE_FALSE(sel({"system:1,layer:0"}).overlaps(sel({"layer:3"})));
+  // Symmetric, and an empty selector overlaps nothing
+  REQUIRE(sel({"layer:3"}).overlaps(sel({"system:1"})));
+  REQUIRE_FALSE(sel({}).overlaps(sel({"system:1"})));
+}
+
 TEST_CASE("CellIDSelector::getSelectionMasks") {
   const std::string encodingString = "system:8,side:-2,layer:5,module:7,sensor:10";
 

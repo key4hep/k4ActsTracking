@@ -23,7 +23,7 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.22)
 project(k4ActsTracking LANGUAGES CXX)
 
 SET( ${PROJECT_NAME}_VERSION_MAJOR 0 )
-SET( ${PROJECT_NAME}_VERSION_MINOR 5 )
+SET( ${PROJECT_NAME}_VERSION_MINOR 6 )
 SET( ${PROJECT_NAME}_VERSION_PATCH 0 )
 
 SET( ${PROJECT_NAME}_VERSION  "${${PROJECT_NAME}_VERSION_MAJOR}.${${PROJECT_NAME}_VERSION_MINOR}.${${PROJECT_NAME}_VERSION_PATCH}" )
@@ -46,6 +46,11 @@ find_package(Acts REQUIRED COMPONENTS ${ACTS_COMPONENTS})
 find_package(DD4hep REQUIRED COMPONENTS DDCore DDRec)
 find_package(TBB REQUIRED)
 if(K4ACTSTRACKING_BUILD_GNN)
+  # The GNN track finding needs OnnxEdgeClassifier to pass the node features in
+  # the configured order (acts#6142), which is in main but not in v48.0.1.
+  if(Acts_VERSION VERSION_LESS 48.1.0)
+    message(FATAL_ERROR "K4ACTSTRACKING_BUILD_GNN needs Acts >= 48.1.0 (or main), found ${Acts_VERSION}")
+  endif()
   find_package(onnxruntime REQUIRED)
   find_package(Torch REQUIRED)
 endif()

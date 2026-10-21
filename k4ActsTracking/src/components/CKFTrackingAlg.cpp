@@ -23,7 +23,6 @@
 #include "k4ActsTracking/Helpers.hxx"
 #include "k4ActsTracking/IActsGeoSvc.h"
 #include "k4ActsTracking/Measurement.hxx"
-#include "k4ActsTracking/MeasurementCalibrator.hxx"
 #include "k4ActsTracking/SourceLink.hxx"
 
 // k4FWCore
@@ -50,35 +49,23 @@
 #include <Acts/EventData/ParticleHypothesis.hpp>
 #include <Acts/EventData/SeedContainer.hpp>
 #include <Acts/EventData/SpacePointContainer.hpp>
-#include <Acts/EventData/TrackContainer.hpp>
-#include <Acts/EventData/TrackStateType.hpp>
-#include <Acts/EventData/VectorMultiTrajectory.hpp>
-#include <Acts/EventData/VectorTrackContainer.hpp>
 #include <Acts/Geometry/GeometryContext.hpp>
 #include <Acts/MagneticField/MagneticFieldContext.hpp>
 #include <Acts/MagneticField/MagneticFieldProvider.hpp>
-#include <Acts/Propagator/EigenStepper.hpp>
-#include <Acts/Propagator/Navigator.hpp>
-#include <Acts/Propagator/Propagator.hpp>
 #include <Acts/Seeding/BroadTripletSeedFilter.hpp>
 #include <Acts/Seeding/CylindricalSpacePointGrid.hpp>
 #include <Acts/Seeding/DoubletSeedFinder.hpp>
 #include <Acts/Seeding/EstimateTrackParamsFromSeed.hpp>
 #include <Acts/Seeding/TripletSeedFinder.hpp>
 #include <Acts/Seeding/TripletSeeder.hpp>
-#include <Acts/Surfaces/PerigeeSurface.hpp>
 #include <Acts/Surfaces/PlaneSurface.hpp>
-#include <Acts/TrackFinding/CombinatorialKalmanFilter.hpp>
-#include <Acts/TrackFinding/MeasurementSelector.hpp>
-#include <Acts/TrackFinding/TrackStateCreator.hpp>
-#include <Acts/TrackFitting/GainMatrixUpdater.hpp>
 #include <Acts/Utilities/Logger.hpp>
 #include <Acts/Utilities/RangeXD.hpp>
-#include <Acts/Utilities/TrackHelpers.hpp>
 #include <Acts/Utilities/VectorHelpers.hpp>
 
 // TBB
 #include <tbb/blocked_range.h>
+#include <tbb/enumerable_thread_specific.h>
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_sort.h>
 #include <tbb/task_arena.h>
@@ -89,8 +76,10 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 #include <limits>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <numeric>
@@ -116,9 +105,9 @@ namespace {
 /// scale and the reported q/p).
 std::optional<Acts::BoundTrackParameters>
 estimateStraightLineSeedParameters(const Acts::GeometryContext& geoCtx, const Acts::Surface& bottomSurface,
-                                   const Acts::Vector3& bottomPos, const Acts::Vector3& topPos, double t0,
-                                   double nominalP, double errPos, double errPhi, double errLambda, double errRelP,
-                                   double errTime) {
+                                   const Acts::Vector3& bottomPos, const Acts::Vector3& topPos,
+                                   const edm4hep::TrackerHit& bottomHit, double nominalP, double errPos, double errPhi,
+                                   double errLambda, double errRelP, double errTime, double errQOverP) {
   const Acts::Vector3 dir = (topPos - bottomPos).normalized();
 
   // The bottom position is derived from the surface, so it lies on it; use a
@@ -134,9 +123,10 @@ estimateStraightLineSeedParameters(const Acts::GeometryContext& geoCtx, const Ac
   params[Acts::eBoundPhi] = Acts::VectorHelpers::phi(dir);
   params[Acts::eBoundTheta] = Acts::VectorHelpers::theta(dir);
   params[Acts::eBoundQOverP] = 1.0 / nominalP; // charge sign is irrelevant at B = 0
-  params[Acts::eBoundTime] = t0;
+  params[Acts::eBoundTime] = ACTSTracking::hitTime(bottomHit);
 
-  Acts::BoundMatrix cov = ACTSTracking::makeInitialCovariance(nominalP, errPos, errPhi, errLambda, errRelP, errTime);
+  Acts::BoundMatrix cov =
+      ACTSTracking::makeInitialCovariance(nominalP, errPos, errPhi, errLambda, errRelP, errTime, errQOverP);
   return Acts::BoundTrackParameters(bottomSurface.getSharedPtr(), params, cov, Acts::ParticleHypothesis::pion());
 }
 } // namespace
@@ -144,9 +134,8 @@ estimateStraightLineSeedParameters(const Acts::GeometryContext& geoCtx, const Ac
 /**
  * @brief Seeded CKF tracking algorithm using ActsGeoSvc.
  *
- * Functionally equivalent to ACTSSeededCKFTrackingAlg but obtains the
- * tracking geometry, magnetic field and surface–cellID mapping directly
- * from IActsGeoSvc instead of inheriting from ACTSAlgBase.
+ * Obtains the tracking geometry, magnetic field and surface–cellID mapping
+ * directly from IActsGeoSvc.
  *
  * ACTS contexts (geometry, magnetic-field, calibration) are default-
  * constructed as documented by the ACTS framework.
@@ -173,6 +162,7 @@ private:
   struct SeedInput {
     float x, y, z, r, phi;
     float varR, varZ;
+    float t, varT;
     ACTSTracking::SourceLink sourceLink;
   };
 
@@ -266,6 +256,26 @@ private:
   Gaudi::Property<float> m_seedFinding_minPt{this, "SeedFinding_MinPt", 500.0, "Minimum pT of tracks to seed [MeV]."};
   Gaudi::Property<float> m_seedFinding_impactMax{this, "SeedFinding_ImpactMax", 3.0,
                                                  "Maximum d0 of tracks to seed [mm]."};
+  Gaudi::Property<std::map<std::string, double>> m_hitTimeResolutions{
+      this,
+      "HitTimeResolutions",
+      {},
+      "Per-sensor time resolutions in ns, keyed by CellIDSelector selection string. The selections must not "
+      "overlap and must cover every tracker hit. Required when UseHitTimeInCKF or a seeding time cut is set."};
+  Gaudi::Property<float> m_seedFinding_doubletTimeCutNSigma{
+      this, "SeedFinding_DoubletTimeCutNSigma", -1.0f,
+      "Max TOF-corrected time difference between doublet space points, in units of their combined time "
+      "resolution (ACTS DoubletSeedFinder useTime); <= 0 disables the time cut."};
+  Gaudi::Property<float> m_seedFinding_tripletTimeChi2Max{
+      this, "SeedFinding_TripletTimeChi2Max", -1.0f,
+      "Max chi2 of the three TOF-corrected triplet times around their weighted mean (ACTS TripletSeedFinder "
+      "useTime); <= 0 disables the time cut."};
+  Gaudi::Property<bool> m_seedFinding_interactionPointCut{this, "SeedFinding_InteractionPointCut", false,
+                                                          "Apply the interaction-point compatibility cut in seeding."};
+  Gaudi::Property<bool> m_useHitTimeInCKF{
+      this, "UseHitTimeInCKF", false,
+      "If true, include hit time as a 3rd CKF measurement dimension (eBoundTime). Hit times must not be "
+      "corrected for the time of flight (DDPlanarDigi CorrectTimesForPropagation=False)."};
 
   std::vector<std::string> m_default_empty_vec;
   Gaudi::Property<std::vector<std::string>> m_seedFinding_zBinEdges{this, "SeedFinding_zBinEdges", m_default_empty_vec,
@@ -390,6 +400,9 @@ private:
                                                   "Initial track error for phi."};
   Gaudi::Property<double> m_initialTrackError_relP{this, "InitialTrackError_RelP", 0.25,
                                                    "Initial track error for momentum (relative)."};
+  Gaudi::Property<double> m_initialTrackError_qOverP{
+      this, "InitialTrackError_QOverP", 0 / Acts::UnitConstants::GeV,
+      "Initial track error for q/p (absolute), added in quadrature to the relative one."};
   Gaudi::Property<double> m_initialTrackError_lambda{this, "InitialTrackError_Lambda", 1 * Acts::UnitConstants::degree,
                                                      "Initial track error for lambda."};
   Gaudi::Property<double> m_initialTrackError_time{this, "InitialTrackError_Time", 100 * Acts::UnitConstants::ns,
@@ -438,6 +451,24 @@ private:
 
   k4ActsTracking::CellIDSelector m_seedSelector{};
 
+  std::vector<std::pair<k4ActsTracking::CellIDSelector, double>> m_hitTimeResolutionSelectors{};
+
+  bool usesHitTimeResolutions() const {
+    return m_useHitTimeInCKF || m_seedFinding_doubletTimeCutNSigma > 0.0f || m_seedFinding_tripletTimeChi2Max > 0.0f;
+  }
+
+  /// Time resolution (ns) of the HitTimeResolutions selection matching the hit.
+  double hitTimeResolutionFor(const edm4hep::TrackerHitPlane& hit) const {
+    for (const auto& [selector, resolution] : m_hitTimeResolutionSelectors) {
+      if (selector.accept(hit.getCellID())) {
+        return resolution;
+      }
+    }
+    throw std::runtime_error(fmt::format("CKFTrackingAlg: no HitTimeResolutions selection matches cellID {}; the "
+                                         "selections must cover every tracker hit",
+                                         hit.getCellID()));
+  }
+
   // Shared Combinatorial Kalman Filter, built once in initialize() (the
   // propagators/CKF depend only on geometry+field) and reused read-only across
   // events and threads.
@@ -472,6 +503,34 @@ StatusCode CKFTrackingAlg::initialize() {
     error() << "Unknown SeedingMode '" << m_seedingMode.value() << "'; expected \"Cylindrical\" or \"Telescope\"."
             << endmsg;
     return StatusCode::FAILURE;
+  }
+
+  if (usesHitTimeResolutions() && m_hitTimeResolutions.empty()) {
+    error() << "UseHitTimeInCKF and the seeding time cuts require HitTimeResolutions to be configured" << endmsg;
+    return StatusCode::FAILURE;
+  }
+  std::vector<std::string> selections;
+  for (const auto& [selection, resolution] : m_hitTimeResolutions.value()) {
+    if (!(resolution > 0.0) || !std::isfinite(resolution)) {
+      error() << "HitTimeResolutions[" << selection << "] must be finite and > 0, got " << resolution << endmsg;
+      return StatusCode::FAILURE;
+    }
+    m_hitTimeResolutionSelectors.emplace_back(
+        k4ActsTracking::CellIDSelector(m_actsGeoSvc->cellIDEncodingString(), {selection}), resolution);
+    selections.push_back(selection);
+  }
+  for (std::size_t i = 0; i < m_hitTimeResolutionSelectors.size(); ++i) {
+    for (std::size_t j = i + 1; j < m_hitTimeResolutionSelectors.size(); ++j) {
+      if (m_hitTimeResolutionSelectors[i].first.overlaps(m_hitTimeResolutionSelectors[j].first)) {
+        error() << "HitTimeResolutions selections \"" << selections[i] << "\" and \"" << selections[j] << "\" overlap"
+                << endmsg;
+        return StatusCode::FAILURE;
+      }
+    }
+  }
+  if (usesHitTimeResolutions()) {
+    warning() << "The per-sensor HitTimeResolutions are a placeholder until EDM4hep stores a time error per hit"
+              << endmsg;
   }
 
   // Apply deltaR fallback defaults
@@ -589,9 +648,14 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
         sp.phi = std::atan2(sp.y, sp.x);
         sp.varR = static_cast<float>(var[0]);
         sp.varZ = static_cast<float>(var[1]);
+        sp.t = static_cast<float>(ACTSTracking::hitTime(hit));
+        sp.varT = usesHitTimeResolutions()
+                      ? static_cast<float>(std::pow(hitTimeResolutionFor(hit) * Acts::UnitConstants::ns, 2))
+                      : 0.f;
         sp.sourceLink = sourceLink;
         seedInputs.push_back(sp);
-      });
+      },
+      m_useHitTimeInCKF.value(), [this](const edm4hep::TrackerHitPlane& hit) { return hitTimeResolutionFor(hit); });
 
   debug() << fmt::format("Created {} sourceLinks and {} space points for seeding", sourceLinks.size(),
                          seedInputs.size())
@@ -664,7 +728,8 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
   // -------------------------------------------------------------------------
   Acts::SpacePointContainer spacePoints(Acts::SpacePointColumns::SourceLinks | Acts::SpacePointColumns::PackedXY |
                                         Acts::SpacePointColumns::PackedZR | Acts::SpacePointColumns::VarianceZ |
-                                        Acts::SpacePointColumns::VarianceR);
+                                        Acts::SpacePointColumns::VarianceR | Acts::SpacePointColumns::Time |
+                                        Acts::SpacePointColumns::VarianceT);
   spacePoints.reserve(grid.numberOfSpacePoints());
   std::vector<Acts::SpacePointIndexRange> gridSpacePointRanges;
   gridSpacePointRanges.reserve(grid.numberOfBins());
@@ -677,6 +742,8 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
       newSp.zr() = {in.z, in.r};
       newSp.varianceR() = in.varR;
       newSp.varianceZ() = in.varZ;
+      newSp.time() = in.t;
+      newSp.varianceT() = in.varT;
       std::array<Acts::SourceLink, 1> sls{Acts::SourceLink{in.sourceLink}};
       newSp.assignSourceLinks(sls);
     }
@@ -713,6 +780,11 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
   bottomFinderCfg.collisionRegionMax = collisionRegion;
   bottomFinderCfg.cotThetaMax = cotThetaMax;
   bottomFinderCfg.minPt = minPt;
+  bottomFinderCfg.interactionPointCut = m_seedFinding_interactionPointCut;
+  if (m_seedFinding_doubletTimeCutNSigma > 0.0f) {
+    bottomFinderCfg.useTime = true;
+    bottomFinderCfg.timeCutNSigma = m_seedFinding_doubletTimeCutNSigma;
+  }
   auto bottomFinder =
       Acts::DoubletSeedFinder::create(Acts::DoubletSeedFinder::DerivedConfig(bottomFinderCfg, bFieldInZ));
 
@@ -729,6 +801,10 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
   tripletFinderCfg.sigmaScattering = m_seedFinding_sigmaScattering;
   tripletFinderCfg.radLengthPerSeed = m_seedFinding_radLengthPerSeed;
   tripletFinderCfg.impactMax = impactMax;
+  if (m_seedFinding_tripletTimeChi2Max > 0.0f) {
+    tripletFinderCfg.useTime = true;
+    tripletFinderCfg.timeChi2Max = m_seedFinding_tripletTimeChi2Max;
+  }
   auto tripletFinder =
       Acts::TripletSeedFinder::create(Acts::TripletSeedFinder::DerivedConfig(tripletFinderCfg, bFieldInZ));
 
@@ -787,7 +863,21 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
   // container and magnetic-field cache; the shared edm4hep collections are
   // guarded by mutexes (m_seedMutex / m_trackMutex).
   // -------------------------------------------------------------------------
+  // Visibility: count distinct TBB worker threads that actually enter the
+  // parallel body. If the reported count stays at 1 even with NumThreads>1,
+  // the arena did not get workers (usually a global TBB concurrency limit
+  // imposed by the enclosing Gaudi scheduler).
+  std::atomic<int> ckfActiveThreads{0};
+  tbb::enumerable_thread_specific<bool> ckfThreadInit;
+
   auto parallelSeedingAndTracking = [&](const tbb::blocked_range<size_t>& r) {
+    auto& initialized = ckfThreadInit.local();
+    if (!initialized) {
+      initialized = true;
+      debug() << "CKF parallel thread #" << ++ckfActiveThreads << " started (of " << m_numThreads.value()
+              << " requested)" << endmsg;
+    }
+
     // The magnetic-field cache is mutated on every field lookup, so each
     // parallel invocation needs its own cache rather than sharing one.
     Acts::MagneticFieldProvider::Cache localMagCache = m_actsGeoSvc->magneticField()->makeCache(magCtx);
@@ -842,6 +932,8 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
     parallelSeedingAndTracking(tbb::blocked_range<size_t>(0, groups.size()));
   }
 
+  debug() << "CKF: " << ckfActiveThreads.load() << " thread(s) active for " << groups.size() << " seed groups"
+          << endmsg;
   debug() << "Track Collection Size: " << trackCollection.size() << endmsg;
   return std::make_tuple(std::move(seedCollection), std::move(trackCollection));
 }
@@ -881,8 +973,8 @@ CKFTrackingAlg::seedsToParameters(const Acts::SeedContainer& seeds, const Acts::
 
     std::optional<Acts::BoundTrackParameters> paramseed = ACTSTracking::estimateSeedParameters(
         *this, *m_actsGeoSvc, geoCtx, *surface, position(bottomSp), position(middleSp), position(topSp),
-        hits[bottomSL.index()].getTime(), magCache, m_initialTrackError_pos, m_initialTrackError_phi,
-        m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time);
+        hits[bottomSL.index()], magCache, m_initialTrackError_pos, m_initialTrackError_phi, m_initialTrackError_lambda,
+        m_initialTrackError_relP, m_initialTrackError_time, m_initialTrackError_qOverP);
     if (!paramseed) {
       continue;
     }
@@ -986,8 +1078,9 @@ void CKFTrackingAlg::runTelescopeSeeding(const std::vector<SeedInput>& seedInput
         }
 
         std::optional<Acts::BoundTrackParameters> paramseed = estimateStraightLineSeedParameters(
-            geoCtx, *surface, bottom, top, hits[bottomSL.index()].getTime(), nominalP, m_initialTrackError_pos,
-            m_initialTrackError_phi, m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time);
+            geoCtx, *surface, bottom, top, hits[bottomSL.index()], nominalP, m_initialTrackError_pos,
+            m_initialTrackError_phi, m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time,
+            m_initialTrackError_qOverP);
         if (!paramseed) {
           continue;
         }

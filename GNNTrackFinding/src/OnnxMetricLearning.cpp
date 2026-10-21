@@ -20,17 +20,16 @@
 #include "EdgeDirection.h"
 #include "ONNXInferenceModel.h"
 
-#if __has_include("ActsPlugins/Gnn/detail/TensorVectorConversion.hpp")
 #include <ActsPlugins/Gnn/detail/TensorVectorConversion.hpp>
 #include <ActsPlugins/Gnn/detail/buildEdges.hpp>
-#else
-#include <Acts/Plugins/Gnn/detail/TensorVectorConversion.hpp>
-#include <Acts/Plugins/Gnn/detail/buildEdges.hpp>
-#endif
 
 #include <onnxruntime_cxx_api.h>
 
 #include <torch/torch.h>
+
+#ifdef ACTS_GNN_WITH_CUDA
+#include <cuda_runtime.h>
+#endif
 
 #include <fmt/format.h>
 #include <fmt/ostream.h>
@@ -41,7 +40,9 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <memory>
+#include <numbers>
 #include <optional>
 #include <span>
 #include <stdexcept>
@@ -87,17 +88,42 @@ constexpr torch::ScalarType toTorchType(ONNXTensorElementDataType elementType) {
 /// Convert the Onnx tensor into a torch Tensor.
 /// @note: This doesn't take ownership, it essentially just "re-skins" the data
 /// owned by the Onnx tensor
-torch::Tensor toTorchTensor(const Ort::Value& onnxTensor) {
+torch::Tensor toTorchTensor(const Ort::Value& onnxTensor, bool targetCuda, std::size_t cudaDeviceIndex = 0) {
   auto tensorInfo = onnxTensor.GetTensorTypeAndShapeInfo();
+  auto memoryInfo = onnxTensor.GetTensorMemoryInfo();
   auto shape = tensorInfo.GetShape();
   auto elementType = tensorInfo.GetElementType();
 
   const void* data = onnxTensor.GetTensorData<void>();
   const auto torchType = toTorchType(elementType);
 
-  // Create torch tensor from existing data without copying
-  auto torchTensor = torch::from_blob(const_cast<void*>(data), shape, torchType);
-  return torchTensor;
+  // ONNX Runtime may place the output either in CPU or CUDA memory depending
+  // on the execution provider and which nodes were assigned to it. Create the
+  // wrapper tensor on the matching device so that clone() performs a valid
+  // copy before the Ort::Value goes out of scope.
+  const bool onCudaMemory = memoryInfo.GetDeviceType() == OrtMemoryInfoDeviceType_GPU;
+  auto options = torch::TensorOptions().dtype(torchType);
+  if (onCudaMemory) {
+    options = options.device(torch::Device(torch::kCUDA, static_cast<int64_t>(memoryInfo.GetDeviceId())));
+  }
+
+  auto torchTensor = torch::from_blob(const_cast<void*>(data), shape, options);
+
+  // Host memory reports device id 0 as well, so the id alone does not tell
+  // whether the output is already on cuda:0.
+  if (targetCuda && (!onCudaMemory || memoryInfo.GetDeviceId() != static_cast<int>(cudaDeviceIndex))) {
+    // not on target CUDA device (in host memory, or on another GPU)
+    const auto targetDevice = torch::Device(torch::kCUDA, static_cast<int64_t>(cudaDeviceIndex));
+    return torchTensor.to(targetDevice);
+  }
+
+  if (onCudaMemory && !targetCuda) {
+    // not on target CPU
+    return torchTensor.to(torch::kCPU);
+  }
+
+  // on target device (Host or CUDA), clone for ownership
+  return torchTensor.clone();
 }
 
 } // namespace
@@ -106,9 +132,7 @@ OnnxMetricLearning::OnnxMetricLearning(const Config& cfg, std::unique_ptr<const 
     : m_model("MetricLearning", getOnnxLogLevel(lggr->level()), cfg.device.isCuda(), cfg.device.index), m_config(cfg),
       m_logger(std::move(lggr)) {
   ACTS_INFO(fmt::format("Loading model from {}", config().modelPath));
-  if (!m_model.loadModel(config().modelPath)) {
-    throw std::runtime_error(fmt::format("Could not load the node embedding ONNX model from '{}'", config().modelPath));
-  }
+  m_model.loadModel(config().modelPath);
 
   // Take the embedding dimension from the model itself instead of having it
   // configured. The last axis of the (nNodes x embeddingDim) output carries it,
@@ -255,15 +279,16 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
 
   ACTS_DEBUG(fmt::format("Embedding input tensor shape: {}", inputShape));
   ACTS_DEBUG(fmt::format("First input space point: {}", std::span(inferenceValues.data(), numFeatures)));
+  if (execContext.device.isCuda()) {
+#ifdef ACTS_GNN_WITH_CUDA
+    cudaSetDevice(execContext.device.index);
+#else
+    throw std::runtime_error("can not run on CUDA, k4ActsTracking/ACTS was built without CUDA support");
+#endif
+  }
+  const auto outputs = m_model.runInference(inferenceValues, inputShape, execContext.device);
 
-  const auto outputs = m_model.runInference(inferenceValues, inputShape);
-  // The ONNX session returns its outputs in host memory. Move the embedding to
-  // the pipeline's target device so that the edge building below (buildEdges
-  // dispatches FRNN/CUDA vs KD-Tree/CPU based on the tensor's device) runs on
-  // the same device as the rest of the pipeline.
-  const auto torchDevice =
-      execContext.device.isCuda() ? torch::Device(torch::kCUDA, execContext.device.index) : torch::Device(torch::kCPU);
-  auto embeddedPoints = toTorchTensor(outputs[0]).to(torchDevice);
+  auto embeddedPoints = toTorchTensor(outputs[0], execContext.device.isCuda(), execContext.device.index);
   assert(embeddedPoints.size(0) == inputShape[0]); // Do not change the number of points
   // A model that declares its embedding dimension has to stick to it. This is
   // checked (rather than asserted) because a mismatch here means the loaded
@@ -332,8 +357,8 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
   if (fixedEdgeLength != 0 && fixedEdgeLength < numEdges) {
     throw std::runtime_error(fmt::format(
         "Cannot zero-pad the edge classifier input to a fixed length of {} edges, this segment already has {}. "
-        "Increase EdgeClassifierFixedInputLength, or lower EdgeBuildingRadius / EdgeBuildingKnn so that fewer edges "
-        "are built.",
+        "Increase EdgeClassifierFixedInputLength, or lower EdgeBuildingRadius (or, on CUDA only, EdgeBuildingKnn) so "
+        "that fewer edges are built.",
         fixedEdgeLength, numEdges));
   }
   if (fixedEdgeLength > numEdges) {
@@ -376,12 +401,34 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
   }
   std::vector<float>& downstreamValues = paddedInputValues.empty() ? inputValues : paddedInputValues;
 
-  return {ActsPlugins::detail::torchToActsTensor<float>(
-              // The full-feature node tensor, unscaled: each stage selects and
-              // scales the features it needs from it.
-              ActsPlugins::detail::vectorToTensor2D(downstreamValues, fullNumFeatures), execContext),
-          ActsPlugins::detail::torchToActsTensor<int64_t>(edgeList, execContext), std::move(actsEdgeFeatures),
-          std::nullopt};
+  // Create the node-feature input tensor for EdgeClassifiers directly in ACTS memory on the
+  // target device, this should avoid further ORT-internal copies downstream + ensure that pipeline runs on CUDA if
+  // requested. This avoids the old procedure:
+  // vector -> Torch CPU tensor (-> move to CUDA) -> torchToActsTensor(execContext),
+  // which does not guarantee inputs on CUDA => OnnxEdgeClasifier running on CPU if inputs in host mem
+  const std::size_t downstreamNumNodes = downstreamValues.size() / fullNumFeatures;
+  auto downstreamNodeTensor = ActsPlugins::Tensor<float>::Create({downstreamNumNodes, fullNumFeatures}, execContext);
+  if (!execContext.device.isCuda()) {
+    std::copy(downstreamValues.begin(), downstreamValues.end(), downstreamNodeTensor.data());
+  } else {
+#ifdef ACTS_GNN_WITH_CUDA
+    const auto nbytes = downstreamValues.size() * sizeof(float);
+    const auto status =
+        execContext.stream.has_value()
+            ? cudaMemcpyAsync(downstreamNodeTensor.data(), downstreamValues.data(), nbytes, cudaMemcpyHostToDevice,
+                              *execContext.stream)
+            : cudaMemcpy(downstreamNodeTensor.data(), downstreamValues.data(), nbytes, cudaMemcpyHostToDevice);
+    if (status != cudaSuccess) {
+      throw std::runtime_error(fmt::format("Failed to copy node features to CUDA: {}", cudaGetErrorString(status)));
+    }
+#else
+    throw std::runtime_error("cannot run on CUDA, k4ActsTracking/ACTS was built without CUDA support");
+#endif
+  }
+
+  auto actsEdgeList = ActsPlugins::detail::torchToActsTensor<int64_t>(edgeList, execContext);
+
+  return {std::move(downstreamNodeTensor), std::move(actsEdgeList), std::move(actsEdgeFeatures), std::nullopt};
 }
 
 torch::Tensor OnnxMetricLearning::orderEdgesByDistance(const std::vector<float>& inputValues, std::size_t numNodes,
@@ -429,17 +476,14 @@ torch::Tensor OnnxMetricLearning::orderEdgesByDistance(const std::vector<float>&
   using torch::indexing::Slice;
   edgeList.index_put_({Slice(), flipMask}, edgeList.index({Slice(), flipMask}).flip(0));
 
-  // Collapse a pair of hits that ended up in the graph in both directions, as
-  // Acts' postprocessEdgeTensor() does after its own orientation. That one
-  // already deduplicated, so this normally only gives the columns a canonical
-  // order, which keeps the graph reproducible from run to run.
-  const int64_t numEdges = edgeList.size(1);
-  edgeList = std::get<0>(torch::unique_dim(edgeList, -1, false));
+  // No deduplication is needed afterwards: Acts' postprocessEdgeTensor() has
+  // already reduced the graph to one column per pair of hits (in a canonical,
+  // sorted order, so the graph is reproducible from run to run), and flipping
+  // a column keeps it the only one of its pair.
 
   // The flips are only counted when this is printed: .item() waits for the
   // device. flipMask is a tensor of its own, so the flip above left it intact.
-  ACTS_DEBUG(fmt::format("Oriented {} of {} edges outwards, {} duplicate(s) collapsed", flipMask.sum().item<int64_t>(),
-                         numEdges, numEdges - edgeList.size(1)));
+  ACTS_DEBUG(fmt::format("Oriented {} of {} edges outwards", flipMask.sum().item<int64_t>(), edgeList.size(1)));
 
   return edgeList;
 }
@@ -457,7 +501,7 @@ std::optional<torch::Tensor> OnnxMetricLearning::buildEdgeFeatures(const std::ve
   // classifier scales its node input but passes the edge input through as it
   // is, so these are computed from the already scaled node values.
   enum EdgeFeatureInput { eR = 0, ePhi, eZ, eEta };
-  constexpr float pi = static_cast<float>(M_PI);
+  constexpr float pi = std::numbers::pi_v<float>;
 
   const auto& indices = config().edgeFeatureIndices;
   const auto& scales = config().edgeFeatureScales;
@@ -482,13 +526,14 @@ std::optional<torch::Tensor> OnnxMetricLearning::buildEdgeFeatures(const std::ve
   const auto dz = tgtValues.select(1, eZ) - srcValues.select(1, eZ);
   const auto deta = tgtValues.select(1, eEta) - srcValues.select(1, eEta);
 
-  // phi is scaled by pi, so the difference is unscaled to wrap it back into
-  // [-pi, pi] and then scaled again. A single wrap is enough since the unscaled
-  // difference cannot leave [-2pi, 2pi].
-  auto dphi = pi * (tgtValues.select(1, ePhi) - srcValues.select(1, ePhi));
+  // phi is scaled by kEdgeFeaturePhiScale (checked by the caller), so the
+  // difference is unscaled to wrap it back into [-pi, pi] and then scaled
+  // again. A single wrap is enough since the unscaled difference cannot leave
+  // [-2pi, 2pi].
+  auto dphi = kEdgeFeaturePhiScale * (tgtValues.select(1, ePhi) - srcValues.select(1, ePhi));
   dphi = torch::where(dphi > pi, dphi - 2.f * pi, dphi);
   dphi = torch::where(dphi < -pi, dphi + 2.f * pi, dphi);
-  dphi = dphi / pi;
+  dphi = dphi / kEdgeFeaturePhiScale;
 
   // Doublets on the same radius have no defined slope and get a flat zero. The
   // substitute denominator only keeps the discarded branch from producing infs.
@@ -502,25 +547,7 @@ std::optional<torch::Tensor> OnnxMetricLearning::buildEdgeFeatures(const std::ve
   auto edgeFeatures = torch::stack({dr, dphi, dz, deta, phislope, rphislope}, 1).contiguous();
 
   // The features go to the classifier unscaled, so this is what the model
-  // actually sees. Printing a handful of them (all of them with
-  // Config::printAllEdgeFeatures) is the way to spot a mismatch with the scales
-  // the model was trained with.
-  if (logger().doPrint(Acts::Logging::DEBUG)) {
-    const int64_t numEdges = edgeFeatures.size(0);
-    const int64_t numShown = config().printAllEdgeFeatures ? numEdges : std::min<int64_t>(kNumEdgesShown, numEdges);
-    // Pulling the shown rows over in one go, so that a CUDA run does not
-    // synchronise once per printed value.
-    const auto shownFeatures = edgeFeatures.slice(0, 0, numShown).to(torch::kCPU).contiguous();
-    const auto shownEdges = edgeList.slice(1, 0, numShown).to(torch::kCPU).contiguous();
-
-    ACTS_DEBUG(fmt::format("Edge features (dr, dphi, dz, deta, phislope, rphislope) of {} of {} built edges:", numShown,
-                           numEdges));
-    for (int64_t e = 0; e < numShown; ++e) {
-      const float* values = shownFeatures[e].data_ptr<float>();
-      ACTS_DEBUG(fmt::format("  edge {} ({} -> {}): {}", e, shownEdges[0][e].item<int64_t>(),
-                             shownEdges[1][e].item<int64_t>(), fmt::join(std::span(values, kNumEdgeFeatures), ", ")));
-    }
-  }
-
+  // actually sees. The EdgePrintingHook logs them at DEBUG, which is the way to
+  // spot a mismatch with the scales the model was trained with.
   return edgeFeatures;
 }

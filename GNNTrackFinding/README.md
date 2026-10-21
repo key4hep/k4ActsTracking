@@ -36,8 +36,8 @@ produces an `edm4hep::TrackCollection` of fitted track candidates. Per event it
 3. **extracts the configured features** per hit (positions, time and CellID
    fields) into the flat `(nHits x nFeatures)` input tensor,
 4. runs the **graph construction**: a metric learning ONNX model embeds every
-   hit into a space in which a KD-tree (CPU) / FRNN (CUDA) radius + KNN search
-   builds the candidate edges (`OnnxMetricLearning`). Every edge is then
+   hit into a space in which a radius search (KD-tree on CPU, FRNN with an
+   additional KNN cap on CUDA) builds the candidate edges (`OnnxMetricLearning`). Every edge is then
    oriented from the hit closer to the interaction point to the one further out
    (`SortEdges`, see [Edge ordering](#edge-ordering)),
 5. runs one or more **edge classifiers** (ACTS `OnnxEdgeClassifier`) that score
@@ -75,7 +75,14 @@ In order to build this package you need a couple of dependencies that are not
 yet found in the Key4hep stack. Specifically, you need
 - Acts built with the `PluginGnn`.
   - This in turn requires the c++ library of [pytorch_scatter](https://github.com/rusty1s/pytorch_scatter) to be built.
-  - Acts needs [acts#4631](https://github.com/acts-project/acts/pull/4631) to be able to build without CUDA support
+  - Acts has to be recent enough to provide the node feature selection and
+    scaling of `OnnxEdgeClassifier`
+    ([acts#5646](https://github.com/acts-project/acts/pull/5646)) and to pass
+    the selected features in the configured order
+    ([acts#6142](https://github.com/acts-project/acts/pull/6142)). No release
+    contains the latter yet (the last one checked is v48.0.1), so build Acts from
+    its main branch. CMake requires Acts >= 48.1.0, the first release cut from
+    main after acts#6142; main itself reports version 999.999.999 and passes.
 
 In particular the GNN plugin and the c++ library of pytorch_scatter are not yet
 available via spack, so they need some manual intervention.
@@ -115,8 +122,8 @@ k4run GNNTrackFinding/options/runGNNTrackFinding.py \
 | Property | Default | Description |
 | --- | --- | --- |
 | `NodeEmbeddingModelPath` | `""` | Path to the ONNX model of the metric learning / graph construction stage |
-| `EdgeBuildingRadius` | `0.1` | Radius parameter of the edge building in embedding space |
-| `EdgeBuildingKnn` | `100` | KNN parameter of the edge building in embedding space |
+| `EdgeBuildingRadius` | `1.6` | Radius in embedding space within which two hits are connected by an edge |
+| `EdgeBuildingKnn` | `500` | Maximum number of neighbours per hit. Only the CUDA (FRNN) edge building applies it; on CPU the KD-tree keeps every neighbour within the radius and uses this only to reserve memory |
 | `SortEdges` | `True` | Orient every built edge from the hit closer to the interaction point to the one further out, see [Edge ordering](#edge-ordering) |
 | `EdgeClassifierModelPath` | `[]` | Paths to the ONNX models of the edge classifiers |
 | `EdgeClassifierCut` | `[0.5]` | Score cut of each edge classifier |
@@ -131,15 +138,15 @@ list lengths are rejected in `initialize`.
 
 | Property | Default | Description |
 | --- | --- | --- |
-| `InputFeaturesEmbedding` | `"r,phi,z,t"` | Comma separated features for the embedding model |
-| `InputScalesEmbedding` | `"1,1,1,1"` | Comma separated scales, each feature is divided by its scale |
+| `InputFeaturesEmbedding` | `["r", "phi", "z", "t"]` | Features for the embedding model |
+| `InputScalesEmbedding` | `[1, 1, 1, 1]` | Scales of those features, each feature is divided by its scale (so none may be zero) |
 | `EmbeddingFixedInputLength` | `0` | If `> 0`, pad the embedding model input with all-zero rows up to this many nodes. `0` disables the padding |
 | `KeepEmbeddingPadding` | `False` | Keep those padding rows in the node features handed to the edge classifiers, see below |
 | `EdgeClassifierFixedInputLength` | `0` | If `> 0`, pad the edge index and edge features up to this many edges, see below |
-| `InputFeaturesEdgeClassifier` | `["r,phi,z,t"]` | Per classifier list of comma separated features |
-| `InputScalesEdgeClassifier` | `["1,1,1,1"]` | Per classifier list of comma separated scales |
+| `InputFeaturesEdgeClassifier` | `[["r", "phi", "z", "t"]]` | One list of features per classifier, passed to the model in the order given. A feature may be listed more than once |
+| `InputScalesEdgeClassifier` | `[[1, 1, 1, 1]]` | One list of scales per classifier, each feature is divided by its scale (so none may be zero) |
 | `ComputeEdgeFeatures` | `False` | Compute the six edge features a three-input classifier needs, see below |
-| `EdgeFeatureScales` | `""` | Scales of `r`, `phi`, `z`, `eta` used for that computation |
+| `EdgeFeatureScales` | `[]` | Scales of `r`, `phi`, `z`, `eta` used for that computation. Required with `ComputeEdgeFeatures`, and **the `phi` scale has to be pi** |
 
 The supported (case insensitive) feature names are
 
@@ -253,12 +260,13 @@ The edge building leaves every edge oriented from the lower to the higher node
 index, which says nothing about the geometry. With `SortEdges` (the default) the
 graph construction re-orients each one from the hit closer to the interaction
 point to the one further out, measured by `r^2 + z^2` of the **unscaled** hit
-features, with the node index breaking ties, and then collapses a pair of hits
-that ended up in the graph in both directions. This is what the ACORN pipeline
-does after its own graph construction, and it is the convention the models are
-trained with: the six [edge features](#edge-features) are signed differences
-along the edge, so without it `dr`, `dz`, ... come out with the wrong sign for
-about half of the edges.
+features, with the node index breaking ties. (The edge building already holds
+every pair of hits only once, so nothing needs collapsing afterwards.) This is
+what the ACORN pipeline does after its own graph construction, and it is the
+convention the models are trained with: the six
+[edge features](#edge-features) are signed differences along the edge, so
+without it `dr`, `dz`, ... come out with the wrong sign for about half of the
+edges.
 
 `r` and `z` are added to the extracted hit features automatically when this is
 enabled. Setting `SortEdges=False` leaves the edges as the edge building
@@ -279,13 +287,20 @@ scales go **in that order**, whatever order the models take their own inputs in.
 
 ```python
 ComputeEdgeFeatures=True,
-EdgeFeatureScales="1000,3.14,1000,1",
+EdgeFeatureScales=[1000, 3.14, 1000, 1],
 ```
 
 `phislope` is `dphi / dr` clamped to `[-100, 100]` and `rphislope` is that times
 the mean radius of the two hits; edges between hits at the same radius get a flat
-zero for both. The `dphi` wrap-around assumes that `phi` is scaled by pi, as in
-the example above.
+zero for both.
+
+The `dphi` wrap-around takes `phi` to be scaled by pi: it multiplies the
+difference by pi, wraps it into `[-pi, pi]` and divides it by pi again. That is
+the convention of the ACORN training and of Acts' `makeEdgeFeatures()`, and with
+any other `phi` scale (or none at all) the wrap happens at the wrong angle. So
+`initialize` requires `EdgeFeatureScales` whenever `ComputeEdgeFeatures` is set,
+and rejects a `phi` scale that is not pi to within 1% (which admits the `3.14`
+above).
 
 The edge classifier scales its *node* input (`InputScalesEdgeClassifier`) but
 passes the edge input through as it is, so these have to be the scaling the
@@ -293,22 +308,17 @@ classifier was trained with — it is what the edge features are computed from.
 
 With `OutputLevel=DEBUG` the computed features are printed per edge, together
 with the two hits the edge connects, which is how a mismatch with the training
-scales shows up. They are printed twice: once for the graph as it was built,
-and once per edge classifier for the edges that survived its cut — that second
-one also carries the score the classifier gave the edge.
+scales shows up. This is part of the graph printing described under
+[Monitoring and debugging](#monitoring-and-debugging): the features show up
+once for the graph as it was built, and once per edge classifier for the edges
+that survived its cut, together with the score the classifier gave them.
 
 ```
-GNNTrackFinder.MetricLearning        DEBUG Edge features (dr, dphi, dz, deta, phislope, rphislope) of 5 of 3412 built edges:
-GNNTrackFinder.MetricLearning        DEBUG   edge 0 (0 -> 7): 0.0123, -0.0007, 0.0041, 0.0032, -0.0569, 0.0021
-GNNTrackFinder.EdgeClassifier0Edges  DEBUG 5 of 268 classified edges (dr, dphi, dz, deta, phislope, rphislope):
-GNNTrackFinder.EdgeClassifier0Edges  DEBUG   edge 0 (0 -> 7): score 0.982, features 0.0123, -0.0007, 0.0041, 0.0032, -0.0569, 0.0021
+GNNTrackFinder.Edges  DEBUG After graph construction: 5 of 3412 edges (edge features dr, dphi, dz, deta, phislope, rphislope):
+GNNTrackFinder.Edges  DEBUG   edge 0 (0 -> 7): features 0.0123, -0.0007, 0.0041, 0.0032, -0.0569, 0.0021
+GNNTrackFinder.Edges  DEBUG After edge classifier 0: 5 of 268 edges (edge features dr, dphi, dz, deta, phislope, rphislope):
+GNNTrackFinder.Edges  DEBUG   edge 0 (0 -> 7): score 0.982, features 0.0123, -0.0007, 0.0041, 0.0032, -0.0569, 0.0021
 ```
-
-Both show the first five edges; `DetailedDebugOut=True` prints all of them,
-which for a real event is a *lot* of output. The classified-edge printing is a
-pass-through stage (`ClassifiedEdgePrinting`) that is only added to the pipeline
-when the algorithm runs at `DEBUG` or below, and it prints the score alone if no
-edge features are computed.
 
 Leaving `ComputeEdgeFeatures` off (the default) computes no edge features, which
 is what a two-input classifier expects. Configuring a three-input model without
@@ -333,9 +343,14 @@ A non-zero overlap extends every bin into its successor, so that hits close to a
 bin boundary end up in both bins and tracks crossing the boundary can still be
 found.
 
-> **Note:** the phi bins do *not* wrap around, i.e. the last phi bin does not
-> overlap with the first one. Track candidates crossing `phi = +/- pi` can
-> therefore be split between two segments.
+Phi is periodic, so with a non-zero `PhiOverlap` the last phi bin also reaches
+across `phi = +/- pi` into the first one, and tracks crossing that boundary are
+found like any other. Theta does not wrap: the last theta bin ends at `pi`.
+
+Hits in an overlap region are run through the pipeline once per segment they
+fall into, so a track there can be found (and fitted) more than once. The
+output is not deduplicated, so run a duplicate removal downstream when using
+overlaps.
 
 ### Track candidates and fit
 
@@ -403,22 +418,25 @@ almost only candidates that the fit was going to reject anyway.
 written out by a `Gaudi__Histograming__Sink__Root` sink, see the example options
 file for how to configure the axes and the output file.
 
+With `OutputLevel=DEBUG` the graph is printed after every pipeline stage (the
+graph construction, each edge classifier and, with
+`EdgeClassifierFixedInputLength`, the padded edge removal) under the
+`GNNTrackFinder.Edges` logger. Every edge is shown with the two hits it connects,
+its score once a classifier has produced one, and its [edge
+features](#edge-features) if they are computed. This uses the hook that Acts'
+`GnnPipeline` calls between its stages (`EdgePrintingHook`), so the pipeline runs
+the same stages whatever the output level. By default the first five edges of
+every stage are shown.
+
 `DetailedDebugOut` (together with `OutputLevel=DEBUG`) prints all pipeline
-inputs and outputs in full detail. This is *very* verbose and only useful for
-debugging on small inputs.
+inputs and outputs in full detail, including every edge of every stage. This is
+*very* verbose and only useful for debugging on small inputs.
 
 ## Possible future improvements
 Many parts of this are currently in a prototype stage to get some results. This
 also means that there is plenty of opportunity to improve on the current
 implementation. I keep this list here as a reminder for later
-- Generalize `mlutils::{flatten,getDimensions,totalSize}` to also handle
-  `std::vector<std::array>` which would probably offer better performance due to
-  the better memory layout.
-- Make the `ONNXInferenceModel::runInference` thread-safe such that it can be
-  marked as `const` to avoid the `mutable` statements in `operator()` of
-  Functional algorithms
 - The `OnnxMetricLearning` class should almost certainly be upstreamed to the
-  Acts GNN plugin.
+  Acts GNN plugin, together with the CPU edge feature computation and the edge
+  ordering.
 - Run the (independent) theta/phi segments concurrently instead of sequentially.
-- Make the phi segmentation wrap around, so that candidates crossing
-  `phi = +/- pi` are not split.

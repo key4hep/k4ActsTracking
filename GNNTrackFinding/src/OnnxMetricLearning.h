@@ -21,24 +21,15 @@
 #include "ONNXInferenceModel.h"
 
 #include <Acts/Utilities/Logger.hpp>
-#if __has_include("ActsPlugins/Gnn/Stages.hpp")
 #include <ActsPlugins/Gnn/Stages.hpp>
 #include <ActsPlugins/Gnn/Tensor.hpp>
-#else
-#include <Acts/Plugins/Gnn/Stages.hpp>
-#include <Acts/Plugins/Gnn/Tensor.hpp>
-namespace ActsPlugins {
-using Device = Acts::Device;
-using ExecutionContext = Acts::ExecutionContext;
-using PipelineTensors = Acts::PipelineTensors;
-} // namespace ActsPlugins
-#endif
 
 #include <torch/torch.h>
 
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <numbers>
 #include <optional>
 #include <string>
 #include <vector>
@@ -53,9 +44,12 @@ public:
   static constexpr std::size_t kNumEdgeFeatureInputs = 4;
   /// Number of edge features it produces, see Config::edgeFeatureIndices
   static constexpr std::size_t kNumEdgeFeatures = 6;
-  /// How many edges the DEBUG dump of the computed edge features shows,
-  /// unless Config::printAllEdgeFeatures asks for all of them
-  static constexpr std::size_t kNumEdgesShown = 5;
+  /// The scale the edge feature computation takes phi to be divided by: the
+  /// dphi wrap-around un-scales the difference by it, wraps it into [-pi, pi]
+  /// and scales it back. This is the convention of the ACORN training and of
+  /// Acts' makeEdgeFeatures(), so Config::edgeFeatureScales has to scale phi by
+  /// exactly this for the features to be what the classifier was trained on.
+  static constexpr float kEdgeFeaturePhiScale = std::numbers::pi_v<float>;
 
   struct Config {
     std::string modelPath{};
@@ -71,16 +65,13 @@ public:
     /// Scales for edgeFeatureIndices. The edge features are computed from the
     /// scaled node values, so these have to be the scales the edge classifier
     /// was trained with. Must be the same size as edgeFeatureIndices, or empty
-    /// for no scaling.
+    /// for no scaling. Note that the dphi wrap-around is only correct if phi is
+    /// scaled by kEdgeFeaturePhiScale.
     std::vector<float> edgeFeatureScales{};
     /// Indices of the (unscaled) r and z node features, in that order, in the
     /// full per-hit feature vector, by which every built edge is oriented (see
     /// EdgeDirection.h). Empty leaves the edges as the edge building left them.
     std::vector<std::size_t> distanceFeatureIndices{};
-    /// Whether the DEBUG dump of the computed edge features covers every edge
-    /// instead of the first kNumEdgesShown ones. Only has an effect if edge
-    /// features are computed at all and the logger prints DEBUG.
-    bool printAllEdgeFeatures{false};
     /// If > 0, the model input is padded with all-zero rows up to this many
     /// nodes, for models exported with a fixed-size input. The embedding of the
     /// padding rows is discarded before the edge building. 0 disables it.
@@ -98,7 +89,7 @@ public:
     /// classification. Needs keepPadding. 0 disables it.
     int fixedEdgeLength{0};
     float rVal{1.6};               // Same as TorchMetricLearning
-    float knnVal{500.};            // Same as TorchMetricLearning
+    int knnVal{500};               // Same as TorchMetricLearning
     bool shuffleDirections{false}; // Same as TorchMetricLearning
 
     // Device the embedding model and edge building run on. Defaults to CPU;
@@ -127,8 +118,9 @@ public:
 
 private:
   /// @p edgeList with every edge oriented from the hit closer to the
-  /// interaction point to the one further out, and with the columns
-  /// deduplicated. The ordering is gnntracking::pointsOutward() over the
+  /// interaction point to the one further out. The edge list is expected to
+  /// hold every pair of hits once, as the edge building leaves it, and still
+  /// does afterwards. The ordering is gnntracking::pointsOutward() over the
   /// unscaled node values selected by Config::distanceFeatureIndices, the same
   /// one CCAndWalkTrackBuilding directs the classified graph by. Returns
   /// @p edgeList unchanged if no distance features are configured.

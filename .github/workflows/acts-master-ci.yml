@@ -14,49 +14,39 @@ concurrency:
 jobs:
   build-acts-master:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/key4hep/key4hep-images/alma9-cvmfs
+      options: --privileged
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Clone ACTS master
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: acts-project/acts
           path: acts
           ref: main
 
-      - shell: bash
-        run: echo "NOW=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+      - name: Mount CVMFS
+        run: /mount.sh
 
-      - uses: actions/cache/restore@v5
+      - run: echo "NOW=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.cache/ccache
+          path: /root/.cache/ccache
           key: ccache-acts-master-${{ env.NOW }}
           restore-keys: |
             ccache-acts-master-
 
-      - name: Launch Container
-        run: |
-          mkdir -p ~/.cache/ccache
-          chmod 777 ~/.cache/ccache
-          name=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
-          docker run --name ci_container --privileged \
-            -v ${GITHUB_WORKSPACE}:/${name} \
-            -v ~/.cache/ccache:/root/.cache/ccache \
-            -v ${GITHUB_WORKSPACE}/acts:/acts \
-            -d ghcr.io/key4hep/key4hep-images/alma9-cvmfs \
-            tail -f /dev/null
-
       - name: Build and test
         run: |
-          name=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
-
-          cat << 'EOF' > ${GITHUB_WORKSPACE}/build.sh
           set -e
-
-          repo=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
-
           source /cvmfs/sw-nightlies.hsf.org/key4hep/setup.sh --lcg
 
           export CCACHE_DIR=/root/.cache/ccache
@@ -66,7 +56,7 @@ jobs:
 
           # Build ACTS from master
           echo "=== Building ACTS from master ==="
-          cd /acts
+          cd "$GITHUB_WORKSPACE/acts"
           cmake -B build -S . -GNinja \
             -DCMAKE_CXX_STANDARD=20 \
             -DCMAKE_BUILD_TYPE=Release \
@@ -84,7 +74,7 @@ jobs:
           k4_local_repo
 
           echo "=== Building k4ActsTracking ==="
-          cd /${repo}
+          cd "$GITHUB_WORKSPACE"
           k4_local_repo
           mkdir -p build
           cd build
@@ -102,15 +92,10 @@ jobs:
           cmake --build . --target install
 
           ccache -s
-          EOF
-
-          chmod +x ${GITHUB_WORKSPACE}/build.sh
-
-          docker exec ci_container /bin/bash /${name}/build.sh
 
       - name: Upload CTest logs
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: CTest logs_acts-master_run${{ github.run_id }}_attempt${{ github.run_attempt }}
           path: |
@@ -119,8 +104,8 @@ jobs:
           if-no-files-found: warn
           retention-days: 3
 
-      - uses: actions/cache/save@v5
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: always()
         with:
-          path: ~/.cache/ccache
+          path: /root/.cache/ccache
           key: ccache-acts-master-${{ env.NOW }}

@@ -160,4 +160,16 @@ bool CellIDSelector::accept(const dd4hep::CellID cellID) const {
   }
   return false;
 }
+
+bool CellIDSelector::overlaps(const CellIDSelector& other) const {
+  for (const auto& a : m_selectors) {
+    for (const auto& b : other.m_selectors) {
+      // Both match a common CellID unless their values differ on a bit both constrain
+      if (((a.value ^ b.value) & a.mask & b.mask) == 0) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 } // namespace k4ActsTracking

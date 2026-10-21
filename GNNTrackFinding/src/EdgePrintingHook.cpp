@@ -16,7 +16,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "ClassifiedEdgePrinting.h"
+#include "EdgePrintingHook.h"
+
+#include "HostTensorView.h"
 
 #include <fmt/format.h>
 #include <fmt/ranges.h>
@@ -27,57 +29,47 @@
 #include <optional>
 #include <span>
 #include <string>
-#include <type_traits>
 #include <utility>
 
-using ActsPlugins::PipelineTensors;
-using ActsPlugins::Tensor;
+EdgePrintingHook::EdgePrintingHook(Config cfg, const Acts::Logger& logger) : m_cfg(std::move(cfg)), m_logger(logger) {}
 
-ClassifiedEdgePrinting::ClassifiedEdgePrinting(const Config& cfg, std::unique_ptr<const Acts::Logger> logger)
-    : m_cfg(cfg), m_logger(std::move(logger)) {}
+void EdgePrintingHook::operator()(const ActsPlugins::PipelineTensors& tensors,
+                                  const ActsPlugins::ExecutionContext& execContext) const {
+  const std::size_t stage = m_numCalls++;
 
-PipelineTensors ClassifiedEdgePrinting::operator()(PipelineTensors tensors,
-                                                   const ActsPlugins::ExecutionContext& execContext) {
   // Nothing is copied or gathered unless the output actually goes anywhere
   if (!logger().doPrint(Acts::Logging::DEBUG)) {
-    return tensors;
+    return;
   }
 
+  const std::string stageName =
+      stage < m_cfg.stageNames.size() ? m_cfg.stageNames[stage] : fmt::format("stage {}", stage);
   const std::size_t numEdges = tensors.edgeIndex.shape()[1];
-  const std::size_t numShown = config().printAll ? numEdges : std::min(config().numEdgesShown, numEdges);
+  const std::size_t numShown = m_cfg.printAll ? numEdges : std::min(m_cfg.numEdgesShown, numEdges);
 
   // Everything is printed from the host, so pull the tensors over if they are
-  // not there already. This is the same idiom the track building uses.
-  const ActsPlugins::ExecutionContext cpuCtx{ActsPlugins::Device::Cpu(), execContext.stream};
-  const auto toHost = [&cpuCtx](const auto& tensor) -> std::optional<std::decay_t<decltype(tensor)>> {
-    if (tensor.device().isCpu()) {
-      return std::nullopt;
-    }
-    return tensor.clone(cpuCtx);
-  };
-  const std::optional<Tensor<std::int64_t>> hostEdges = toHost(tensors.edgeIndex);
-  const std::int64_t* edgeData = hostEdges ? hostEdges->data() : tensors.edgeIndex.data();
+  // not there already.
+  const gnntracking::HostTensorView<std::int64_t> hostEdges{tensors.edgeIndex, execContext};
+  const std::int64_t* edgeData = hostEdges.data();
 
-  // The scores are there for every classified graph, the edge features only if
+  // The scores only exist once a classifier has run, the edge features only if
   // the pipeline computes them at all (three-input classifiers).
-  std::optional<Tensor<float>> hostScores{};
+  std::optional<gnntracking::HostTensorView<float>> hostScores{};
   const float* scoreData = nullptr;
   if (tensors.edgeScores.has_value()) {
-    hostScores = toHost(*tensors.edgeScores);
-    scoreData = hostScores ? hostScores->data() : tensors.edgeScores->data();
+    scoreData = hostScores.emplace(*tensors.edgeScores, execContext).data();
   }
 
-  std::optional<Tensor<float>> hostFeatures{};
+  std::optional<gnntracking::HostTensorView<float>> hostFeatures{};
   const float* featureData = nullptr;
   std::size_t numEdgeFeatures = 0;
   if (tensors.edgeFeatures.has_value()) {
-    hostFeatures = toHost(*tensors.edgeFeatures);
-    featureData = hostFeatures ? hostFeatures->data() : tensors.edgeFeatures->data();
+    featureData = hostFeatures.emplace(*tensors.edgeFeatures, execContext).data();
     numEdgeFeatures = tensors.edgeFeatures->shape()[1];
   }
 
-  ACTS_DEBUG(fmt::format("{} of {} classified edges{}:", numShown, numEdges,
-                         featureData != nullptr ? " (dr, dphi, dz, deta, phislope, rphislope)" : ""));
+  ACTS_DEBUG(fmt::format("After {}: {} of {} edges{}:", stageName, numShown, numEdges,
+                         featureData != nullptr ? " (edge features dr, dphi, dz, deta, phislope, rphislope)" : ""));
   for (std::size_t e = 0; e < numShown; ++e) {
     // The edge index is a (2 x numEdges) row-major tensor, so the source of
     // edge e is at e and its target at numEdges + e.
@@ -86,11 +78,9 @@ PipelineTensors ClassifiedEdgePrinting::operator()(PipelineTensors tensors,
       line += fmt::format(": score {}", scoreData[e]);
     }
     if (featureData != nullptr) {
-      line +=
-          fmt::format(", features {}", fmt::join(std::span(featureData + e * numEdgeFeatures, numEdgeFeatures), ", "));
+      line += fmt::format("{} features {}", scoreData != nullptr ? "," : ":",
+                          fmt::join(std::span(featureData + e * numEdgeFeatures, numEdgeFeatures), ", "));
     }
     ACTS_DEBUG(line);
   }
-
-  return tensors;
 }

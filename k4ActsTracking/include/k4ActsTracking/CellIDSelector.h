@@ -107,6 +107,9 @@ public:
   /// Return `true` if @p cellID satisfies at least one configured selector.
   bool accept(const dd4hep::CellID cellID) const;
 
+  /// Return `true` if some CellID is accepted by both this selector and @p other.
+  bool overlaps(const CellIDSelector& other) const;
+
   /// Expand a single selection string into its `Selector` pairs.
   ///
   /// Useful for inspection and testing.  The returned vector contains one
