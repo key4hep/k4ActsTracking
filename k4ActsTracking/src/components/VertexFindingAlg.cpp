@@ -27,6 +27,7 @@
 #include <edm4hep/VertexCollection.h>
 #include <edm4hep/VertexRecoParticleLinkCollection.h>
 
+#include <Acts/Definitions/Direction.hpp>
 #include <Acts/Definitions/TrackParametrization.hpp>
 #include <Acts/Definitions/Units.hpp>
 #include <Acts/EventData/BoundTrackParameters.hpp>
@@ -37,7 +38,10 @@
 #include <Acts/MagneticField/MagneticFieldContext.hpp>
 #include <Acts/MagneticField/MagneticFieldProvider.hpp>
 #include <Acts/Propagator/Propagator.hpp>
+#include <Acts/Propagator/PropagatorOptions.hpp>
 #include <Acts/Propagator/SympyStepper.hpp>
+#include <Acts/Surfaces/BoundaryTolerance.hpp>
+#include <Acts/Surfaces/PerigeeSurface.hpp>
 #include <Acts/Utilities/AnnealingUtility.hpp>
 #include <Acts/Utilities/Logger.hpp>
 #include <Acts/Vertexing/AdaptiveGridDensityVertexFinder.hpp>
@@ -116,9 +120,9 @@ struct VertexFindingAlg final
   // ----- track selection ---------------------------------------------------
   Gaudi::Property<double> m_minPt{this, "MinPt", 100.0, "Minimum track pT to use in the vertex fit [MeV]"};
   Gaudi::Property<double> m_maxAbsD0{this, "MaxAbsD0", 10.0,
-                                     "Maximum |d0| of a track w.r.t. the origin to be used [mm]"};
+                                     "Maximum |d0| of a track w.r.t. the beam-spot centre to be used [mm]"};
   Gaudi::Property<double> m_maxAbsZ0{this, "MaxAbsZ0", 50.0,
-                                     "Maximum |z0| of a track w.r.t. the origin to be used [mm]"};
+                                     "Maximum |z0| of a track w.r.t. the beam-spot centre to be used [mm]"};
 
   // ----- vertex seeding (density of track z0 along the beam line) ----------
   Gaudi::Property<double> m_spatialBinExtent{this, "SeedBinExtent", 0.015,
@@ -135,16 +139,17 @@ struct VertexFindingAlg final
       "Maximum d0 significance w.r.t. the beam line for a track to enter the seeding density"};
 
   // ----- beam spot ----------------------------------------------------------
+  /// Centre of the beam spot, where seeds are placed. The seeder cuts on and
+  /// fills its density with the tracks' d0 and z0 as given, so tracks whose
+  /// perigee does not refer to this point are first propagated to a perigee
+  /// surface there; MaxAbsD0 and MaxAbsZ0 then refer to it as well.
+  Gaudi::Property<std::vector<double>> m_beamSpotPosition{
+      this, "BeamSpotPosition", {0., 0., 0.}, "Beam-spot centre (x, y, z) [mm]"};
   /// Setting BeamSpotSize enables the beam-spot constraint: the vertex fit
   /// uses the beam spot as a prior, and the track-compatibility test around a
   /// seed includes the seed's (beam-spot) uncertainty. Without it, Acts tests
   /// compatibility as if the seed sat exactly on the beam line, which rejects
   /// precise tracks from collisions a few beam-spot widths off it.
-  ///
-  /// The beam spot is centred at the origin. The seeder cuts on and fills its
-  /// density with the tracks' d0 and z0 as given, i.e. w.r.t. the z axis the
-  /// input perigee parameters refer to, so a displaced beam-spot centre would
-  /// not be honoured there.
   Gaudi::Property<std::vector<double>> m_beamSpotSize{
       this, "BeamSpotSize", {}, "Beam-spot size (sigma x, y, z) [mm]; empty = no beam-spot constraint"};
 
@@ -223,8 +228,11 @@ private:
   std::optional<Linearizer> m_linearizer{};
   std::optional<Finder> m_finder{};
 
-  /// Beam-spot constraint, set when BeamSpotSize is given
-  std::optional<Acts::Vertex> m_beamSpot{};
+  /// Perigee surface at the beam-spot centre the input tracks are expressed on
+  std::shared_ptr<const Acts::PerigeeSurface> m_beamLine{nullptr};
+  /// Seed position, with the beam-spot covariance when BeamSpotSize is given
+  Acts::Vertex m_beamSpot{};
+  bool m_useBeamSpotConstraint{false};
 
   /// The conversion and the vertexing need contexts, but neither the geometry
   /// nor the DD4hep field is conditions-dependent here.
@@ -311,6 +319,20 @@ StatusCode VertexFindingAlg::initialize() {
   finderCfg.useTime = false;
   finderCfg.extractParameters.connect<&Acts::InputTrack::extractParameters>();
 
+  if (m_beamSpotPosition.size() != 3 ||
+      !std::ranges::all_of(m_beamSpotPosition.value(), [](double value) { return std::isfinite(value); })) {
+    error() << "BeamSpotPosition needs 3 finite values (x, y, z)" << endmsg;
+    return StatusCode::FAILURE;
+  }
+  const Acts::Vector3 beamSpotCentre =
+      Acts::Vector3{m_beamSpotPosition[0], m_beamSpotPosition[1], m_beamSpotPosition[2]} * Acts::UnitConstants::mm;
+  m_beamLine = Acts::Surface::makeShared<Acts::PerigeeSurface>(beamSpotCentre);
+  // The seeder places seeds at this position plus the z it finds from the
+  // tracks' z0, which refer to the same point.
+  m_beamSpot = Acts::Vertex{beamSpotCentre};
+  info() << "Beam-spot centre: (" << m_beamSpotPosition[0] << ", " << m_beamSpotPosition[1] << ", "
+         << m_beamSpotPosition[2] << ") mm" << endmsg;
+
   if (!m_beamSpotSize.empty()) {
     // A zero sigma would make the constraint covariance singular, which Acts
     // only rejects when the constraint is used, i.e. in every event.
@@ -318,17 +340,14 @@ StatusCode VertexFindingAlg::initialize() {
       error() << "BeamSpotSize needs 3 finite, positive values (sigma x, y, z)" << endmsg;
       return StatusCode::FAILURE;
     }
-    // Centred at the origin, see m_beamSpotSize. The seeder places seeds at
-    // the constraint position plus the z it finds, so z has to be 0 anyway.
-    Acts::Vertex beamSpot{Acts::Vector4{Acts::Vector4::Zero()}};
     Acts::Vector4 variances;
     for (std::size_t i = 0; i < 3; ++i) {
       const double sigma = m_beamSpotSize[i] * Acts::UnitConstants::mm;
       variances[i] = sigma * sigma;
     }
     variances[3] = finderCfg.initialVariances[3]; // time is not used
-    beamSpot.setFullCovariance(variances.asDiagonal());
-    m_beamSpot = beamSpot;
+    m_beamSpot.setFullCovariance(variances.asDiagonal());
+    m_useBeamSpotConstraint = true;
 
     // Test track compatibility against the seed's uncertainty (the beam spot)
     // instead of treating the seed position as exact.
@@ -380,7 +399,26 @@ VertexFindingAlg::Output VertexFindingAlg::operator()(const edm4hep::TrackCollec
       continue;
     }
 
-    const Acts::BoundTrackParameters params = trackProxy.createParametersAtReference();
+    Acts::BoundTrackParameters params = trackProxy.createParametersAtReference();
+
+    // Express the track at the beam line, see m_beamSpotPosition. The
+    // straight-line intersection picks the direction, as in Acts'
+    // ImpactPointEstimator.
+    if (params.referenceSurface().center(m_gctx) != m_beamLine->center(m_gctx)) {
+      Acts::PropagatorPlainOptions propagationOptions(m_gctx, m_mctx);
+      const auto intersection = m_beamLine
+                                    ->intersect(m_gctx, params.position(m_gctx), params.direction(),
+                                                Acts::BoundaryTolerance::Infinite())
+                                    .closest();
+      propagationOptions.direction = Acts::Direction::fromScalarZeroAsPositive(intersection.pathLength());
+      auto atBeamLine = m_propagator->propagateToSurface(params, *m_beamLine, propagationOptions);
+      if (!atBeamLine.ok()) {
+        warning() << "Propagation to the beam line failed, skipping track: " << atBeamLine.error().message()
+                  << endmsg;
+        continue;
+      }
+      params = std::move(*atBeamLine);
+    }
 
     if (params.transverseMomentum() < m_minPt * Acts::UnitConstants::MeV) {
       continue;
@@ -436,10 +474,9 @@ VertexFindingAlg::Output VertexFindingAlg::operator()(const edm4hep::TrackCollec
 
   // --- 2. run the adaptive multi-vertex finder ----------------------------
   // With a beam-spot constraint, the fit uses it as a prior; without, the
-  // vertex position comes from the tracks alone.
-  const Acts::VertexingOptions finderOptions = m_beamSpot.has_value()
-                                                   ? Acts::VertexingOptions(m_gctx, m_mctx, *m_beamSpot, true)
-                                                   : Acts::VertexingOptions(m_gctx, m_mctx);
+  // vertex position comes from the tracks alone and the beam spot only
+  // places the seeds.
+  const Acts::VertexingOptions finderOptions(m_gctx, m_mctx, m_beamSpot, m_useBeamSpotConstraint);
   auto finderState = m_finder->makeState(m_mctx);
 
   auto result = m_finder->find(vertexInput, finderOptions, finderState);
