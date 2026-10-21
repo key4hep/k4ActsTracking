@@ -105,6 +105,16 @@ struct VertexFindingAlg final
   using Fitter = Acts::AdaptiveMultiVertexFitter;
   using Finder = Acts::AdaptiveMultiVertexFinder;
 
+  /// What the finder's Acts::InputTrack points at: the converted parameters
+  /// and the position of the edm4hep track they came from
+  struct ConvertedTrack {
+    Acts::BoundTrackParameters parameters;
+    std::size_t inputIndex;
+    static Acts::BoundTrackParameters extractParameters(const Acts::InputTrack& track) {
+      return track.as<ConvertedTrack>()->parameters;
+    }
+  };
+
   using Output = std::tuple<edm4hep::VertexCollection, edm4hep::ReconstructedParticleCollection,
                             edm4hep::VertexRecoParticleLinkCollection>;
 
@@ -300,7 +310,7 @@ StatusCode VertexFindingAlg::initialize() {
   // reference point. Without it they would still be the input parameters.
   fitterCfg.doSmoothing = true;
   fitterCfg.useTime = false;
-  fitterCfg.extractParameters.connect<&Acts::InputTrack::extractParameters>();
+  fitterCfg.extractParameters.connect<&ConvertedTrack::extractParameters>();
   fitterCfg.trackLinearizer.connect<&Linearizer::linearizeTrack>(&m_linearizer.value());
   Fitter fitter(std::move(fitterCfg), m_actsLogger->cloneWithSuffix("AMVFitter"));
 
@@ -320,7 +330,7 @@ StatusCode VertexFindingAlg::initialize() {
   finderCfg.doFullSplitting = m_doFullSplitting;
   finderCfg.doNotBreakWhileSeeding = m_doNotBreakWhileSeeding;
   finderCfg.useTime = false;
-  finderCfg.extractParameters.connect<&Acts::InputTrack::extractParameters>();
+  finderCfg.extractParameters.connect<&ConvertedTrack::extractParameters>();
 
   if (m_beamSpotPosition.size() != 3 ||
       !std::ranges::all_of(m_beamSpotPosition.value(), [](double value) { return std::isfinite(value); })) {
@@ -376,7 +386,7 @@ std::shared_ptr<const Acts::IVertexFinder> VertexFindingAlg::makeSeeder() const 
     densityCfg.useTime = false;
 
     Acts::AdaptiveGridDensityVertexFinder::Config cfg{Acts::AdaptiveGridTrackDensity(densityCfg)};
-    cfg.extractParameters.connect<&Acts::InputTrack::extractParameters>();
+    cfg.extractParameters.connect<&ConvertedTrack::extractParameters>();
     cfg.maxD0TrackSignificance = maxD0Significance;
     cfg.d0SignificanceCut = maxD0Significance * maxD0Significance;
     return std::make_shared<Acts::AdaptiveGridDensityVertexFinder>(cfg);
@@ -384,7 +394,7 @@ std::shared_ptr<const Acts::IVertexFinder> VertexFindingAlg::makeSeeder() const 
 
   if (m_seeder.value() == "Gaussian") {
     Acts::GaussianTrackDensity::Config densityCfg(maxD0Significance);
-    densityCfg.extractParameters.connect<&Acts::InputTrack::extractParameters>();
+    densityCfg.extractParameters.connect<&ConvertedTrack::extractParameters>();
     return std::make_shared<Acts::TrackDensityVertexFinder>(
         Acts::TrackDensityVertexFinder::Config{Acts::GaussianTrackDensity(densityCfg)});
   }
@@ -404,12 +414,8 @@ VertexFindingAlg::Output VertexFindingAlg::operator()(const edm4hep::TrackCollec
 
   // The Acts::InputTrack objects below hold raw pointers into this vector, so
   // it must not reallocate while it is being filled.
-  std::vector<Acts::BoundTrackParameters> trackParameters;
-  trackParameters.reserve(inputTracks.size());
-  // Position of each entry of trackParameters in inputTracks, to find the
-  // edm4hep track behind a track the vertex fit used.
-  std::vector<std::size_t> inputTrackIndex;
-  inputTrackIndex.reserve(inputTracks.size());
+  std::vector<ConvertedTrack> convertedTracks;
+  convertedTracks.reserve(inputTracks.size());
 
   for (std::size_t iTrack = 0; iTrack < inputTracks.size(); ++iTrack) {
     // The vertex fit only needs the perigee parameters at the interaction
@@ -487,22 +493,21 @@ VertexFindingAlg::Output VertexFindingAlg::operator()(const edm4hep::TrackCollec
       continue;
     }
 
-    trackParameters.emplace_back(params.referenceSurface().getSharedPtr(), params.parameters(), cov,
-                                 params.particleHypothesis());
-    inputTrackIndex.push_back(iTrack);
+    params.covariance() = cov;
+    convertedTracks.push_back({std::move(params), iTrack});
   }
 
-  debug() << "Converted " << trackParameters.size() << " of " << inputTracks.size() << " tracks for vertexing"
+  debug() << "Converted " << convertedTracks.size() << " of " << inputTracks.size() << " tracks for vertexing"
           << endmsg;
 
-  if (trackParameters.empty()) {
+  if (convertedTracks.empty()) {
     return output();
   }
 
   std::vector<Acts::InputTrack> vertexInput;
-  vertexInput.reserve(trackParameters.size());
-  for (const auto& params : trackParameters) {
-    vertexInput.emplace_back(&params);
+  vertexInput.reserve(convertedTracks.size());
+  for (const auto& track : convertedTracks) {
+    vertexInput.emplace_back(&track);
   }
 
   // --- 2. run the adaptive multi-vertex finder ----------------------------
@@ -556,9 +561,7 @@ VertexFindingAlg::Output VertexFindingAlg::operator()(const edm4hep::TrackCollec
       if (trackAtVertex.trackWeight < m_minOutputTrackWeight) {
         continue;
       }
-      const auto* original = trackAtVertex.originalParams.as<Acts::BoundTrackParameters>();
-      const auto paramsIndex = static_cast<std::size_t>(original - trackParameters.data());
-      const auto edmTrack = inputTracks[inputTrackIndex[paramsIndex]];
+      const auto edmTrack = inputTracks[trackAtVertex.originalParams.as<ConvertedTrack>()->inputIndex];
 
       const Acts::BoundTrackParameters& atVertex = trackAtVertex.fittedParams;
       const Acts::Vector3 momentum = atVertex.momentum() / Acts::UnitConstants::GeV;
