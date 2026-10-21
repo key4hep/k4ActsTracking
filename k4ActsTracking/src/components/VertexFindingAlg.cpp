@@ -48,9 +48,12 @@
 #include <Acts/Vertexing/AdaptiveGridTrackDensity.hpp>
 #include <Acts/Vertexing/AdaptiveMultiVertexFinder.hpp>
 #include <Acts/Vertexing/AdaptiveMultiVertexFitter.hpp>
+#include <Acts/Vertexing/GaussianTrackDensity.hpp>
 #include <Acts/Vertexing/HelicalTrackLinearizer.hpp>
+#include <Acts/Vertexing/IVertexFinder.hpp>
 #include <Acts/Vertexing/ImpactPointEstimator.hpp>
 #include <Acts/Vertexing/TrackAtVertex.hpp>
+#include <Acts/Vertexing/TrackDensityVertexFinder.hpp>
 #include <Acts/Vertexing/Vertex.hpp>
 #include <Acts/Vertexing/VertexingOptions.hpp>
 
@@ -67,6 +70,7 @@
 #include <exception>
 #include <memory>
 #include <optional>
+#include <string>
 #include <tuple>
 #include <vector>
 
@@ -102,7 +106,6 @@ struct VertexFindingAlg final
   using Linearizer = Acts::HelicalTrackLinearizer;
   using Fitter = Acts::AdaptiveMultiVertexFitter;
   using Finder = Acts::AdaptiveMultiVertexFinder;
-  using Seeder = Acts::AdaptiveGridDensityVertexFinder;
 
   using Output = std::tuple<edm4hep::VertexCollection, edm4hep::ReconstructedParticleCollection,
                             edm4hep::VertexRecoParticleLinkCollection>;
@@ -125,11 +128,16 @@ struct VertexFindingAlg final
                                      "Maximum |z0| of a track w.r.t. the beam-spot centre to be used [mm]"};
 
   // ----- vertex seeding (density of track z0 along the beam line) ----------
+  /// Both seeders take the maximum of the track density along the beam line
+  /// as the next vertex candidate: "AdaptiveGrid" fills the density into z
+  /// bins, "Gaussian" evaluates the sum of the tracks' Gaussians directly.
+  Gaudi::Property<std::string> m_seeder{this, "Seeder", "AdaptiveGrid",
+                                        "Vertex seeder: \"AdaptiveGrid\" (default) or \"Gaussian\""};
   Gaudi::Property<double> m_spatialBinExtent{this, "SeedBinExtent", 0.015,
-                                             "Bin size along z of the seeding track-density grid [mm]"};
+                                             "Bin size along z of the AdaptiveGrid seeding density [mm]"};
   Gaudi::Property<double> m_spatialWindow{this, "SeedWindow", 50.0,
-                                          "Half-width of the z window filled in the seeding density grid [mm]"};
-  /// The seeder only fills its density with tracks whose d0 significance with
+                                          "Half-width of the z window of the AdaptiveGrid seeding density [mm]"};
+  /// Either seeder only fills its density with tracks whose d0 significance with
   /// respect to the beam line is below this value (Acts default 3.5). Where the
   /// track d0 resolution is much finer than the transverse beam-spot size, as
   /// for FCC-ee, this can leave no track to seed from when the collision point
@@ -216,6 +224,9 @@ struct VertexFindingAlg final
                                                 "Time variance substituted when the input has none [ns^2]"};
 
 private:
+  /// The seeder selected by the Seeder property, or nullptr for an unknown name
+  std::shared_ptr<const Acts::IVertexFinder> makeSeeder() const;
+
   SmartIF<IGeoSvc> m_geoSvc;
 
   std::shared_ptr<const Acts::MagneticFieldProvider> m_magneticField{nullptr};
@@ -266,19 +277,13 @@ StatusCode VertexFindingAlg::initialize() {
   linCfg.propagator = m_propagator;
   m_linearizer.emplace(linCfg, m_actsLogger->cloneWithSuffix("Linearizer"));
 
-  // Seeding: build a density of the tracks' z0 along the beam line and take
-  // its maxima as vertex candidates.
-  Acts::AdaptiveGridTrackDensity::Config densityCfg;
-  densityCfg.spatialBinExtent = m_spatialBinExtent * Acts::UnitConstants::mm;
-  densityCfg.spatialWindow = {-m_spatialWindow * Acts::UnitConstants::mm, m_spatialWindow * Acts::UnitConstants::mm};
-  densityCfg.useTime = false;
-  Seeder::Config seederCfg{Acts::AdaptiveGridTrackDensity(densityCfg)};
-  seederCfg.extractParameters.connect<&Acts::InputTrack::extractParameters>();
-  // The squared cut is what the seeder applies; it is derived from
-  // maxD0TrackSignificance only when the config is constructed.
-  seederCfg.maxD0TrackSignificance = m_seedMaxD0Significance;
-  seederCfg.d0SignificanceCut = m_seedMaxD0Significance * m_seedMaxD0Significance;
-  auto seeder = std::make_shared<Seeder>(seederCfg);
+  // Seeding: take the maximum of the tracks' z0 density along the beam line
+  // as the next vertex candidate.
+  auto seeder = makeSeeder();
+  if (!seeder) {
+    error() << "Unknown Seeder '" << m_seeder.value() << "'; expected \"AdaptiveGrid\" or \"Gaussian\"" << endmsg;
+    return StatusCode::FAILURE;
+  }
 
   // The fit assigns every track a weight between 0 and 1 instead of a yes/no
   // decision, and lowers the annealing temperature over the iterations so the
@@ -361,6 +366,34 @@ StatusCode VertexFindingAlg::initialize() {
   return StatusCode::SUCCESS;
 }
 
+std::shared_ptr<const Acts::IVertexFinder> VertexFindingAlg::makeSeeder() const {
+  // Both configs derive the squared d0 cut the seeder applies from the
+  // significance only when they are constructed.
+  const double maxD0Significance = m_seedMaxD0Significance;
+
+  if (m_seeder.value() == "AdaptiveGrid") {
+    Acts::AdaptiveGridTrackDensity::Config densityCfg;
+    densityCfg.spatialBinExtent = m_spatialBinExtent * Acts::UnitConstants::mm;
+    densityCfg.spatialWindow = {-m_spatialWindow * Acts::UnitConstants::mm, m_spatialWindow * Acts::UnitConstants::mm};
+    densityCfg.useTime = false;
+
+    Acts::AdaptiveGridDensityVertexFinder::Config cfg{Acts::AdaptiveGridTrackDensity(densityCfg)};
+    cfg.extractParameters.connect<&Acts::InputTrack::extractParameters>();
+    cfg.maxD0TrackSignificance = maxD0Significance;
+    cfg.d0SignificanceCut = maxD0Significance * maxD0Significance;
+    return std::make_shared<Acts::AdaptiveGridDensityVertexFinder>(cfg);
+  }
+
+  if (m_seeder.value() == "Gaussian") {
+    Acts::GaussianTrackDensity::Config densityCfg(maxD0Significance);
+    densityCfg.extractParameters.connect<&Acts::InputTrack::extractParameters>();
+    return std::make_shared<Acts::TrackDensityVertexFinder>(
+        Acts::TrackDensityVertexFinder::Config{Acts::GaussianTrackDensity(densityCfg)});
+  }
+
+  return nullptr;
+}
+
 VertexFindingAlg::Output VertexFindingAlg::operator()(const edm4hep::TrackCollection& inputTracks) const {
   edm4hep::VertexCollection vertices;
   edm4hep::ReconstructedParticleCollection particles;
@@ -406,15 +439,14 @@ VertexFindingAlg::Output VertexFindingAlg::operator()(const edm4hep::TrackCollec
     // ImpactPointEstimator.
     if (params.referenceSurface().center(m_gctx) != m_beamLine->center(m_gctx)) {
       Acts::PropagatorPlainOptions propagationOptions(m_gctx, m_mctx);
-      const auto intersection = m_beamLine
-                                    ->intersect(m_gctx, params.position(m_gctx), params.direction(),
-                                                Acts::BoundaryTolerance::Infinite())
-                                    .closest();
+      const auto intersection =
+          m_beamLine
+              ->intersect(m_gctx, params.position(m_gctx), params.direction(), Acts::BoundaryTolerance::Infinite())
+              .closest();
       propagationOptions.direction = Acts::Direction::fromScalarZeroAsPositive(intersection.pathLength());
       auto atBeamLine = m_propagator->propagateToSurface(params, *m_beamLine, propagationOptions);
       if (!atBeamLine.ok()) {
-        warning() << "Propagation to the beam line failed, skipping track: " << atBeamLine.error().message()
-                  << endmsg;
+        warning() << "Propagation to the beam line failed, skipping track: " << atBeamLine.error().message() << endmsg;
         continue;
       }
       params = std::move(*atBeamLine);
