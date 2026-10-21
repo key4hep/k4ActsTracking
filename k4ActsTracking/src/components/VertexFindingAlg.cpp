@@ -31,9 +31,6 @@
 #include <Acts/Definitions/TrackParametrization.hpp>
 #include <Acts/Definitions/Units.hpp>
 #include <Acts/EventData/BoundTrackParameters.hpp>
-#include <Acts/EventData/TrackContainer.hpp>
-#include <Acts/EventData/VectorMultiTrajectory.hpp>
-#include <Acts/EventData/VectorTrackContainer.hpp>
 #include <Acts/Geometry/GeometryContext.hpp>
 #include <Acts/MagneticField/MagneticFieldContext.hpp>
 #include <Acts/MagneticField/MagneticFieldProvider.hpp>
@@ -78,11 +75,12 @@
 ///
 /// The algorithm takes a finished edm4hep track collection, e.g. CLD's
 /// `SiTracks_Refitted` from ConformalTracking + RefitFinal, and only does
-/// vertexing on it; it does no track finding or fitting of its own. Tracks are
-/// translated into the Acts perigee parametrization by the centralised
-/// converter `ActsPlugins::EDM4hepUtil::readTrack`, the inverse of the
-/// conversion used when writing tracks out in `ACTSTracking::ACTS2edm4hep_track`,
-/// so both directions share one convention.
+/// vertexing on it; it does no track finding or fitting of its own. Only the
+/// perigee parameters of each track's AtIP state are translated into the Acts
+/// parametrization, with the functions of the centralised converter
+/// `ActsPlugins::EDM4hepUtil` that `readTrack` uses for that state, the inverse
+/// of the conversion used when writing tracks out in
+/// `ACTSTracking::ACTS2edm4hep_track`, so both directions share one convention.
 ///
 /// Only a magnetic field is needed, no Acts tracking geometry: the vertexing
 /// propagator runs without a navigator, so the field is taken straight from
@@ -401,7 +399,8 @@ VertexFindingAlg::Output VertexFindingAlg::operator()(const edm4hep::TrackCollec
   auto output = [&]() { return Output{std::move(vertices), std::move(particles), std::move(vertexParticleLinks)}; };
 
   // --- 1. edm4hep tracks -> Acts track parameters -------------------------
-  Acts::TrackContainer actsTracks{Acts::VectorTrackContainer{}, Acts::VectorMultiTrajectory{}};
+  namespace EDM4hepDetail = ActsPlugins::EDM4hepUtil::detail;
+  auto fieldCache = m_magneticField->makeCache(m_mctx);
 
   // The Acts::InputTrack objects below hold raw pointers into this vector, so
   // it must not reallocate while it is being filled.
@@ -413,26 +412,28 @@ VertexFindingAlg::Output VertexFindingAlg::operator()(const edm4hep::TrackCollec
   inputTrackIndex.reserve(inputTracks.size());
 
   for (std::size_t iTrack = 0; iTrack < inputTracks.size(); ++iTrack) {
-    const auto edmTrack = inputTracks[iTrack];
-    // readTrack requires the state at the interaction point, which carries the
-    // perigee parameters the vertex fit works with.
-    const auto states = edmTrack.getTrackStates();
-    const bool hasIPState =
-        std::ranges::any_of(states, [](const auto& state) { return state.location == edm4hep::TrackState::AtIP; });
-    if (!hasIPState) {
+    // The vertex fit only needs the perigee parameters at the interaction
+    // point, so only the AtIP state is converted.
+    const auto states = inputTracks[iTrack].getTrackStates();
+    const auto ipState =
+        std::ranges::find_if(states, [](const auto& state) { return state.location == edm4hep::TrackState::AtIP; });
+    if (ipState == states.end()) {
       warning() << "Skipping track without an AtIP track state" << endmsg;
       continue;
     }
 
-    auto trackProxy = actsTracks.makeTrack();
+    // As readTrack does for this state: q/p needs the local Bz, taken where
+    // the particle is.
+    const EDM4hepDetail::Parameters edmParams = EDM4hepDetail::unpackTrackState(*ipState);
+    double bz = 0.;
     try {
-      ActsPlugins::EDM4hepUtil::readTrack(m_gctx, m_mctx, edmTrack, trackProxy, *m_magneticField, *m_actsLogger);
+      bz = EDM4hepDetail::localBz(*m_magneticField, fieldCache,
+                                  EDM4hepDetail::pointOfClosestApproach(m_gctx, edmParams), *m_actsLogger);
     } catch (const std::exception& e) {
       warning() << "Track conversion failed, skipping track: " << e.what() << endmsg;
       continue;
     }
-
-    Acts::BoundTrackParameters params = trackProxy.createParametersAtReference();
+    Acts::BoundTrackParameters params = EDM4hepDetail::convertTrackParametersFromEdm4hep(bz, edmParams);
 
     // Express the track at the beam line, see m_beamSpotPosition. The
     // straight-line intersection picks the direction, as in Acts'
@@ -561,7 +562,8 @@ VertexFindingAlg::Output VertexFindingAlg::operator()(const edm4hep::TrackCollec
 
       const Acts::BoundTrackParameters& atVertex = trackAtVertex.fittedParams;
       const Acts::Vector3 momentum = atVertex.momentum() / Acts::UnitConstants::GeV;
-      // readTrack cannot know the species, so this is the default pion mass.
+      // An edm4hep track carries no species, so this is the converter's default
+      // pion mass.
       const double mass = atVertex.particleHypothesis().mass() / Acts::UnitConstants::GeV;
 
       auto particle = particles.create();
