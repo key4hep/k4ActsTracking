@@ -138,6 +138,8 @@ ckf_outsidein_properties = {
     "BranchStopper_MaxHoles": 2,
     "BranchStopper_MaxOutliers": 2,
     "BranchStopper_MinMeasurements": 8,
+    "BranchStopper_PtMin": 0.5,
+    "BranchStopper_PtMinMeasurements": 4,
 }
 
 parser.add_argument(
