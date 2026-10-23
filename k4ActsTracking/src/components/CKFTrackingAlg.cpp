@@ -193,6 +193,12 @@ private:
   /// @name Run control
   ///@{
   Gaudi::Property<bool> m_runCKF{this, "RunCKF", true, "Run tracking using CKF. False means stop at seeding."};
+  Gaudi::Property<bool> m_doTwoWayCKF{this, "DoTwoWayCKF", false,
+                                      "Run two-way CKF: first pass + smooth + second pass in opposite direction."};
+  Gaudi::Property<bool> m_inflateCovarianceTwoWay{this, "InflateCovarianceTwoWay", true,
+                                                  "Inflate covariance before the second CKF pass."};
+  Gaudi::Property<double> m_twoWayInflateCovarianceFactor{this, "TwoWayInflateCovarianceFactor", 100.0,
+                                                          "Covariance inflation factor for the second CKF pass."};
   Gaudi::Property<bool> m_propagateBackward{
       this, "PropagateBackward", false,
       "Find tracks outside-in: start the CKF at the outermost seed SP and propagate backward through the other seed "
@@ -595,6 +601,9 @@ StatusCode CKFTrackingAlg::initialize() {
                                                       .bsMinMeasurements = m_bsMinMeasurements,
                                                       .bsPtMin = m_bsPtMin,
                                                       .bsPtMinMeasurements = m_bsPtMinMeasurements,
+                                                      .doTwoWayCKF = m_doTwoWayCKF,
+                                                      .inflateCovarianceTwoWay = m_inflateCovarianceTwoWay,
+                                                      .twoWayInflateCovarianceFactor = m_twoWayInflateCovarianceFactor,
                                                       .referenceSurface = referenceSurface});
 
   return StatusCode::SUCCESS;
