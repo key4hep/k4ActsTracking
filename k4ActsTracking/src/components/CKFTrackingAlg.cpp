@@ -105,11 +105,12 @@ namespace {
 /// (it does not affect the straight-line propagation, only the covariance
 /// scale and the reported q/p). The parameters are expressed at the start SP:
 /// the bottom one, or the top one with @p propagateBackward (outside-in), whose
-/// surface @p startSurface is and whose hit @p startHit gives the time.
+/// surface @p startSurface is and whose hit @p startHit gives the time (shifted
+/// for @p betaHypothesis, see ACTSTracking::hitTime).
 std::optional<Acts::BoundTrackParameters> estimateStraightLineSeedParameters(
     const Acts::GeometryContext& geoCtx, const Acts::Surface& startSurface, const Acts::Vector3& bottomPos,
     const Acts::Vector3& topPos, const edm4hep::TrackerHit& startHit, double nominalP, double errPos, double errPhi,
-    double errLambda, double errRelP, double errTime, double errQOverP, bool propagateBackward) {
+    double errLambda, double errRelP, double errTime, double errQOverP, bool propagateBackward, double betaHypothesis) {
   const Acts::Vector3 dir = (topPos - bottomPos).normalized();
   const Acts::Vector3& startPos = propagateBackward ? topPos : bottomPos;
 
@@ -126,7 +127,7 @@ std::optional<Acts::BoundTrackParameters> estimateStraightLineSeedParameters(
   params[Acts::eBoundPhi] = Acts::VectorHelpers::phi(dir);
   params[Acts::eBoundTheta] = Acts::VectorHelpers::theta(dir);
   params[Acts::eBoundQOverP] = 1.0 / nominalP; // charge sign is irrelevant at B = 0
-  params[Acts::eBoundTime] = ACTSTracking::hitTime(startHit);
+  params[Acts::eBoundTime] = ACTSTracking::hitTime(startHit, betaHypothesis);
 
   Acts::BoundMatrix cov =
       ACTSTracking::makeInitialCovariance(nominalP, errPos, errPhi, errLambda, errRelP, errTime, errQOverP);
@@ -290,6 +291,11 @@ private:
       this, "UseHitTimeInCKF", false,
       "If true, include hit time as a 3rd CKF measurement dimension (eBoundTime). Hit times must not be "
       "corrected for the time of flight (DDPlanarDigi CorrectTimesForPropagation=False)."};
+  Gaudi::Property<double> m_timeBetaHypothesis{
+      this, "TimeBetaHypothesis", 1.0,
+      "Velocity (beta=v/c) assumed for the hit times in the seeding time cuts, the seed time and the "
+      "CKF time measurement: each hit time is shifted by -|x| (1/beta - 1) / c, so a particle of this beta from "
+      "the origin looks like beta = 1. Track-state times are then in the shifted frame. 1 = no shift."};
 
   std::vector<std::string> m_default_empty_vec;
   Gaudi::Property<std::vector<std::string>> m_seedFinding_zBinEdges{this, "SeedFinding_zBinEdges", m_default_empty_vec,
@@ -558,6 +564,14 @@ StatusCode CKFTrackingAlg::initialize() {
     warning() << "The per-sensor HitTimeResolutions are a placeholder until EDM4hep stores a time error per hit"
               << endmsg;
   }
+  if (!(m_timeBetaHypothesis > 0.0 && m_timeBetaHypothesis <= 1.0)) {
+    error() << "TimeBetaHypothesis must be in (0, 1], got " << m_timeBetaHypothesis.value() << endmsg;
+    return StatusCode::FAILURE;
+  }
+  if (m_timeBetaHypothesis != 1.0) {
+    info() << "Hit times shifted for a beta = " << m_timeBetaHypothesis.value() << " particle from the origin"
+           << (usesHitTimeResolutions() ? "" : " (no effect: no hit time is used)") << endmsg;
+  }
 
   // Apply deltaR fallback defaults
   if (m_seedFinding_deltaRMinTop == 0.f)
@@ -682,14 +696,15 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
         sp.phi = std::atan2(sp.y, sp.x);
         sp.varR = static_cast<float>(var[0]);
         sp.varZ = static_cast<float>(var[1]);
-        sp.t = static_cast<float>(ACTSTracking::hitTime(hit));
+        sp.t = static_cast<float>(ACTSTracking::hitTime(hit, m_timeBetaHypothesis.value()));
         sp.varT = usesHitTimeResolutions()
                       ? static_cast<float>(std::pow(hitTimeResolutionFor(hit) * Acts::UnitConstants::ns, 2))
                       : 0.f;
         sp.sourceLink = sourceLink;
         seedInputs.push_back(sp);
       },
-      m_useHitTimeInCKF.value(), [this](const edm4hep::TrackerHitPlane& hit) { return hitTimeResolutionFor(hit); });
+      m_useHitTimeInCKF.value(), [this](const edm4hep::TrackerHitPlane& hit) { return hitTimeResolutionFor(hit); },
+      m_timeBetaHypothesis.value());
 
   debug() << fmt::format("Created {} sourceLinks and {} space points for seeding", sourceLinks.size(),
                          seedInputs.size())
@@ -1026,7 +1041,8 @@ CKFTrackingAlg::seedsToParameters(const Acts::SeedContainer& seeds, const Acts::
     std::optional<Acts::BoundTrackParameters> paramseed = ACTSTracking::estimateSeedParameters(
         *this, *m_actsGeoSvc, geoCtx, *surface, position(bottomSp), position(middleSp), position(topSp),
         hits[startSL.index()], magCache, m_initialTrackError_pos, m_initialTrackError_phi, m_initialTrackError_lambda,
-        m_initialTrackError_relP, m_initialTrackError_time, m_initialTrackError_qOverP, m_propagateBackward);
+        m_initialTrackError_relP, m_initialTrackError_time, m_initialTrackError_qOverP, m_propagateBackward,
+        m_timeBetaHypothesis.value());
     if (!paramseed) {
       continue;
     }
@@ -1140,7 +1156,7 @@ void CKFTrackingAlg::runTelescopeSeeding(const std::vector<SeedInput>& seedInput
         std::optional<Acts::BoundTrackParameters> paramseed = estimateStraightLineSeedParameters(
             geoCtx, *surface, bottom, top, hits[startSL.index()], nominalP, m_initialTrackError_pos,
             m_initialTrackError_phi, m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time,
-            m_initialTrackError_qOverP, m_propagateBackward);
+            m_initialTrackError_qOverP, m_propagateBackward, m_timeBetaHypothesis.value());
         if (!paramseed) {
           continue;
         }
