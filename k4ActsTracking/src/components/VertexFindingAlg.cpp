@@ -124,6 +124,13 @@ struct VertexFindingAlg final
 
   Output operator()(const edm4hep::TrackCollection& inputTracks) const override;
 
+  /// Converts the AtIP state of each input track and applies the track
+  /// selection and uncertainty corrections; skipped tracks are left out
+  std::vector<ConvertedTrack> convertTracks(const edm4hep::TrackCollection& inputTracks) const;
+  /// Writes the found vertices, their particles and the weight links
+  Output writeVertices(const std::vector<Acts::Vertex>& foundVertices,
+                       const edm4hep::TrackCollection& inputTracks) const;
+
   // ----- track selection ---------------------------------------------------
   Gaudi::Property<double> m_minPt{this, "MinPt", 100.0, "Minimum track pT to use in the vertex fit [MeV]"};
   Gaudi::Property<double> m_maxAbsD0{this, "MaxAbsD0", 10.0,
@@ -402,18 +409,11 @@ std::shared_ptr<const Acts::IVertexFinder> VertexFindingAlg::makeSeeder() const 
   return nullptr;
 }
 
-VertexFindingAlg::Output VertexFindingAlg::operator()(const edm4hep::TrackCollection& inputTracks) const {
-  edm4hep::VertexCollection vertices;
-  edm4hep::ReconstructedParticleCollection particles;
-  edm4hep::VertexRecoParticleLinkCollection vertexParticleLinks;
-  auto output = [&]() { return Output{std::move(vertices), std::move(particles), std::move(vertexParticleLinks)}; };
-
-  // --- 1. edm4hep tracks -> Acts track parameters -------------------------
+std::vector<VertexFindingAlg::ConvertedTrack>
+VertexFindingAlg::convertTracks(const edm4hep::TrackCollection& inputTracks) const {
   namespace EDM4hepDetail = ActsPlugins::EDM4hepUtil::detail;
   auto fieldCache = m_magneticField->makeCache(m_mctx);
 
-  // The Acts::InputTrack objects below hold raw pointers into this vector, so
-  // it must not reallocate while it is being filled.
   std::vector<ConvertedTrack> convertedTracks;
   convertedTracks.reserve(inputTracks.size());
 
@@ -500,8 +500,15 @@ VertexFindingAlg::Output VertexFindingAlg::operator()(const edm4hep::TrackCollec
   debug() << "Converted " << convertedTracks.size() << " of " << inputTracks.size() << " tracks for vertexing"
           << endmsg;
 
+  return convertedTracks;
+}
+
+VertexFindingAlg::Output VertexFindingAlg::operator()(const edm4hep::TrackCollection& inputTracks) const {
+  // The Acts::InputTrack objects below hold raw pointers into this vector, so
+  // it must stay unchanged while the finder runs.
+  const std::vector<ConvertedTrack> convertedTracks = convertTracks(inputTracks);
   if (convertedTracks.empty()) {
-    return output();
+    return Output{};
   }
 
   std::vector<Acts::InputTrack> vertexInput;
@@ -510,7 +517,6 @@ VertexFindingAlg::Output VertexFindingAlg::operator()(const edm4hep::TrackCollec
     vertexInput.emplace_back(&track);
   }
 
-  // --- 2. run the adaptive multi-vertex finder ----------------------------
   // With a beam-spot constraint, the fit uses it as a prior; without, the
   // vertex position comes from the tracks alone and the beam spot only
   // places the seeds.
@@ -520,11 +526,18 @@ VertexFindingAlg::Output VertexFindingAlg::operator()(const edm4hep::TrackCollec
   auto result = m_finder->find(vertexInput, finderOptions, finderState);
   if (!result.ok()) {
     error() << "Vertex finding failed: " << result.error().message() << endmsg;
-    return output();
+    return Output{};
   }
-  const std::vector<Acts::Vertex>& foundVertices = result.value();
 
-  // --- 3. Acts vertices -> edm4hep ----------------------------------------
+  return writeVertices(result.value(), inputTracks);
+}
+
+VertexFindingAlg::Output VertexFindingAlg::writeVertices(const std::vector<Acts::Vertex>& foundVertices,
+                                                         const edm4hep::TrackCollection& inputTracks) const {
+  edm4hep::VertexCollection vertices;
+  edm4hep::ReconstructedParticleCollection particles;
+  edm4hep::VertexRecoParticleLinkCollection vertexParticleLinks;
+
   // The hardest vertex, i.e. the one with the largest sum of pT^2 over its
   // tracks, is flagged as the primary vertex. Only tracks the adaptive fit
   // actually kept (weight > 0.5) contribute.
@@ -593,5 +606,5 @@ VertexFindingAlg::Output VertexFindingAlg::operator()(const edm4hep::TrackCollec
 
   debug() << "Found " << vertices.size() << " vertices" << endmsg;
 
-  return output();
+  return Output{std::move(vertices), std::move(particles), std::move(vertexParticleLinks)};
 }
