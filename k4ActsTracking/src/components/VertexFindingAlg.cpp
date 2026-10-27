@@ -319,7 +319,9 @@ StatusCode VertexFindingAlg::initialize() {
   // and the cancellation leaves negative variances on the diagonal. The
   // spatial value used here is the one Acts' own example uses; time keeps the
   // large default since it is on a different numerical scale (and unused).
-  finderCfg.initialVariances = Acts::Vector4{1e+2, 1e+2, 1e+2, 1e+8};
+  constexpr double initialSpatialVariance = 1e+2 * Acts::UnitConstants::mm * Acts::UnitConstants::mm;
+  finderCfg.initialVariances = Acts::Vector4{initialSpatialVariance, initialSpatialVariance, initialSpatialVariance,
+                                             finderCfg.initialVariances[3]};
   finderCfg.tracksMaxZinterval = m_tracksMaxZinterval * Acts::UnitConstants::mm;
   finderCfg.tracksMaxSignificance = m_tracksMaxSignificance;
   finderCfg.maxIterations = m_maxIterations;
