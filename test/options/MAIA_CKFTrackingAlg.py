@@ -43,7 +43,8 @@ for name in ("VertexBarrel", "VertexEndcap"):
     algList.append(
         DDPlanarDigi(
             f"{name}Digitizer",
-            CorrectTimesForPropagation=True,
+            CorrectTimeWindowForPropagation=True,
+            CorrectTimesForPropagation=False,
             IsStrip=False,
             ResolutionT=[0.03],
             ResolutionU=[0.005],
@@ -67,7 +68,8 @@ for name in (
     algList.append(
         DDPlanarDigi(
             f"{name}Digitizer",
-            CorrectTimesForPropagation=True,
+            CorrectTimeWindowForPropagation=True,
+            CorrectTimesForPropagation=False,
             IsStrip="InnerBarrel" in name or "OuterEndcap" in name,
             ResolutionT=[0.06],
             ResolutionU=[0.007],
