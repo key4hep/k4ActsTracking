@@ -76,11 +76,7 @@
 /// The algorithm takes a finished edm4hep track collection, e.g. CLD's
 /// `SiTracks_Refitted` from ConformalTracking + RefitFinal, and only does
 /// vertexing on it; it does no track finding or fitting of its own. Only the
-/// perigee parameters of each track's AtIP state are translated into the Acts
-/// parametrization, with the functions of the centralised converter
-/// `ActsPlugins::EDM4hepUtil` that `readTrack` uses for that state, the inverse
-/// of the conversion used when writing tracks out in
-/// `ACTSTracking::ACTS2edm4hep_track`, so both directions share one convention.
+/// perigee parameters of each track's AtIP track state are used.
 ///
 /// Only a magnetic field is needed, no Acts tracking geometry: the vertexing
 /// propagator runs without a navigator, so the field is taken straight from
