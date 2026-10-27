@@ -191,12 +191,12 @@ struct VertexFindingAlg final
   /// seed still pull the vertex before the weights harden; a single T = 1
   /// means no annealing, which loses precise tracks from collisions off the
   /// beam line where the seed sits. The chi2 uses the track uncertainty only.
-  /// The default is the Acts default ladder.
-  Gaudi::Property<std::vector<double>> m_annealingTemperatures{this,
-                                                               "AnnealingTemperatures",
-                                                               {64.0, 16.0, 4.0, 2.0, 1.5, 1.0},
-                                                               "Temperatures of the deterministic annealing of the "
-                                                               "track weights"};
+  /// Empty (the default) uses the Acts default ladder.
+  Gaudi::Property<std::vector<double>> m_annealingTemperatures{
+      this,
+      "AnnealingTemperatures",
+      {},
+      "Temperatures of the deterministic annealing of the track weights, empty for the Acts default"};
   Gaudi::Property<double> m_annealingCutOff{this, "AnnealingCutOff", 9.0,
                                             "Track-vertex chi2 at which a track gets weight 0.5"};
   Gaudi::Property<unsigned int> m_fitterMaxIterations{this, "FitterMaxIterations", 30,
@@ -294,12 +294,14 @@ StatusCode VertexFindingAlg::initialize() {
   // assignment hardens gradually.
   Fitter::Config fitterCfg(*m_ipEstimator);
   const auto isFinitePositive = [](double value) { return std::isfinite(value) && value > 0.; };
-  if (m_annealingTemperatures.empty() || !std::ranges::all_of(m_annealingTemperatures.value(), isFinitePositive)) {
-    error() << "AnnealingTemperatures needs at least one temperature, all finite and positive" << endmsg;
+  const std::vector<double> temperatures = m_annealingTemperatures.empty()
+                                               ? Acts::AnnealingUtility::Config{}.setOfTemperatures
+                                               : m_annealingTemperatures.value();
+  if (!std::ranges::all_of(temperatures, isFinitePositive)) {
+    error() << "AnnealingTemperatures must all be finite and positive" << endmsg;
     return StatusCode::FAILURE;
   }
-  fitterCfg.annealingTool =
-      Acts::AnnealingUtility(Acts::AnnealingUtility::Config(m_annealingCutOff, m_annealingTemperatures));
+  fitterCfg.annealingTool = Acts::AnnealingUtility(Acts::AnnealingUtility::Config(m_annealingCutOff, temperatures));
   fitterCfg.maxIterations = m_fitterMaxIterations;
   // Always on: smoothing replaces each track's parameters by ones refitted at
   // its vertex, which the output particles report with the vertex as their
