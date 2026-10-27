@@ -68,6 +68,10 @@ svcList, vertexing = make_vertexing(
     SeedMaxD0Significance=10.0,
     AnnealingTemperatures=[256.0, 64.0, 16.0, 4.0, 2.0, 1.5, 1.0],
     AnnealingCutOff=9.0,
+    # Not Acts parameters: a calibration of CLD's track uncertainties, which are
+    # too small. d0 and z0 use sigma^2 = (1.08 sigma)^2 + (1.8 um)^2, fitted to the
+    # prompt-track pulls of the muon gun and Z -> bb together. Needs retuning if the CLD
+    # tracking changes.
     TrackCovarianceScale=1.08,
     ImpactParameterErrorTerm=0.0018,
 )
