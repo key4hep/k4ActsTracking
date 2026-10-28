@@ -31,7 +31,6 @@
 
 #include <podio/ObjectID.h>
 // edm4hep
-#include <edm4hep/EDM4hepVersion.h>
 #include <edm4hep/TrackCollection.h>
 #include <edm4hep/TrackerHitPlaneCollection.h>
 #include <edm4hep/TrackerHitSimTrackerHitLinkCollection.h>
@@ -465,11 +464,9 @@ private:
 
   /// Time resolution (ns) of the hit: its time error, else the matching HitTimeResolutions entry.
   double hitTimeResolutionFor(const edm4hep::TrackerHitPlane& hit) const {
-#if EDM4HEP_BUILD_VERSION >= EDM4HEP_VERSION(1, 2, 0)
     if (hit.getTimeError() > 0) {
       return hit.getTimeError();
     }
-#endif
     for (const auto& [selector, resolution] : m_hitTimeResolutionSelectors) {
       if (selector.accept(hit.getCellID())) {
         return resolution;
