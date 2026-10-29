@@ -149,6 +149,18 @@ const auto UngroupedDoubleBarrelLayerVertexSpec = TrackerSpec{
     .barrelLayout = Layout::Ungrouped,
 };
 
+const auto DetailedInnerVertex = TrackerSpec{ // From $K4GEO/detector/tracker/VertexBarrel_detailed_o1_v03_geo.cpp, only for VertexInnerBarrel
+    .barrelContainer = "VertexInnerBarrel",
+    .barrelAxes = "XYZ",
+    .barrelFilter = std::regex{"layer_(\\d)"},
+    .endcapContainer = "<unused>",
+    .endcapAxes = "XZY",
+    .endcapPosFilter = {},
+    .endcapNegFilter = {},
+    .endcapLayout = Layout::Ungrouped,
+    .barrelLayout = Layout::Grouped,
+};
+
 const auto OuterTrackerSpec = TrackerSpec{
     .barrelContainer = "OuterTrackerBarrel",
     .barrelAxes = "XYZ",
@@ -168,6 +180,18 @@ const auto UngroupedOuterTrackerSpec = TrackerSpec{
     .endcapPosFilter = std::regex{"layer(\\d+)_module\\d+_sensor\\d+_pos"},
     .endcapNegFilter = std::regex{"layer(\\d+)_module\\d+_sensor\\d+_neg"},
     .endcapLayout = Layout::Ungrouped,
+};
+
+const auto SiWrSpec = TrackerSpec{
+    .barrelContainer = "SiWrB",
+    .barrelAxes = "XYZ",
+    .barrelFilter = std::regex{"layer_(\\d)"},
+    .endcapContainer = "SiWrD",
+    .endcapAxes = "XZY",
+    .endcapPosFilter = std::regex{"side1_layer(\\d)"},
+    .endcapNegFilter = std::regex{"side-1_layer(\\d)"},
+    .endcapLayout = Layout::Grouped,
+    .barrelLayout = Layout::Grouped,
 };
 
 const auto UngroupedInnerTrackerSpec = TrackerSpec{
@@ -229,6 +253,20 @@ const auto UngroupedNestedInnerTrackerSpec = NestedInnerTrackerSpec{
     .endcapNegInnerFilter = std::regex{"layer(0)_module\\d+_sensor\\d+_neg"},
     .endcapNegOuterFilter = std::regex{"layer([1-6])_module\\d+_sensor\\d+_neg"},
     .layout = Layout::Ungrouped,
+};
+
+const auto DetailedOuterVertexAndDisksNested = NestedInnerTrackerSpec{ // From $K4GEO/detector/tracker/VertexBarrel_detailed_o1_v03_geo.cpp and $K4GEO/detector/tracker/VertexEndcap_detailed_o1_v03_geo.cpp
+    .barrelContainer = "VertexOuterBarrel",
+    .barrelAxes = "XYZ",
+    .barrelInnerFilter = std::regex{"layer_(3)"},
+    .barrelOuterFilter = std::regex{"layer_(4)"},q
+    .endcapContainer = "VertexDisks",
+    .endcapAxes = "XZY",
+    .endcapPosInnerFilter = std::regex{"side1_layer(0)"},
+    .endcapPosOuterFilter = std::regex{"side1_layer([1-2])"},
+    .endcapNegInnerFilter = std::regex{"side-1_layer(0)"},
+    .endcapNegOuterFilter = std::regex{"side-1_layer([1-2])"},
+    .layout = Layout::Grouped
 };
 
 /// @name Material designation
@@ -1169,7 +1207,134 @@ namespace CLD_o2_v07 {
     Blueprints::addCaloEndcap(world, calo, /*positive=*/true);
   }
 } // namespace CLD_o2_v07
-} // namespace FCCee
+
+
+namespace IDEA_o1_v04 {
+  void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
+                         ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo) {
+    // Build the tracker detectors as radial children of the supplied
+    // container.
+
+    auto buildTrackers = [&](ContainerBlueprintNode& outer) {
+      std::cout << "Starting" << std::endl;
+      Blueprints::addCylindricalBeampipe(outer);
+      std::cout << "Beam pipe done" << std::endl;
+
+      //// Vertex
+
+      // Create vertex container
+      auto vertex = std::make_shared<CylinderContainerBlueprintNode>(
+          "Vertex",
+          Acts::AxisDirection::AxisR
+      );
+      
+      // Make vertex inner barrel
+      auto vtxInnerBarrel = Blueprints::makeBarrel(
+          builder,
+          Blueprints::DetailedInnerVertex,
+          Blueprints::kBarrelEnvelope
+      );
+      vertex->addChild(std::move(vtxInnerBarrel));
+      std::cout << "Vertex inner barrel done" << std::endl;
+
+      // Add outer vertex
+      auto outerVertex = Blueprints::makeNestedInnerTracker(builder, std::move(vertex), Blueprints::DetailedOuterVertexAndDisksNested);
+      outer.addChild(outerVertex);
+      std::cout << "Outer vertex done" << std::endl;      
+
+      //// Silicon wrapper
+     
+      // Create silicon wrapper container
+      auto siliconWrapper = std::make_shared<CylinderContainerBlueprintNode>(
+          "Silicon wrapper",
+          Acts::AxisDirection::AxisR  // Stack along r
+      );
+
+      // Add SiWrB barrel directly to the radial container
+      auto siWrBarrel = Blueprints::makeBarrel(
+          builder,
+          Blueprints::SiWrSpec,
+          Blueprints::kBarrelEnvelope
+      );
+      siliconWrapper->addChild(std::move(siWrBarrel));
+
+      // Create a separate z-stack for the silicon wrapper disks as they are at radius smaller than the barrel. The standard 
+      auto endcapContainer = std::make_shared<CylinderContainerBlueprintNode>(
+          "SiliconWrapperEndcaps",
+          Acts::AxisDirection::AxisZ
+      );
+      endcapContainer->setAttachmentStrategy(Acts::VolumeAttachmentStrategy::Gap);
+
+      // Add positive silicon wrapper disks. Not using TrackerSpec as that only provides `attachEndcaps`, requiring a barrel first which doesn't work for the silicon wrapper as the disks are all inside the barrel
+      auto posEndcap = builder.layers()
+          .endcap()
+          .setSensorAxes("XZY")
+          .setContainer("SiWrD")
+          .setLayerFilter(std::regex{"side1_layer\\d+"})
+          .setEnvelope(Blueprints::kVertexEndcapEnvelope)
+          .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+          .build();
+      endcapContainer->addChild(std::move(posEndcap));
+
+      // Add negative silicon wrapper disks. Not using TrackerSpec as that only provides `attachEndcaps`, requiring a barrel first which doesn't work for the silicon wrapper as the disks are all inside the barrel
+      auto negEndcap = builder.layers()
+          .endcap()
+          .setSensorAxes("XZY")
+          .setContainer("SiWrD")
+          .setLayerFilter(std::regex{"side-1_layer\\d+"})
+          .setEnvelope(Blueprints::kVertexEndcapEnvelope)
+          .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+          .build();
+      endcapContainer->addChild(std::move(negEndcap));
+
+      // Add the silicon wrapper disk container to the silicon wrapper
+      siliconWrapper->addChild(std::move(endcapContainer));
+
+      // Add the silicon wrapper to the detector
+      outer.addChild(siliconWrapper);
+      std::cout << "Silicon wrapper done" << std::endl;
+    };
+
+    if (calo.empty()) {
+      // No calorimeter face: keep the original purely-radial layout.
+      auto& outer = root.addCylinderContainer(detName, AxisR);
+      buildTrackers(outer);
+      std::cout << "No calorimeter face: keep the original purely-radial layout" << std::endl;
+      return;
+    }
+
+    // std::cout << "calolbarrelRMax: " << std::to_string(calo.barrelRMax) << std::endl;
+
+    // The calorimeter wraps the tracker, so the top level is a z-stack
+    // [calo -endcap | central (tracker + calo barrel) | calo +endcap] (see
+    // MAIA_v0 for details).
+    auto& world = root.addCylinderContainer(detName, AxisZ);
+
+    // if(calo.barrelRMax == 0.)
+    //   Blueprints::addCaloEndcap(world, calo, /*positive=*/false, 2350., -2500.); // Using hardcoded ECAL z extend number from IDEA_o1_v04
+    // else
+    //   Blueprints::addCaloEndcap(world, calo, /*positive=*/false);
+
+    // std::cout << "Added first calo endcap" << std::endl;
+
+    auto& central = world.addCylinderContainer(detName + "Central", AxisR);
+    buildTrackers(central);
+    // if (!calo.barrelFaces.empty()) 
+    //   Blueprints::addCaloBarrel(central, calo, 2250., 2400.);
+    // else
+    //   Blueprints::addCaloBarrel(central, calo, 2250., 2400.);
+
+    // std::cout << "Added calo barrel" << std::endl;
+
+    // if(calo.barrelRMax == 0.)
+    //   Blueprints::addCaloEndcap(world, calo, /*positive=*/true, 2350., -2500.); // Using hardcoded ECAL z extend number from IDEA_o1_v04
+    // else
+    //   Blueprints::addCaloEndcap(world, calo, /*positive=*/true);
+
+    // std::cout << "Added second calo endcap" << std::endl;
+    } 
+  } // namespace IDEA_o1_v04
+}// namespace FCCee
 
 namespace LUXE {
 namespace LUXE_v0 {
