@@ -102,17 +102,19 @@ namespace {
 /// The seed direction is taken from the bottom->top space points; the momentum
 /// magnitude is not measurable without curvature, so a nominal value is used
 /// (it does not affect the straight-line propagation, only the covariance
-/// scale and the reported q/p).
-std::optional<Acts::BoundTrackParameters>
-estimateStraightLineSeedParameters(const Acts::GeometryContext& geoCtx, const Acts::Surface& bottomSurface,
-                                   const Acts::Vector3& bottomPos, const Acts::Vector3& topPos,
-                                   const edm4hep::TrackerHit& bottomHit, double nominalP, double errPos, double errPhi,
-                                   double errLambda, double errRelP, double errTime) {
+/// scale and the reported q/p). The parameters are expressed at the start SP:
+/// the bottom one, or the top one with @p propagateBackward (outside-in), whose
+/// surface @p startSurface is and whose hit @p startHit gives the time.
+std::optional<Acts::BoundTrackParameters> estimateStraightLineSeedParameters(
+    const Acts::GeometryContext& geoCtx, const Acts::Surface& startSurface, const Acts::Vector3& bottomPos,
+    const Acts::Vector3& topPos, const edm4hep::TrackerHit& startHit, double nominalP, double errPos, double errPhi,
+    double errLambda, double errRelP, double errTime, double errQOverP, bool propagateBackward) {
   const Acts::Vector3 dir = (topPos - bottomPos).normalized();
+  const Acts::Vector3& startPos = propagateBackward ? topPos : bottomPos;
 
-  // The bottom position is derived from the surface, so it lies on it; use a
+  // The start position is derived from the surface, so it lies on it; use a
   // generous tolerance to guard against round-off in the global<->local map.
-  Acts::Result<Acts::Vector2> local = bottomSurface.globalToLocal(geoCtx, bottomPos, dir, 1 * Acts::UnitConstants::mm);
+  Acts::Result<Acts::Vector2> local = startSurface.globalToLocal(geoCtx, startPos, dir, 1 * Acts::UnitConstants::mm);
   if (!local.ok()) {
     return std::nullopt;
   }
@@ -123,10 +125,11 @@ estimateStraightLineSeedParameters(const Acts::GeometryContext& geoCtx, const Ac
   params[Acts::eBoundPhi] = Acts::VectorHelpers::phi(dir);
   params[Acts::eBoundTheta] = Acts::VectorHelpers::theta(dir);
   params[Acts::eBoundQOverP] = 1.0 / nominalP; // charge sign is irrelevant at B = 0
-  params[Acts::eBoundTime] = ACTSTracking::hitTime(bottomHit);
+  params[Acts::eBoundTime] = ACTSTracking::hitTime(startHit);
 
-  Acts::BoundMatrix cov = ACTSTracking::makeInitialCovariance(nominalP, errPos, errPhi, errLambda, errRelP, errTime);
-  return Acts::BoundTrackParameters(bottomSurface.getSharedPtr(), params, cov, Acts::ParticleHypothesis::pion());
+  Acts::BoundMatrix cov =
+      ACTSTracking::makeInitialCovariance(nominalP, errPos, errPhi, errLambda, errRelP, errTime, errQOverP);
+  return Acts::BoundTrackParameters(startSurface.getSharedPtr(), params, cov, Acts::ParticleHypothesis::pion());
 }
 } // namespace
 
@@ -190,7 +193,10 @@ private:
   /// @name Run control
   ///@{
   Gaudi::Property<bool> m_runCKF{this, "RunCKF", true, "Run tracking using CKF. False means stop at seeding."};
-  Gaudi::Property<bool> m_propagateBackward{this, "PropagateBackward", false, "Extrapolates tracks towards beamline."};
+  Gaudi::Property<bool> m_propagateBackward{
+      this, "PropagateBackward", false,
+      "Find tracks outside-in: start the CKF at the outermost seed SP and propagate backward through the other seed "
+      "SPs toward the beamline."};
   Gaudi::Property<bool> m_extrapolateToCalo{
       this, "ExtrapolateToCalo", true,
       "Extrapolate fitted tracks to the calorimeter face and add an AtCalorimeter track state."};
@@ -399,6 +405,9 @@ private:
                                                   "Initial track error for phi."};
   Gaudi::Property<double> m_initialTrackError_relP{this, "InitialTrackError_RelP", 0.25,
                                                    "Initial track error for momentum (relative)."};
+  Gaudi::Property<double> m_initialTrackError_qOverP{
+      this, "InitialTrackError_QOverP", 0 / Acts::UnitConstants::GeV,
+      "Initial track error for q/p (absolute), added in quadrature to the relative one."};
   Gaudi::Property<double> m_initialTrackError_lambda{this, "InitialTrackError_Lambda", 1 * Acts::UnitConstants::degree,
                                                      "Initial track error for lambda."};
   Gaudi::Property<double> m_initialTrackError_time{this, "InitialTrackError_Time", 100 * Acts::UnitConstants::ns,
@@ -960,27 +969,33 @@ CKFTrackingAlg::seedsToParameters(const Acts::SeedContainer& seeds, const Acts::
     const Acts::ConstSpacePointProxy middleSp = spacePoints[spIndices[1]];
     const Acts::ConstSpacePointProxy topSp = spacePoints[spIndices[2]];
 
-    const ACTSTracking::SourceLink& bottomSL = sourceLinkOf(bottomSp);
-    const Acts::Surface* surface = m_actsGeoSvc->trackingGeometry()->findSurface(bottomSL.geometryId());
+    // PropagateBackward: start the (backward) CKF from the OUTER SP, so we need
+    // bound parameters expressed on the top surface, not the bottom one.
+    // Inside-out (default): start from the inner SP.
+    const Acts::ConstSpacePointProxy& startSp = m_propagateBackward ? topSp : bottomSp;
+    const ACTSTracking::SourceLink& startSL = sourceLinkOf(startSp);
+    const Acts::Surface* surface = m_actsGeoSvc->trackingGeometry()->findSurface(startSL.geometryId());
     if (surface == nullptr) {
-      warning() << "Surface with geoID " << bottomSL.geometryId() << " not found in tracking geometry" << endmsg;
+      warning() << "Surface with geoID " << startSL.geometryId() << " not found in tracking geometry" << endmsg;
       continue;
     }
 
     std::optional<Acts::BoundTrackParameters> paramseed = ACTSTracking::estimateSeedParameters(
         *this, *m_actsGeoSvc, geoCtx, *surface, position(bottomSp), position(middleSp), position(topSp),
-        hits[bottomSL.index()], magCache, m_initialTrackError_pos, m_initialTrackError_phi, m_initialTrackError_lambda,
-        m_initialTrackError_relP, m_initialTrackError_time);
+        hits[startSL.index()], magCache, m_initialTrackError_pos, m_initialTrackError_phi, m_initialTrackError_lambda,
+        m_initialTrackError_relP, m_initialTrackError_time, m_initialTrackError_qOverP, m_propagateBackward);
     if (!paramseed) {
       continue;
     }
     paramseeds.push_back(*paramseed);
 
-    auto seedTrackState = ACTSTracking::makeSeedTrackState(*this, *m_actsGeoSvc, geoCtx, *paramseed, magCache);
+    auto seedTrackState = ACTSTracking::makeSeedTrackState(*this, *m_actsGeoSvc, geoCtx, *paramseed, magCache,
+                                                           m_propagateBackward ? edm4hep::TrackState::AtLastHit
+                                                                               : edm4hep::TrackState::AtFirstHit);
 
-    ACTSTracking::appendSeedTrack(
-        seedCollection, m_seedMutex, seedTrackState,
-        std::array{hits[bottomSL.index()], hits[sourceLinkOf(middleSp).index()], hits[sourceLinkOf(topSp).index()]});
+    ACTSTracking::appendSeedTrack(seedCollection, m_seedMutex, seedTrackState,
+                                  std::array{hits[sourceLinkOf(bottomSp).index()], hits[sourceLinkOf(middleSp).index()],
+                                             hits[sourceLinkOf(topSp).index()]});
 
     debug() << "Seed Parameters" << std::endl << *paramseed << endmsg;
   }
@@ -1066,22 +1081,28 @@ void CKFTrackingAlg::runTelescopeSeeding(const std::vector<SeedInput>& seedInput
           continue;
         }
 
+        // PropagateBackward: start the (backward) CKF from the top SP, as in
+        // the cylindrical seeding path.
         const ACTSTracking::SourceLink& bottomSL = seedInputs[bi].sourceLink;
-        const Acts::Surface* surface = m_actsGeoSvc->trackingGeometry()->findSurface(bottomSL.geometryId());
+        const ACTSTracking::SourceLink& startSL = m_propagateBackward ? seedInputs[ti].sourceLink : bottomSL;
+        const Acts::Surface* surface = m_actsGeoSvc->trackingGeometry()->findSurface(startSL.geometryId());
         if (surface == nullptr) {
-          warning() << "Surface with geoID " << bottomSL.geometryId() << " not found in tracking geometry" << endmsg;
+          warning() << "Surface with geoID " << startSL.geometryId() << " not found in tracking geometry" << endmsg;
           continue;
         }
 
         std::optional<Acts::BoundTrackParameters> paramseed = estimateStraightLineSeedParameters(
-            geoCtx, *surface, bottom, top, hits[bottomSL.index()], nominalP, m_initialTrackError_pos,
-            m_initialTrackError_phi, m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time);
+            geoCtx, *surface, bottom, top, hits[startSL.index()], nominalP, m_initialTrackError_pos,
+            m_initialTrackError_phi, m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time,
+            m_initialTrackError_qOverP, m_propagateBackward);
         if (!paramseed) {
           continue;
         }
         paramseeds.push_back(*paramseed);
 
-        auto seedTrackState = ACTSTracking::makeSeedTrackState(*this, *m_actsGeoSvc, geoCtx, *paramseed, magCache);
+        auto seedTrackState = ACTSTracking::makeSeedTrackState(*this, *m_actsGeoSvc, geoCtx, *paramseed, magCache,
+                                                               m_propagateBackward ? edm4hep::TrackState::AtLastHit
+                                                                                   : edm4hep::TrackState::AtFirstHit);
         ACTSTracking::appendSeedTrack(seedCollection, m_seedMutex, seedTrackState,
                                       std::array{hits[bottomSL.index()], hits[seedInputs[bestMid].sourceLink.index()],
                                                  hits[seedInputs[ti].sourceLink.index()]});
