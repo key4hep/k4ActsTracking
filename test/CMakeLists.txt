@@ -194,6 +194,37 @@ add_test(NAME check_MAIA_Gen3_outsideInTracking
 set_test_env(check_MAIA_Gen3_outsideInTracking)
 set_tests_properties(check_MAIA_Gen3_outsideInTracking PROPERTIES FIXTURES_REQUIRED reco_maia_outsidein_fixture)
 
+# Material pipeline: record -> map -> validate. Only checks that the steps run
+# and read each other's files.
+add_k4run_test(material_recording_MAIA_v0
+  OPTIONS_FILE ${CMAKE_CURRENT_LIST_DIR}/options/material_recording.py
+  EXTRA_ARGS --compactFile=${_maia_compact}
+             --numTracks 500
+             --outputFile material_tracks_MAIA_v0.root
+  USE_TEST_ENV
+  FIXTURES_SETUP material_recording_maia_fixture
+)
+
+add_k4run_test(material_mapping_MAIA_v0
+  OPTIONS_FILE ${CMAKE_CURRENT_LIST_DIR}/options/material_mapping.py
+  EXTRA_ARGS --compactFile=${_maia_compact}
+             --inputFiles material_tracks_MAIA_v0.root
+             --outputFile material_map_MAIA_v0.json
+  USE_TEST_ENV
+  FIXTURES_REQUIRED material_recording_maia_fixture
+  FIXTURES_SETUP material_mapping_maia_fixture
+)
+
+add_k4run_test(material_validation_MAIA_v0
+  OPTIONS_FILE ${CMAKE_CURRENT_LIST_DIR}/options/material_validation.py
+  EXTRA_ARGS --compactFile=${_maia_compact}
+             --materialMapFile material_map_MAIA_v0.json
+             --inputFiles material_tracks_MAIA_v0.root
+             --outputFile propagated_material_tracks_MAIA_v0.root
+  USE_TEST_ENV
+  FIXTURES_REQUIRED material_mapping_maia_fixture
+)
+
 
 # === LUXE chain (self-contained: particle gun + digitization + CKF) ===
 #

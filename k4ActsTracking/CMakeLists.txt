@@ -46,6 +46,7 @@ set(_plugin_sources
   src/components/DD4hepBlueprintConstruction.cpp
   src/components/CKFTrackingAlg.cpp
   src/components/CKFTrackingFromSeedsAlg.cpp
+  src/components/MaterialRecordingAlg.cpp
   src/components/MaterialMappingAlg.cpp
   src/components/MaterialValidationAlg.cpp
 )

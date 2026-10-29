@@ -24,7 +24,7 @@ back by *projecting* it onto a small number of dedicated surfaces. Getting that
 material back is a four step process:
 
 1. **Designate** which surfaces receive the projected material.
-2. **Record** the material seen by geantinos shot through the full Geant4
+2. **Record** the material seen by geantinos shot through the detector
    geometry.
 3. **Map** the recorded material onto the designated surfaces and write it out.
 4. **Read back** the resulting map when running reconstruction.
@@ -182,16 +182,86 @@ with no surface nearby to project onto. `addCylindricalSolenoid` is the pattern:
 give the structure a volume of its own so its boundaries become designatable
 surfaces.
 
+Finally, check the region the scan covers (section 2a): the recording and the
+mapping print it (`Rays stop at ...`, `Mapping recorded material at ...`). It
+must enclose every receiver and end at the calorimeter face. It comes from the
+calo-face surfaces `ActsGeoSvc` builds: the first detector, by name, with the
+type flags `CALORIMETER | ELECTROMAGNETIC | BARREL` (not `FORWARD`) or
+`CALORIMETER | ELECTROMAGNETIC | ENDCAP`, and its `LayeredCalorimeterData`. A
+forward calorimeter flagged like an endcap ECAL and named before it, a missing
+extension or a non-polygonal barrel give a different region; set `MaxR` /
+`MaxZ` for such a detector.
+
 ## 2. Recording the geantino scan
 
-The recording samples the **Geant4** geometry. It knows nothing about the
+A geantino neither interacts nor bends, so the scan is ray tracing: shoot
+straight lines from the origin and note every volume each one crosses, with its
+material and path length. That is all the mapper needs (an
+`Acts::RecordedMaterialTrack`: start point, direction and one
+`Acts::MaterialInteraction` per crossing). The scan knows nothing about the
 blueprint or the designated surfaces, so all it depends on is the DD4hep compact
 file being the same one reconstruction uses.
 
-### 2a. Export the detector to GDML
+### 2a. Record with `MaterialRecordingAlg`
 
-Export the geometry to GDML instead and use ACTS'
-`GdmlDetector`, which goes straight to Geant4.
+[`MaterialRecordingAlg`](../k4ActsTracking/src/components/MaterialRecordingAlg.cpp)
+walks the rays with the TGeo navigator through the geometry `GeoSvc` builds from
+the compact file and writes them in the `material_tracks` format the mapping
+reads. It needs nothing beyond what `k4ActsTrackingPlugins` already links: no
+Geant4, no GDML export and no ACTS Python bindings.
+
+```bash
+k4run test/options/material_recording.py \
+  --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \
+  --numTracks 100000 --seed 1 \
+  --outputFile scan/material_tracks_seed1.root
+```
+
+Directions are flat in η (`--etaRange`, default −4 to 4) and φ. For a large scan
+run several jobs with different `--seed`s into one directory; the mapping chains
+every `*.root` file in it, so there is no `hadd` step. A job is single-threaded;
+100 000 rays take about a minute.
+
+**Where the rays stop.** At the ECAL inner face: the cylinder inscribed in the
+barrel polygon and the endcap discs, taken from the calorimeter-face surfaces
+`ActsGeoSvc` builds ([`MaterialScanRegion.h`](../k4ActsTracking/src/components/MaterialScanRegion.h));
+the job prints it (`Rays stop at ...`). A detector without a calorimeter face
+falls back to the extent of the tracking world, and `--maxR` / `--maxZ` (mm)
+override either value. The tracking world is not used by default because it
+contains the calorimeter volumes that carry the calo-face surfaces.
+
+The boundary matters because the mapper hands every recorded step to the nearest
+receiver: anything recorded behind the calorimeter face would end up on the
+outermost receivers. The mapping clips its input to the same region (section 3),
+so keep `--maxR` / `--maxZ` the same in both jobs if you change them.
+
+**Excluded materials.** `Air` and `Vacuum` are not recorded, as in ACTS' Geant4
+recording (`ExcludeMaterials`).
+
+**Where a crossing is placed.** At the point where the ray enters the volume,
+which is where ACTS' Geant4 recording places a step (its pre-step point), so the
+two give the same maps. The mapper assigns a whole crossing to the receiver
+nearest that point, which matters for long crossings of dense material (forward
+shielding, the beam pipe at grazing angles).
+
+**Forward rays.** A receiver bin crossed both by rays through dense forward
+material (MAIA_v0's tungsten nozzle) and by rays just outside it gets their
+average, so rays at the edge of such material see far too much of it after
+mapping. Limit `--etaRange` to the acceptance if that region matters.
+
+**Replaying a scan.** `--replayFiles <files or directories>` takes the start
+points and directions from an existing scan, entry by entry, instead of sampling
+new ones; `--numTracks` then defaults to all entries. The output lines up track
+by track with the input, e.g. to compare with a Geant4 scan (2b).
+
+### 2b. Recording with Geant4 instead
+
+ACTS' own recording runs a Geant4 geantino scan of a GDML export. It needs ACTS
+built with its Python bindings and Geant4 examples, which no Key4hep stack
+currently provides, so it needs a private ACTS build; it is useful as a
+cross-check of 2a.
+
+Export the geometry to GDML:
 
 ```bash
 ddsim --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml --outputFile /tmp/gdmldump.root --numberOfEvents 1 --enableGun --geometry.dumpGDML MAIA_v0.gdml
@@ -201,27 +271,29 @@ This produces a ~44 MB `MAIA_v0.gdml`. Check the log is free of shape conversion
 errors — anything DD4hep cannot express in GDML silently drops out of the scan
 and its material will be missing from the map.
 
-### 2b. Run the scan
-
-For a quick scan, ACTS' own script is installed with the stack and takes a GDML
-file directly:
+Then run ACTS' script (`Examples/Scripts/Python/material_recording.py` in the
+ACTS sources) on it:
 
 ```bash
-python3 $ACTS_SCRIPTS/material_recording.py --input MAIA_v0.gdml -n 1000 -t 1000 --eta-range -4 4 -o geant4_material_tracks
+python3 material_recording.py --input MAIA_v0.gdml -n 200 -t 1000 --eta-range -4 4 -o geant4_material_tracks
 ```
 
-For a real scan, split it across batch jobs with
-[`material_recording_chunk.py`](../k4ActsTracking/examples/material_recording_chunk.py).
-Job `i` of `N`, each recording `E` events:
+Run it as a single job: the script uses a fixed random seed, so several jobs
+record the same geantinos. The scan runs to the end of the world, through the
+calorimeters; the mapping clips it to the region in front of the calorimeter
+face. To compare it with a TGeo scan, replay its directions:
 
 ```bash
-python3 k4ActsTracking/examples/material_recording_chunk.py --input MAIA_v0.gdml \
-    --events E --skip $((i * E)) --tracks 1000 --output-dir scan/
+k4run test/options/material_recording.py \
+  --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \
+  --replayFiles geant4_material_tracks.root --outputFile tgeo_material_tracks.root
 ```
 
-Each job writes `scan/geant4_material_tracks_<skip>.root`. Pass them all to the
-mapping step at once — `MaterialMappingAlg` chains its `InputFiles`, so there is
-no `hadd` step. The simplest way is to hand `--inputFiles` the directory:
+### Inputs from several jobs
+
+Pass all scan files to the mapping step at once — `MaterialMappingAlg` chains
+its `InputFiles`, so there is no `hadd` step. The simplest way is to hand
+`--inputFiles` the directory:
 
 ```bash
 k4run test/options/material_mapping.py \
@@ -236,22 +308,19 @@ Files and directories can be mixed, and a file named twice — say a directory p
 one of its own members — is only chained once, since chaining a scan file twice
 would double count its geantinos instead of failing visibly.
 
-**Statistics.** In the MAIA_v0 case, the 51 receivers carry roughly 15 000 bins
-in total (cylinder
-faces 20 × 20, disc faces 10 × 20). At ~100 entries per bin you need of order
-1.5 M surface crossings; a geantino crossing the full barrel hits on the order of
-10 receivers, so O(10⁶) geantinos is a sensible starting point. The scan is
-cheap; do not skimp on it. Check the occupancy of the resulting map and scale up
-if bins are empty.
+**Statistics.** Cylinder receivers are binned 20 (φ) × 200 (z), discs 50 (r) ×
+20 (φ), so MAIA_v0's 51 receivers carry 90 000 bins. A few million rays bring the
+bin contents to the percent level. Some bins stay empty however many rays (rays
+cross them, but every step nearby lies closer to another receiver), so judge the
+statistics by comparing maps from two independent scans, not by empty bins.
 
-**Compatibility checklist.** Both scripts above configure the writer correctly,
-but if you write your own driver these must hold, because they are what the step
-3 reader is configured against:
+**Compatibility checklist.** Both recordings write the format the step 3 reader
+is configured for, but if you write your own driver these must hold:
 
 | `RootMaterialTrackWriter` | value | why |
 | ------------------------- | ----- | --- |
 | `treeName`                | `material_tracks` | what the reader opens |
-| `prePostStep`             | `True`  | Geant4 steps need pre/post positions |
+| `prePostStep`             | `True`  | the reader binds the pre/post-step branches |
 | `recalculateTotals`       | `True`  | cross-check of the per-step sums |
 | `storeSurface`            | `False` | the scan knows nothing of our surfaces |
 | `storeVolume`             | `False` | likewise |
@@ -278,22 +347,33 @@ what `k4ActsTrackingPlugins` already links (`Acts::Core` for the mapper,
 ```bash
 k4run test/options/material_mapping.py \
   --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \
-  --inputFiles geant4_material_tracks.root \
+  --inputFiles scan/ \
   --outputFile MAIA_v0_gen3_material_map.json
 ```
 
-Expected output:
+Expected output (1 M rays from `MaterialRecordingAlg`, progress lines left out):
 
 ```
 MaterialMappingAlg INFO Mapping material onto 51 designated surfaces.
-MaterialMappingAlg INFO Reading 20000 recorded material tracks from tree 'material_tracks'.
-MaterialMappingAlg INFO Mapped 20000 recorded material tracks.
+MaterialMappingAlg INFO Mapping recorded material at r < 1857.0 mm, |z| < 2307.3 mm.
+MaterialMappingAlg INFO Reading 1000000 recorded material tracks from tree 'material_tracks'.
+MaterialMappingAlg INFO Mapped 1000000 recorded material tracks.
+MaterialMappingAlg INFO Material in x/X0 summed over all tracks: 1.811e+08 mapped, 0.285 outside the region, 0 on tracks crossing no receiver.
 MaterialMappingAlg INFO Wrote material for 51 surfaces to 'MAIA_v0_gen3_material_map.json'.
 ```
 
 The surface count on the first and last lines must agree, and must match what
 `ActsGeoSvc` reports for the geometry. If the last number is smaller, some
 receivers were never crossed by a geantino.
+
+**The recorded material is clipped to the region in front of the calorimeter**
+(section 2a, `MaxR` / `MaxZ`) before it is mapped: steps that start outside are
+dropped and the one that crosses the boundary is cut there, taking a step to
+start at its recorded position as both recordings do. A scan from
+`MaterialRecordingAlg` already ends there, so only float rounding at the
+boundary shows up as "outside"; for a Geant4 scan of the whole detector most of
+the material does. Material "on tracks crossing no receiver" should be zero; it
+is lost from the map.
 
 **Do not pass `--materialMapFile` to the mapping job.** The mapper identifies its
 targets by their proto-material placeholders, and loading a map replaces exactly
@@ -312,9 +392,11 @@ mistake looks like.
 | `PrePostStepInfo` | `true` | must match the writer's `prePostStep` |
 | `SurfaceInfo` | `false` | must match the writer's `storeSurface` |
 | `VolumeInfo` | `false` | must match the writer's `storeVolume` |
+| `MaxR` | `-1` | recorded material beyond this radius (mm) is not mapped; non-positive: the ECAL barrel inner face. Keep it equal to the recording's |
+| `MaxZ` | `-1` | the same for \|z\| (mm); non-positive: the ECAL endcap inner face |
 
-The last three are the ones to check first if the input will not read: they
-select which branches the reader binds, so a mismatch with step 2's writer
+`PrePostStepInfo`, `SurfaceInfo` and `VolumeInfo` are the ones to check first if
+the input will not read: they select which branches the reader binds, so a mismatch with step 2's writer
 settings shows up as ROOT branch errors rather than as wrong numbers.
 
 ### Two things about the job structure
@@ -402,6 +484,14 @@ k4run k4ActsTracking/examples/test_visualize_acts_geo.py --compactFile $k4geo_DI
 the *mapped* geometry and compares the accumulated X₀/L₀ against the original
 scan, binned in η and φ. Agreement to a few percent is the target; a systematic
 deficit means material that fell outside every receiver.
+
+Expect it to differ beyond the tracking acceptance, where single receiver bins
+collect rays through very different amounts of material (section 2a).
+
+The reference must cover the same region as the map. A Geant4 scan of the whole
+detector includes the calorimeters, which the map leaves out on purpose; replay
+its directions with `MaterialRecordingAlg` (`--replayFiles`) and compare against
+that recording instead.
 
 Feed it the *same* scan the map was built from — directions are taken from it
 entry by entry, so the two files line up track by track and need no rebinning to

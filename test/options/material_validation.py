@@ -26,11 +26,11 @@ so what gets recorded here is what reconstruction will actually see.
   k4run material_validation.py \\
       --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \\
       --materialMapFile MAIA_v0_gen3_material_map.json \\
-      --inputFiles geant4_material_tracks.root \\
+      --inputFiles material_tracks.root \\
       --outputFile propagated_material_tracks.root
 
 --inputFiles also takes directories, so a scan that was split across batch jobs
-by examples/material_recording_chunk.py can be replayed by pointing at it:
+can be replayed by pointing at its directory:
 
   k4run material_validation.py \\
       --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \\
@@ -42,13 +42,16 @@ Every *.root file directly inside such a directory is used, in sorted order.
 Files and directories can be mixed freely.
 
 Pass the *same* scan the map was built from. Directions are taken from it entry
-by entry, so the propagated output lines up track by track with the Geant4 one
-and compare_material_tracks.py can difference them without any rebinning.
+by entry, so the propagated output lines up track by track with the scan and
+compare_material_tracks.py can difference them without any rebinning. For a
+Geant4 scan of the whole detector, compare against a MaterialRecordingAlg replay
+of its directions instead: the map holds only the material in front of the
+calorimeter.
 
 Then compare the two files:
 
   python3 k4ActsTracking/examples/compare_material_tracks.py \\
-      geant4_material_tracks.root propagated_material_tracks.root -o validation/
+      material_tracks.root propagated_material_tracks.root -o validation/
 
 Unlike the mapping job, this one *needs* --materialMapFile. Without it the
 geometry carries only proto-material placeholders, which contribute nothing, and

@@ -33,12 +33,12 @@ from Gaudi.Configurables import (
 from k4FWCore.parseArgs import parser
 
 
-def expand_scan_inputs(entries):
+def expand_scan_inputs(entries, option="--inputFiles"):
     """Resolve a geantino-scan --inputFiles list to a flat list of files.
 
-    Shared by the mapping and the validation options files, which both chain a
-    scan that batch jobs may have split across many files (see
-    examples/material_recording_chunk.py).
+    Shared by the recording (for --replayFiles), mapping and validation options
+    files, which all chain a scan that batch jobs may have split across many
+    files. ``option`` names the command line option in the messages.
 
     Directories contribute every ``*.root`` file directly inside them, sorted so
     a given directory always yields the same order. The search does not recurse,
@@ -63,7 +63,7 @@ def expand_scan_inputs(entries):
             found = sorted(p for p in path.glob("*.root") if p.is_file())
             if not found:
                 raise SystemExit(
-                    f"--inputFiles: directory '{entry}' contains no .root files. "
+                    f"{option}: directory '{entry}' contains no .root files. "
                     "Note the search is not recursive."
                 )
             expanded_any = True
@@ -71,7 +71,7 @@ def expand_scan_inputs(entries):
         elif path.exists():
             candidates = [path]
         else:
-            raise SystemExit(f"--inputFiles: '{entry}' does not exist.")
+            raise SystemExit(f"{option}: '{entry}' does not exist.")
 
         for candidate in candidates:
             key = candidate.resolve()
@@ -81,7 +81,7 @@ def expand_scan_inputs(entries):
             files.append(str(candidate))
 
     if expanded_any:
-        print(f"--inputFiles: chaining {len(files)} scan file(s):")
+        print(f"{option}: chaining {len(files)} scan file(s):")
         for f in files:
             print(f"    {f}")
 
