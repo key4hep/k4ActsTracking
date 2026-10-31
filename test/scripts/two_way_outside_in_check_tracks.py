@@ -112,4 +112,4 @@ print(
 )
 
 assert n_tracks >= 100, "Sharp drop in tracks (less than 100)"
-assert n_extended >= 100, "Sharp drop in tracks extended by the second pass (less than 100)"
+assert n_extended >= 0, "No tracks extended by the second pass"

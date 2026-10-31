@@ -100,7 +100,7 @@ template <class Alg>
 edm4hep::TrackState makeSeedTrackState(const Alg& /*alg*/, const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx,
                                        const Acts::BoundTrackParameters& paramseed,
                                        Acts::MagneticFieldProvider::Cache& magCache,
-                                       std::int32_t location = edm4hep::TrackState::AtFirstHit) {
+                                       edm4hep::TrackState::Location location = edm4hep::TrackState::AtFirstHit) {
   // The centralised converter re-expresses the seed parameters at an ad-hoc
   // perigee and evaluates the local field at their position itself.
   return ActsPlugins::EDM4hepUtil::writeTrackState(geoCtx, location, paramseed, *geo.magneticField(), magCache);
