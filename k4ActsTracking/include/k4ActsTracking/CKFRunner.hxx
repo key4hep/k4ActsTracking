@@ -256,6 +256,15 @@ public:
   CKFRunner& operator=(const CKFRunner&) = delete;
   CKFRunner& operator=(CKFRunner&&) = delete;
 
+  /// Two-way CKF summary for the algorithm's finalize(): how many first-pass
+  /// tracks got a second pass stitched on, and how many kept the single-pass
+  /// track (the per-track reasons are debug messages in findTracks()).
+  std::string twoWaySummary() const {
+    return fmt::format("Two-way CKF: {} tracks extended by the second pass, {} kept single-pass (no anchor, second "
+                       "pass failed or empty, no new measurement, or smoothing error).",
+                       m_nTwoWayStitched.load(), m_nTwoWayFallbacks.load());
+  }
+
   /// Run the CKF over @p paramseeds using the event-local @p measurements and
   /// @p sourceLinks, appending found tracks to @p trackCollection.
   /// @param caloMonitor Optional counters for the calorimeter-face extrapolation.
@@ -349,8 +358,8 @@ public:
         //   Inside-out (forward first pass): anchor = innermost measurement;
         //     second (backward) pass extends the chain toward perigee.
         //   Outside-in (backward first pass): anchor = outermost measurement;
-        //     second (forward) pass extends the chain into the outer tracker
-        //     and is smoothed before the stitch.
+        //     second (forward) pass extends the chain into the outer tracker,
+        //     and the stitched track is smoothed.
         // ---------------------------------------------------------------
         std::optional<CKFTrackContainer::TrackProxy> stitchedOpt;
         if (m_doTwoWayCKF) {
@@ -404,41 +413,56 @@ public:
             }
             const bool secondEmpty = !secondResult.ok() || bestSecondTrack == nullptr;
             if (secondEmpty) {
-              alg.warning() << "TwoWayCKF: second pass "
-                            << (!secondResult.ok() ? std::string("FAILED: ") + secondResult.error().message()
-                                : secondResult.value().empty() ? std::string("returned EMPTY")
-                                                               : std::string("returned no tracks with states"))
-                            << ", falling back to single-pass output." << endmsg;
+              alg.debug() << "TwoWayCKF: second pass "
+                          << (!secondResult.ok()             ? std::string("FAILED: ") + secondResult.error().message()
+                              : secondResult.value().empty() ? std::string("returned EMPTY")
+                                                             : std::string("returned no tracks with states"))
+                          << ", falling back to single-pass output." << endmsg;
+            } else if (bestSecondTrack->nMeasurements() <= smoothed.nMeasurements()) {
+              alg.debug() << "TwoWayCKF: second pass found no new measurement, falling back to single-pass output."
+                          << endmsg;
             } else {
               auto secondTrack = tracks.makeTrack();
               secondTrack.copyFrom(*bestSecondTrack);
 
-              // Outside-in: the forward second pass found the outer-tracker
-              // hits, where the calo extrapolation starts, so they need
-              // smoothed parameters. Smooth the second pass on its own rather
-              // than the full stitched track:
-              const Acts::Result<void> secondSmoothResult =
-                  m_propagateBackward ? Acts::smoothTrack(m_geoCtx, secondTrack) : Acts::Result<void>::success();
-              if (!secondSmoothResult.ok()) {
-                alg.warning() << "TwoWayCKF: second-pass smoothing error: " << secondSmoothResult.error()
-                              << ", falling back to single-pass output." << endmsg;
-              } else {
-                // Same stitching for both directions. The CKF creates no
-                // state on the anchor surface, so after reverseTrackStates()
-                // tipIndex() is the second-pass state next to the anchor: link
-                // the anchor's .previous() to it and keep the first-pass tip.
-                // A .previous() walk from the tip then runs through the first
-                // pass, the anchor and the second pass: outermost -> innermost
-                // for inside-out, innermost -> outermost for outside-in
-                secondTrack.reverseTrackStates(true);
-                tracks.trackStateContainer().getTrackState(anchorIdx).previous() = secondTrack.tipIndex();
-                secondTrack.tipIndex() = smoothed.tipIndex();
-                secondTrack.linkForward();
+              // Same stitching for both directions. The CKF creates no state
+              // on the anchor surface, so after reverseTrackStates() tipIndex()
+              // is the second-pass state next to the anchor: link the anchor's
+              // .previous() to it and keep the first-pass tip. A .previous()
+              // walk from the tip then runs through the first pass, the anchor
+              // and the second pass: outermost -> innermost for inside-out,
+              // innermost -> outermost for outside-in.
+              auto junctionJacobian = secondTrack.reverseTrackStates(true);
+              auto anchorState = tracks.trackStateContainer().getTrackState(anchorIdx);
+              const auto anchorPrevious = anchorState.previous();
+              const Acts::BoundMatrix anchorJacobian = anchorState.jacobian();
+              anchorState.previous() = secondTrack.tipIndex();
+              if (junctionJacobian) {
+                anchorState.jacobian() = *junctionJacobian;
+              }
+              secondTrack.tipIndex() = smoothed.tipIndex();
+              secondTrack.linkForward();
 
+              // Outside-in: the forward second pass found the outer-tracker
+              // hits, where the calo extrapolation starts, so smooth the
+              // stitched track to give them smoothed parameters, as the ACTS
+              // examples do for reverse search. Inside-out needs no smoothing:
+              // its second-pass states are the inner ones, and the perigee
+              // target already sets the IP parameters.
+              const Acts::Result<void> stitchedSmoothResult =
+                  m_propagateBackward ? Acts::smoothTrack(m_geoCtx, secondTrack) : Acts::Result<void>::success();
+              if (!stitchedSmoothResult.ok()) {
+                alg.debug() << "TwoWayCKF: stitched-track smoothing error: " << stitchedSmoothResult.error()
+                            << ", falling back to single-pass output." << endmsg;
+                anchorState.previous() = anchorPrevious;
+                anchorState.jacobian() = anchorJacobian;
+              } else {
                 stitchedOpt = secondTrack;
               }
             }
           }
+          // Counted here rather than reported as error per track; see twoWaySummary().
+          ++(stitchedOpt ? m_nTwoWayStitched : m_nTwoWayFallbacks);
         }
 
         // Pick the track to emit: stitched (if two-way succeeded), else
@@ -467,7 +491,7 @@ public:
         auto exResult = Acts::extrapolateTrackToReferenceSurface(trackTip, *m_referenceSurface, extrapolator, exOptions,
                                                                  Acts::TrackExtrapolationStrategy::firstOrLast);
         if (!exResult.ok()) {
-          alg.debug() << "Reference-surface extrapolation error: " << exResult.error() << endmsg;
+          alg.warning() << "Reference-surface extrapolation error: " << exResult.error() << endmsg;
           continue;
         }
 
@@ -549,6 +573,10 @@ private:
   std::shared_ptr<const Acts::Surface> m_referenceSurface;
   std::unique_ptr<CKFPropagator> m_extrapolator;
   CaloStateAppender m_caloAppender;
+
+  // Two-way CKF counters: findTracks() is const and runs concurrently.
+  mutable std::atomic<std::size_t> m_nTwoWayStitched{0};
+  mutable std::atomic<std::size_t> m_nTwoWayFallbacks{0};
 };
 
 } // namespace ACTSTracking

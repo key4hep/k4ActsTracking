@@ -608,6 +608,9 @@ StatusCode CKFTrackingAlg::finalize() {
   if (m_extrapolateToCalo) {
     info() << m_caloMonitor.summary() << endmsg;
   }
+  if (m_doTwoWayCKF && m_ckfRunner) {
+    info() << m_ckfRunner->twoWaySummary() << endmsg;
+  }
   return StatusCode::SUCCESS;
 }
 
