@@ -127,27 +127,22 @@ void appendSeedTrack(edm4hep::TrackCollection& seedCollection, std::mutex& seedM
 }
 
 /**
- * @brief Anchor of the two-way CKF: the first non-outlier measurement of @p track.
+ * @brief Anchor of the two-way CKF: the first (stem) state of @p track.
  *
  * Walks the track forward (stem to tip), so the anchor is where the first CKF
- * pass started: the innermost measurement for an inside-out first pass, the
+ * pass started: the innermost state for an inside-out first pass, the
  * outermost for an outside-in one. The second pass runs from there in the
  * opposite direction. The track must be forward-linked (copyFrom() does that).
  *
- * @return The anchor state, or std::nullopt if the track has no such state.
+ * @return The anchor state, or std::nullopt if the track has no states.
  */
 template <class track_proxy_t>
 std::optional<typename track_proxy_t::ConstTrackStateProxy> findTwoWayAnchor(const track_proxy_t& track) {
-  // A named range: find_if on a temporary range would return std::ranges::dangling.
   auto states = track.trackStates();
-  auto it = std::ranges::find_if(states, [](const auto& st) {
-    return st.typeFlags().test(Acts::TrackStateFlag::HasMeasurement) &&
-           !st.typeFlags().test(Acts::TrackStateFlag::IsOutlier);
-  });
-  if (it == states.end()) {
+  if (states.begin() == states.end()) {
     return std::nullopt;
   }
-  return typename track_proxy_t::ConstTrackStateProxy{*it};
+  return typename track_proxy_t::ConstTrackStateProxy{*states.begin()};
 }
 
 /**
@@ -355,9 +350,9 @@ public:
         // .previous() walk covers both passes. The stitched track goes
         // through the same reference-surface extrapolation as the
         // single-pass path.
-        //   Inside-out (forward first pass): anchor = innermost measurement;
+        //   Inside-out (forward first pass): anchor = innermost state;
         //     second (backward) pass extends the chain toward perigee.
-        //   Outside-in (backward first pass): anchor = outermost measurement;
+        //   Outside-in (backward first pass): anchor = outermost state;
         //     second (forward) pass extends the chain into the outer tracker,
         //     and the stitched track is smoothed.
         // ---------------------------------------------------------------
@@ -369,7 +364,7 @@ public:
           const auto anchor = findTwoWayAnchor(constSmoothed);
 
           if (!anchor.has_value()) {
-            alg.debug() << "TwoWayCKF: no anchor measurement found, falling back to single-pass output." << endmsg;
+            alg.debug() << "TwoWayCKF: no anchor state found, falling back to single-pass output." << endmsg;
           } else {
             const auto anchorIdx = anchor->index();
 
