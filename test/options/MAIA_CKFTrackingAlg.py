@@ -43,7 +43,8 @@ for name in ("VertexBarrel", "VertexEndcap"):
     algList.append(
         DDPlanarDigi(
             f"{name}Digitizer",
-            CorrectTimesForPropagation=True,
+            CorrectTimeWindowForPropagation=True,
+            CorrectTimesForPropagation=False,
             IsStrip=False,
             ResolutionT=[0.03],
             ResolutionU=[0.005],
@@ -67,7 +68,8 @@ for name in (
     algList.append(
         DDPlanarDigi(
             f"{name}Digitizer",
-            CorrectTimesForPropagation=True,
+            CorrectTimeWindowForPropagation=True,
+            CorrectTimesForPropagation=False,
             IsStrip="InnerBarrel" in name or "OuterEndcap" in name,
             ResolutionT=[0.06],
             ResolutionU=[0.007],
@@ -118,10 +120,10 @@ ckf_properties = {
 # pass towards the beamline, and a second (two-way) pass back out.
 ckf_outsidein_properties = {
     **ckf_properties,
-    # Fewest outermost layers giving >= 3 seed points for |eta| < 2.44: IT
-    # barrel 2, IT disks 3-5, OT barrels 0-1 and all OT disks
+    # Fewest outer layers giving >= 4 seed points for |eta| < 2.44: IT
+    # barrel 1,2, IT disks 3-5, OT barrels 0-1 and all OT disks
     "seeding_cellids": [
-        "system:3,layer:2",
+        "system:3,layer:1|2",
         "system:4,layer:3|4|5",
         "system:5,layer:0|1",
         "system:6",
@@ -134,10 +136,6 @@ ckf_outsidein_properties = {
     "PropagateBackward": True,
     "DoTwoWayCKF": True,
     "CKF_NumMeasurementsCutOff": 1,
-    "UseBranchStopper": True,
-    "BranchStopper_MaxHoles": 2,
-    "BranchStopper_MaxOutliers": 2,
-    "BranchStopper_MinMeasurements": 8,
     "BranchStopper_PtMin": 0.5,
     "BranchStopper_PtMinMeasurements": 4,
 }

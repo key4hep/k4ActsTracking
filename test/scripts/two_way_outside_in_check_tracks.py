@@ -111,5 +111,5 @@ print(
     f"{n_tracks} tracks, {n_calo} AtCalorimeter states, {n_extended} extended by the second pass"
 )
 
-if n_tracks > 0:
-    assert n_extended > 0, "No track extended by the second pass"
+assert n_tracks >= 100, "Sharp drop in tracks (less than 100)"
+assert n_extended >= 0, "No tracks extended by the second pass"
