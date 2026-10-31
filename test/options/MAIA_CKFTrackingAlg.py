@@ -116,14 +116,14 @@ ckf_properties = {
     "BranchStopper_MinMeasurements": 8,
 }
 
-# Outside-in alternative: seeds in the IT + OT barrels and disks, and a CKF
-# pass from there towards the beamline.
+# Outside-in alternative: seeds in the IT + OT barrels and disks, a first CKF
+# pass towards the beamline, and a second (two-way) pass back out.
 ckf_outsidein_properties = {
     **ckf_properties,
-    # Fewest outermost layers giving >= 3 seed points for |eta| < 2.44: IT
-    # barrel 2, IT disks 3-5, OT barrels 0-1 and all OT disks
+    # Fewest outer layers giving >= 4 seed points for |eta| < 2.44: IT
+    # barrel 1,2, IT disks 3-5, OT barrels 0-1 and all OT disks
     "seeding_cellids": [
-        "system:3,layer:2",
+        "system:3,layer:1|2",
         "system:4,layer:3|4|5",
         "system:5,layer:0|1",
         "system:6",
@@ -134,8 +134,8 @@ ckf_outsidein_properties = {
     "SeedFinding_DeltaRMax": 400,
     "SeedFinding_MinPt": 1500,
     "PropagateBackward": True,
-    "CKF_NumMeasurementsCutOff": 2,
-    "BranchStopper_MaxOutliers": 3,
+    "DoTwoWayCKF": True,
+    "CKF_NumMeasurementsCutOff": 1,
     "BranchStopper_PtMin": 0.5,
     "BranchStopper_PtMinMeasurements": 4,
 }
@@ -143,14 +143,26 @@ ckf_outsidein_properties = {
 parser.add_argument(
     "--outsideIn",
     action="store_true",
-    help="Run the outside-in CKF seeded in the IT + OT instead of the default inside-out CKF",
+    help="Run the outside-in, two-way CKF seeded in the IT + OT instead of the default inside-out CKF",
 )
-outside_in = parser.parse_known_args()[0].outsideIn
+parser.add_argument(
+    "--twoWay",
+    action="store_true",
+    help="Add a second, backward CKF pass to the inside-out CKF (outside-in is always two-way)",
+)
+cli_args = parser.parse_known_args()[0]
+
+if cli_args.outsideIn:
+    selected_properties = ckf_outsidein_properties
+elif cli_args.twoWay:
+    selected_properties = {**ckf_properties, "DoTwoWayCKF": True}
+else:
+    selected_properties = ckf_properties
 
 ckf_tracking = make_ckf_tracking(
     hit_merger,
     hit_rel_merger,
-    **(ckf_outsidein_properties if outside_in else ckf_properties),
+    **selected_properties,
 )
 algList.append(ckf_tracking)
 
