@@ -207,7 +207,7 @@ set_tests_properties(check_MAIA_Gen3_outsideInTracking PROPERTIES FIXTURES_REQUI
 
 add_test(NAME check_MAIA_Gen3_twoWayInsideOut
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-  COMMAND ${CMAKE_CURRENT_LIST_DIR}/scripts/two_way_outside_in_check_tracks.py
+  COMMAND ${CMAKE_CURRENT_LIST_DIR}/scripts/two_way_check_tracks.py
           particle_gun_MAIA_CKFTracks_twoWayInsideOut.edm4hep.root
 )
 set_test_env(check_MAIA_Gen3_twoWayInsideOut)
