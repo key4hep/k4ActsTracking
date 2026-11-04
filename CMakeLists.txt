@@ -55,11 +55,11 @@ if(K4ACTSTRACKING_BUILD_GNN)
   find_package(Torch REQUIRED)
 endif()
 
+include(GNUInstallDirs)
+
 include(cmake/Key4hepConfig.cmake)
 
 #---------------------------------------------------------------
-
-include(GNUInstallDirs)
 
 include(CTest)
 
