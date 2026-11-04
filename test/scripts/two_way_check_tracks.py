@@ -28,7 +28,13 @@ import argparse
 import math
 
 import edm4hep
+import ROOT
 from podio.reading import get_reader
+
+# Load edm4hep vector utils for the rxy and dist functions
+ROOT.gInterpreter.LoadFile("edm4hep/utils/vector_utils.h")
+rxy = edm4hep.utils.magnitudeTransverse
+dist = edm4hep.utils.magnitude
 
 parser = argparse.ArgumentParser(description="Check the two-way CKF output")
 parser.add_argument("file", help="CKF output file")
@@ -47,19 +53,10 @@ PARAMS = [
 ]
 
 
-def rxy(p):
-    return math.hypot(p.x, p.y)
-
-
-def dist(p):
-    return math.sqrt(p.x**2 + p.y**2 + p.z**2)
-
-
 def state_at(track, location):
     ts = track.getTrackState(location)
-    if ts.has_value():
-         return ts.value()
-    return None
+    # Copy: value() refers into the optional, which is freed once ts goes out of scope.
+    return edm4hep.TrackState(ts.value()) if ts.has_value() else None
 
 
 n_tracks = n_calo = n_extended = 0
@@ -96,13 +93,14 @@ for i, frame in enumerate(get_reader(args.file).get("events")):
             f"{tag}: AtIP variances {variances}"
         )
 
-        for ts in track.getTrackStates():
-            if ts.location == TS.AtCalorimeter:
-                n_calo += 1
-                assert dist(ts.referencePoint) > dist(last.referencePoint), (
-                    f"{tag}: AtCalorimeter at {dist(ts.referencePoint):.1f} mm from the origin, "
-                    f"not beyond AtLastHit at {dist(last.referencePoint):.1f} mm"
-                )
+        calo = track.getTrackState(TS.AtCalorimeter)
+        if calo.has_value():
+            n_calo += 1
+            calo_dist = dist(calo.value().referencePoint)
+            assert calo_dist > dist(last.referencePoint), (
+                f"{tag}: AtCalorimeter at {calo_dist:.1f} mm from the origin, "
+                f"not beyond AtLastHit at {dist(last.referencePoint):.1f} mm"
+            )
 
         # Hits are ordered inside-out, so the second pass extends the outer end
         # outside-in and the inner end inside-out
@@ -115,4 +113,7 @@ print(
 )
 
 assert n_tracks >= 100, "Sharp drop in tracks (less than 100)"
+assert n_calo == n_tracks, (
+    f"{n_calo} AtCalorimeter states for {n_tracks} tracks, expected one per track"
+)
 assert n_extended > 0, "No tracks extended by the second pass"

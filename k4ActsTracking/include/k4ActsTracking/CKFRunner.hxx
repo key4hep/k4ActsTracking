@@ -447,8 +447,8 @@ public:
               const Acts::Result<void> stitchedSmoothResult =
                   m_propagateBackward ? Acts::smoothTrack(m_geoCtx, secondTrack) : Acts::Result<void>::success();
               if (!stitchedSmoothResult.ok()) {
-                alg.debug() << "TwoWayCKF: stitched-track smoothing error: " << stitchedSmoothResult.error()
-                            << ", falling back to single-pass output." << endmsg;
+                alg.warning() << "TwoWayCKF: stitched-track smoothing error: " << stitchedSmoothResult.error()
+                              << ", falling back to single-pass output." << endmsg;
                 anchorState.previous() = anchorPrevious;
                 anchorState.jacobian() = anchorJacobian;
               } else {
