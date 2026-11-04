@@ -56,7 +56,10 @@ def dist(p):
 
 
 def state_at(track, location):
-    return next((ts for ts in track.getTrackStates() if ts.location == location), None)
+    ts = track.getTrackState(location)
+    if ts.has_value():
+         return ts.value()
+    return None
 
 
 n_tracks = n_calo = n_extended = 0
