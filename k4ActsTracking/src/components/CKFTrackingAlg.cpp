@@ -265,8 +265,8 @@ private:
       this,
       "HitTimeResolutions",
       {},
-      "Per-sensor time resolutions in ns, keyed by CellIDSelector selection string. The selections must not "
-      "overlap and must cover every tracker hit. Required when UseHitTimeInCKF or a seeding time cut is set."};
+      "Fallback per-sensor time resolutions in ns, keyed by CellIDSelector selection string, for hits without a "
+      "time error (e.g. digitized before EDM4hep 1.2). The selections must not overlap."};
   Gaudi::Property<float> m_seedFinding_doubletTimeCutNSigma{
       this, "SeedFinding_DoubletTimeCutNSigma", -1.0f,
       "Max TOF-corrected time difference between doublet space points, in units of their combined time "
@@ -462,15 +462,18 @@ private:
     return m_useHitTimeInCKF || m_seedFinding_doubletTimeCutNSigma > 0.0f || m_seedFinding_tripletTimeChi2Max > 0.0f;
   }
 
-  /// Time resolution (ns) of the HitTimeResolutions selection matching the hit.
+  /// Time resolution (ns) of the hit: its time error, else the matching HitTimeResolutions entry.
   double hitTimeResolutionFor(const edm4hep::TrackerHitPlane& hit) const {
+    if (hit.getTimeError() > 0) {
+      return hit.getTimeError();
+    }
     for (const auto& [selector, resolution] : m_hitTimeResolutionSelectors) {
       if (selector.accept(hit.getCellID())) {
         return resolution;
       }
     }
-    throw std::runtime_error(fmt::format("CKFTrackingAlg: no HitTimeResolutions selection matches cellID {}; the "
-                                         "selections must cover every tracker hit",
+    throw std::runtime_error(fmt::format("CKFTrackingAlg: hit with cellID {} has no time error and no "
+                                         "HitTimeResolutions selection matches it",
                                          hit.getCellID()));
   }
 
@@ -510,10 +513,6 @@ StatusCode CKFTrackingAlg::initialize() {
     return StatusCode::FAILURE;
   }
 
-  if (usesHitTimeResolutions() && m_hitTimeResolutions.empty()) {
-    error() << "UseHitTimeInCKF and the seeding time cuts require HitTimeResolutions to be configured" << endmsg;
-    return StatusCode::FAILURE;
-  }
   std::vector<std::string> selections;
   for (const auto& [selection, resolution] : m_hitTimeResolutions.value()) {
     if (!(resolution > 0.0) || !std::isfinite(resolution)) {
@@ -532,10 +531,6 @@ StatusCode CKFTrackingAlg::initialize() {
         return StatusCode::FAILURE;
       }
     }
-  }
-  if (usesHitTimeResolutions()) {
-    warning() << "The per-sensor HitTimeResolutions are a placeholder until EDM4hep stores a time error per hit"
-              << endmsg;
   }
 
   // Apply deltaR fallback defaults
