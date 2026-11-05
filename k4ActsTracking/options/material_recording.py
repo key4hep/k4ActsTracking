@@ -41,7 +41,7 @@ from Gaudi.Configuration import INFO
 from Configurables import ApplicationMgr, MaterialRecordingAlg
 from k4FWCore.parseArgs import parser
 
-from _ckf_helpers import expand_scan_inputs, make_services
+from k4ActsTracking.material_helpers import expand_scan_inputs, make_services
 
 parser.add_argument(
     "--outputFile",

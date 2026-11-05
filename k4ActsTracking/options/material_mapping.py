@@ -46,16 +46,13 @@ there is no hadd step.
 
 Recorded material behind the ECAL inner face is not mapped (--maxR/--maxZ
 override that; keep them equal to the recording's).
-
-Do NOT pass --materialMapFile here: the mapping needs the geometry to still
-carry its proto-material placeholders, which is what a loaded map replaces.
 """
 
 from Gaudi.Configuration import INFO
 from Configurables import ApplicationMgr, MaterialMappingAlg
 from k4FWCore.parseArgs import parser
 
-from _ckf_helpers import expand_scan_inputs, make_services
+from k4ActsTracking.material_helpers import expand_scan_inputs, make_services
 
 parser.add_argument(
     "--inputFiles",

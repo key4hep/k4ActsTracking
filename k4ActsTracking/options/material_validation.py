@@ -62,7 +62,7 @@ from Gaudi.Configuration import INFO
 from Configurables import ApplicationMgr, MaterialValidationAlg
 from k4FWCore.parseArgs import parser
 
-from _ckf_helpers import expand_scan_inputs, make_services
+from k4ActsTracking.material_helpers import expand_scan_inputs, make_services
 
 parser.add_argument(
     "--inputFiles",
@@ -114,6 +114,6 @@ ApplicationMgr(
     # loop run at all when there is no event input.
     EvtMax=1,
     EvtSel="NONE",
-    ExtSvc=make_services(),
+    ExtSvc=make_services(material_map=True),
     OutputLevel=INFO,
 )

@@ -164,6 +164,12 @@ examples and the test option files for working configurations:
   > **Note:** the parameters in these option files are tuned only for technical
   > tests and are *not* a meaningful physics tracking configuration.
 
+* [`k4ActsTracking/options/material_recording.py`](k4ActsTracking/options/material_recording.py),
+  [`material_mapping.py`](k4ActsTracking/options/material_mapping.py),
+  [`material_validation.py`](k4ActsTracking/options/material_validation.py) —
+  the material mapping workflow, installed in `share/k4ActsTracking/options`;
+  see [doc/material_mapping.md](doc/material_mapping.md).
+
 * [`GNNTrackFinding/options/runGNNTrackFinding.py`](GNNTrackFinding/options/runGNNTrackFinding.py)
   — GNN based track finding (only available with
   `-DK4ACTSTRACKING_BUILD_GNN=ON`), needs the ONNX models to be passed via

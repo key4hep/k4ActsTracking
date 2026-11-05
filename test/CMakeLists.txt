@@ -37,6 +37,7 @@ ${PROJECT_BINARY_DIR}/${PROJECT_NAME}:\
 $ENV{LD_LIBRARY_PATH};\
 PYTHONPATH=\
 ${CMAKE_CURRENT_SOURCE_DIR}/options:\
+${PROJECT_SOURCE_DIR}/k4ActsTracking/python:\
 ${PROJECT_BINARY_DIR}/${PROJECT_NAME}/genConfDir:\
 $ENV{PYTHONPATH};\
 GAUDI_PLUGIN_PATH=\
@@ -197,7 +198,7 @@ set_tests_properties(check_MAIA_Gen3_outsideInTracking PROPERTIES FIXTURES_REQUI
 # Material pipeline: record -> map -> validate. Only checks that the steps run
 # and read each other's files.
 add_k4run_test(material_recording_MAIA_v0
-  OPTIONS_FILE ${CMAKE_CURRENT_LIST_DIR}/options/material_recording.py
+  OPTIONS_FILE ${PROJECT_SOURCE_DIR}/k4ActsTracking/options/material_recording.py
   EXTRA_ARGS --compactFile=${_maia_compact}
              --numTracks 500
              --outputFile material_tracks_MAIA_v0.root
@@ -206,7 +207,7 @@ add_k4run_test(material_recording_MAIA_v0
 )
 
 add_k4run_test(material_mapping_MAIA_v0
-  OPTIONS_FILE ${CMAKE_CURRENT_LIST_DIR}/options/material_mapping.py
+  OPTIONS_FILE ${PROJECT_SOURCE_DIR}/k4ActsTracking/options/material_mapping.py
   EXTRA_ARGS --compactFile=${_maia_compact}
              --inputFiles material_tracks_MAIA_v0.root
              --outputFile material_map_MAIA_v0.json
@@ -216,7 +217,7 @@ add_k4run_test(material_mapping_MAIA_v0
 )
 
 add_k4run_test(material_validation_MAIA_v0
-  OPTIONS_FILE ${CMAKE_CURRENT_LIST_DIR}/options/material_validation.py
+  OPTIONS_FILE ${PROJECT_SOURCE_DIR}/k4ActsTracking/options/material_validation.py
   EXTRA_ARGS --compactFile=${_maia_compact}
              --materialMapFile material_map_MAIA_v0.json
              --inputFiles material_tracks_MAIA_v0.root
