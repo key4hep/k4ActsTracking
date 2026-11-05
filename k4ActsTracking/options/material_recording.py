@@ -31,7 +31,7 @@ Split a large scan across jobs by giving each its own --seed, then hand the
 directory to material_mapping.py, which chains every *.root file inside.
 
 Rays stop at the ECAL inner face unless --maxR/--maxZ say otherwise. To compare
-against a Geant4 scan track by track, replay its directions:
+with another scan (e.g. a Geant4 one) track by track, replay its directions:
 
   k4run material_recording.py --compactFile ... \\
       --replayFiles geant4_material_tracks.root --outputFile replayed.root

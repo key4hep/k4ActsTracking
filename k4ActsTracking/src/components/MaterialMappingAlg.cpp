@@ -53,7 +53,7 @@
 /// Projects the material recorded by a geantino scan onto the material
 /// receivers designated by the blueprint, and writes the resulting map.
 ///
-/// This is step 3 of the workflow in doc/material_mapping.md. It has to run in
+/// See doc/material_mapping.md for the workflow. It has to run in
 /// the same job as @c ActsGeoSvc: the map is keyed by
 /// @c Acts::GeometryIdentifier, and for a Gen3 geometry those identifiers are
 /// assigned by the blueprint traversal order, so a map is only meaningful for

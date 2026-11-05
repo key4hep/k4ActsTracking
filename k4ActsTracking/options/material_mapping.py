@@ -19,30 +19,18 @@
 #
 """Project a recorded geantino scan onto the blueprint's material receivers.
 
-This is step 3 of doc/material_mapping.md. It has to run in the same job as
-ActsGeoSvc, because the map is keyed by Acts::GeometryIdentifier and those are
-assigned by the blueprint traversal order -- a map produced against any other
-geometry will not match.
-
-Usage:
-
-  k4run material_mapping.py \\
-      --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \\
-      --inputFiles material_tracks.root \\
-      --outputFile MAIA_v0_gen3_material_map.json
-
---inputFiles also takes directories, which is the convenient way to consume a
-scan that was split across batch jobs (material_recording.py with one --seed per
-job):
+It has to run in the same job as ActsGeoSvc, because the map is keyed by
+Acts::GeometryIdentifier and those are assigned by the blueprint traversal
+order -- a map produced against any other geometry will not match.
 
   k4run material_mapping.py \\
       --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \\
       --inputFiles scan/ \\
       --outputFile MAIA_v0_gen3_material_map.json
 
-Every *.root file directly inside such a directory is mapped, in sorted order.
-Files and directories can be mixed freely. MaterialMappingAlg chains them, so
-there is no hadd step.
+--inputFiles takes files and/or directories; every *.root file directly inside
+a directory is chained, in sorted order, so a scan split across jobs needs no
+hadd step.
 
 Recorded material behind the ECAL inner face is not mapped (--maxR/--maxZ
 override that; keep them equal to the recording's).
