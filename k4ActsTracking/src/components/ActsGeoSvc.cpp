@@ -149,6 +149,7 @@ private:
 
 ActsGeoSvc::ActsGeoSvc(const std::string& name, ISvcLocator* svcLoc) : base_class(name, svcLoc) {
   m_bluePrintPopulationFuncs = {{"MAIA_v0", MuColl::MAIA_v0::populateBlueprint},
+                                {"MAIA_v1", MuColl::MAIA_v0::populateBlueprint},
                                 {"MuSIC_v2", MuColl::MAIA_v0::populateBlueprint},
                                 {"ILD_FCCee_v01", FCCee::ILD_FCCee_v01::populateBlueprint},
                                 {"ILD_FCCee_v02", FCCee::ILD_FCCee_v02::populateBlueprint},
