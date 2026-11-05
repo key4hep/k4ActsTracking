@@ -32,35 +32,41 @@ this page covers how to do it for the geometry `ActsGeoSvc` builds:
 
 The options files for steps 2, 3 and 5 are installed in
 `share/k4ActsTracking/options` (`k4ActsTracking/options` in the sources), and
-the plotting script `compare_material_tracks.py` in `bin`. For MAIA_v0, steps 2
-to 5 are:
+the plotting script `compare_material_tracks.py` in
+`share/k4ActsTracking/scripts`. For MAIA_v0, steps 2 to 5 are:
 
 ```bash
-OPTS=$LCG_VIEW_DIR/share/k4ActsTracking/options  # or <install prefix>/share/k4ActsTracking/options
+SHARE=$LCG_VIEW_DIR/share/k4ActsTracking  # or <install prefix>/share/k4ActsTracking
 COMPACT=$k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml
 mkdir -p scan
 for seed in 1 2 3 4 5 6 7 8 9 10; do
-  k4run $OPTS/material_recording.py --compactFile $COMPACT \
+  k4run $SHARE/options/material_recording.py --compactFile $COMPACT \
     --numTracks 100000 --seed $seed --outputFile scan/material_tracks_$seed.root
 done
-k4run $OPTS/material_mapping.py --compactFile $COMPACT \
+k4run $SHARE/options/material_mapping.py --compactFile $COMPACT \
   --inputFiles scan/ --outputFile MAIA_v0_gen3_material_map.json
-k4run $OPTS/material_validation.py --compactFile $COMPACT \
+k4run $SHARE/options/material_validation.py --compactFile $COMPACT \
   --materialMapFile MAIA_v0_gen3_material_map.json \
   --inputFiles scan/ --outputFile propagated_material_tracks.root
-compare_material_tracks.py scan/ propagated_material_tracks.root -o validation/
+$SHARE/scripts/compare_material_tracks.py scan/ propagated_material_tracks.root -o validation/
 ```
 
 The Gen1 files in `data/` (`MAIA_v0_material.json`, `material-maps.json`) use
 a different key scheme and do not work with a blueprint-built geometry.
+
+**A map belongs to the geometry and blueprint it was made with.** Its
+`Acts::GeometryIdentifier`s are assigned in traversal order of the blueprint, so
+a change to a detector's tree in `DD4hepBlueprintConstruction.cpp` puts the
+material on the wrong surfaces, without an error, and a change to the geometry
+makes the recorded material out of date. Redo the map after either.
 
 ## 1. Designation
 
 Receivers are designated in
 [`DD4hepBlueprintConstruction.cpp`](../k4ActsTracking/src/components/DD4hepBlueprintConstruction.cpp),
 in the `Material designation` block of the `Blueprints` namespace. This is done
-for **MAIA_v0** (and MuSIC_v2, which shares its blueprint); the other
-detectors carry no material yet.
+for **MAIA_v0** (and MAIA_v1 and MuSIC_v2, which share its blueprint); the
+other detectors carry no material yet.
 
 The scheme is: **on every layer volume, designate the face pointing towards the
 interaction point** (the inner cylinder of a barrel layer, the IP-facing disc of
@@ -94,9 +100,9 @@ ActsGeoSvc INFO 51 of 76706 surfaces in the tracking geometry carry material, 51
 ```
 
 A designation that breaks one of the rules aborts geometry construction and
-names the portal; the `load_geo_*` tests catch it.
+names the portal.
 
-### Adding a detector
+### Adding material designators to a detector
 
 1. Pass `LayerMaterial` to `makeGroupedBarrel` / `makeBarrel` /
    `attachEndcaps` / `makeRegularTracker` / `makeNestedInnerTracker`, and wrap
@@ -123,7 +129,7 @@ compact file as reconstruction.
 walks the rays with the TGeo navigator through the geometry `GeoSvc` builds:
 
 ```bash
-k4run $OPTS/material_recording.py \
+k4run $SHARE/options/material_recording.py \
   --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \
   --numTracks 100000 --seed 1 \
   --outputFile scan/material_tracks_1.root
@@ -163,7 +169,7 @@ region anyway. To compare with `MaterialRecordingAlg` along the same
 directions:
 
 ```bash
-k4run $OPTS/material_recording.py \
+k4run $SHARE/options/material_recording.py \
   --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \
   --replayFiles geant4_material_tracks.root --outputFile tgeo_material_tracks.root
 ```
@@ -171,13 +177,14 @@ k4run $OPTS/material_recording.py \
 ## 3. Mapping
 
 [`MaterialMappingAlg`](../k4ActsTracking/src/components/MaterialMappingAlg.cpp)
-runs in the same job as `ActsGeoSvc` and projects the scan onto its receivers.
-The map is keyed by `Acts::GeometryIdentifier`, which depends on the blueprint,
-so it has to be made against this geometry: a map from ACTS' own
-`material_mapping.py` would not match it.
+uses the `ActsGeoSvc` to build the ACTS geometry and projects the scan onto
+its receivers. It yields a material map that is guaranteed to have the same
+`Acts::GeometryIdentifier`s as the geometry that will be used for tracking. The
+version of `material_mapping.py` shipped by ACTS **does not yield usable
+material maps.**
 
 ```bash
-k4run $OPTS/material_mapping.py \
+k4run $SHARE/options/material_mapping.py \
   --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \
   --inputFiles scan/ \
   --outputFile MAIA_v0_gen3_material_map.json
@@ -232,9 +239,7 @@ k4run test/options/MAIA_CKFTrackingAlg.py \
   --materialMapFile MAIA_v0_gen3_material_map.json
 ```
 
-`.root` files are read with `ActsPlugins::RootMaterialDecorator`, anything else
-(`.json`, `.cbor`) with `Acts::JsonMaterialDecorator`. The `ActsGeoSvc` line
-shows whether the map applied:
+The `ActsGeoSvc` line shows whether the map applied:
 
 - `51 of them a proto-material placeholder`: none of its entries matched (map
   made for a different geometry or blueprint). The service warns.
@@ -251,7 +256,7 @@ material it finds, in the same format as the scan and entry by entry, so the
 two can be compared track by track. Give it the scan the map was made from:
 
 ```bash
-k4run $OPTS/material_validation.py \
+k4run $SHARE/options/material_validation.py \
   --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \
   --materialMapFile MAIA_v0_gen3_material_map.json \
   --inputFiles scan/ \
@@ -267,7 +272,7 @@ exclude those entries from the comparison.
 Then plot the comparison:
 
 ```bash
-compare_material_tracks.py scan/ propagated_material_tracks.root -o validation/
+$SHARE/scripts/compare_material_tracks.py scan/ propagated_material_tracks.root -o validation/
 ```
 
 This writes the material against η and φ for both, with their ratio
@@ -279,18 +284,9 @@ means material that is on no receiver. At the edge of dense forward material
 it, so the ratio there is far from 1; limit `--etaRange` of the recording if
 that region matters.
 
-Finally, `ctest -R reco_MAIA_Gen3` checks that reconstruction still runs with
-the geometry (it does not use a map by default).
-
 ## 6. Adding a map to the repository
 
 Upload the validated file to the data server under its md5 hash
 (`md5sum <file>`), commit `data/<file>.md5` containing that hash, and add the
 file name to `data_files` in `data/CMakeLists.txt`, which downloads it at build
 time and installs it.
-
-**A map belongs to the blueprint it was made with.** The
-`Acts::GeometryIdentifier`s are assigned in traversal order of the blueprint,
-so any change to a detector's tree in `DD4hepBlueprintConstruction.cpp` makes
-existing maps put material on the wrong surfaces, without an error. Regenerate
-the map after such a change.
