@@ -88,4 +88,5 @@ install(FILES
   options/material_validation.py
   DESTINATION ${CMAKE_INSTALL_DATADIR}/k4ActsTracking/options)
 gaudi_install(PYTHON)
-install(PROGRAMS examples/compare_material_tracks.py TYPE BIN)
+install(PROGRAMS examples/compare_material_tracks.py
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/k4ActsTracking/scripts)
