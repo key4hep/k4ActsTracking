@@ -172,6 +172,7 @@ add_k4run_test(reco_MAIA_Gen3
              --IOSvc.Output particle_gun_MAIA_CKFTracks.edm4hep.root
   USE_TEST_ENV
   FIXTURES_REQUIRED sim_maia_fixture
+  FIXTURES_SETUP reco_maia_fixture
 )
 
 add_k4run_test(reco_MAIA_Gen3_outsideInTracking
@@ -185,14 +186,78 @@ add_k4run_test(reco_MAIA_Gen3_outsideInTracking
   FIXTURES_SETUP reco_maia_outsidein_fixture
 )
 
-# Lightweight check on the outside-in output
+add_k4run_test(reco_MAIA_Gen3_twoWayInsideOut
+  OPTIONS_FILE ${CMAKE_CURRENT_LIST_DIR}/options/MAIA_CKFTrackingAlg.py
+  EXTRA_ARGS --compactFile=${_maia_compact}
+             --IOSvc.Input particle_gun_MAIA_SIM.edm4hep.root
+             --IOSvc.Output particle_gun_MAIA_CKFTracks_twoWayInsideOut.edm4hep.root
+             --twoWay
+  USE_TEST_ENV
+  FIXTURES_REQUIRED sim_maia_fixture
+  FIXTURES_SETUP reco_maia_twoway_insideout_fixture
+)
+
+# Lightweight checks on the two-way outputs
 add_test(NAME check_MAIA_Gen3_outsideInTracking
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-  COMMAND ${CMAKE_CURRENT_LIST_DIR}/scripts/outside_in_check_tracks.py
-          particle_gun_MAIA_CKFTracks_outsideIn.edm4hep.root
+  COMMAND ${CMAKE_CURRENT_LIST_DIR}/scripts/two_way_outside_in_check_tracks.py
+          particle_gun_MAIA_CKFTracks_outsideIn.edm4hep.root --outsideIn
 )
 set_test_env(check_MAIA_Gen3_outsideInTracking)
 set_tests_properties(check_MAIA_Gen3_outsideInTracking PROPERTIES FIXTURES_REQUIRED reco_maia_outsidein_fixture)
+
+add_test(NAME check_MAIA_Gen3_twoWayInsideOut
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  COMMAND ${CMAKE_CURRENT_LIST_DIR}/scripts/two_way_outside_in_check_tracks.py
+          particle_gun_MAIA_CKFTracks_twoWayInsideOut.edm4hep.root
+)
+set_test_env(check_MAIA_Gen3_twoWayInsideOut)
+set_tests_properties(check_MAIA_Gen3_twoWayInsideOut PROPERTIES FIXTURES_REQUIRED reco_maia_twoway_insideout_fixture)
+
+# Outside-in two-way with SeedDeduplication, checked against the run without it
+add_k4run_test(reco_MAIA_Gen3_outsideInTracking_seedDedup
+  OPTIONS_FILE ${CMAKE_CURRENT_LIST_DIR}/options/MAIA_CKFTrackingAlg.py
+  EXTRA_ARGS --compactFile=${_maia_compact}
+             --IOSvc.Input particle_gun_MAIA_SIM.edm4hep.root
+             --IOSvc.Output particle_gun_MAIA_CKFTracks_outsideIn_seedDedup.edm4hep.root
+             --outsideIn --seedDeduplication
+  USE_TEST_ENV
+  FIXTURES_REQUIRED sim_maia_fixture
+  FIXTURES_SETUP reco_maia_outsidein_seeddedup_fixture
+)
+
+add_test(NAME check_MAIA_Gen3_seedDeduplication
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  COMMAND ${CMAKE_CURRENT_LIST_DIR}/scripts/seed_dedup_check.py
+          particle_gun_MAIA_CKFTracks_outsideIn.edm4hep.root
+          particle_gun_MAIA_CKFTracks_outsideIn_seedDedup.edm4hep.root
+)
+set_test_env(check_MAIA_Gen3_seedDeduplication)
+set_tests_properties(check_MAIA_Gen3_seedDeduplication PROPERTIES
+  FIXTURES_REQUIRED "reco_maia_outsidein_fixture;reco_maia_outsidein_seeddedup_fixture")
+
+# Same for the default inside-out CKF, to see the effect there; it may remove nothing
+add_k4run_test(reco_MAIA_Gen3_seedDedup
+  OPTIONS_FILE ${CMAKE_CURRENT_LIST_DIR}/options/MAIA_CKFTrackingAlg.py
+  EXTRA_ARGS --compactFile=${_maia_compact}
+             --IOSvc.Input particle_gun_MAIA_SIM.edm4hep.root
+             --IOSvc.Output particle_gun_MAIA_CKFTracks_seedDedup.edm4hep.root
+             --seedDeduplication
+  USE_TEST_ENV
+  FIXTURES_REQUIRED sim_maia_fixture
+  FIXTURES_SETUP reco_maia_seeddedup_fixture
+)
+
+add_test(NAME check_MAIA_Gen3_seedDeduplication_insideOut
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  COMMAND ${CMAKE_CURRENT_LIST_DIR}/scripts/seed_dedup_check.py
+          particle_gun_MAIA_CKFTracks.edm4hep.root
+          particle_gun_MAIA_CKFTracks_seedDedup.edm4hep.root
+          --allowNoRemoval
+)
+set_test_env(check_MAIA_Gen3_seedDeduplication_insideOut)
+set_tests_properties(check_MAIA_Gen3_seedDeduplication_insideOut PROPERTIES
+  FIXTURES_REQUIRED "reco_maia_fixture;reco_maia_seeddedup_fixture")
 
 
 # === LUXE chain (self-contained: particle gun + digitization + CKF) ===

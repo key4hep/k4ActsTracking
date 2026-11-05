@@ -475,6 +475,8 @@ inline Acts::SquareMatrix2 hitLocalCovariance(const Acts::GeometryContext& geoCt
  * @tparam HitSink Callback (const edm4hep::TrackerHitPlane&, const SourceLink&,
  *                 const Acts::Vector3& globalPos, const Acts::Surface&,
  *                 const Acts::SquareMatrix2& localCov).
+ * @param betaHypothesis With @p useHitTime, the measured hit time is shifted
+ *                 for a particle of this beta from the origin (see hitTime()).
  */
 template <class Alg, class HitSink>
 void prepareTrackerHits(const Alg& alg, const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx,
@@ -482,7 +484,8 @@ void prepareTrackerHits(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geom
                         ACTSTracking::MeasurementContainer& measurements,
                         ACTSTracking::SourceLinkContainer& sourceLinks, ACTSTracking::HitContainer& hits,
                         int numThreads, HitSink&& hitSink, bool useHitTime = false,
-                        const std::function<double(const edm4hep::TrackerHitPlane&)>& hitTimeResolutionFor = {}) {
+                        const std::function<double(const edm4hep::TrackerHitPlane&)>& hitTimeResolutionFor = {},
+                        double betaHypothesis = 1.0) {
   if (useHitTime && !hitTimeResolutionFor) {
     throw std::invalid_argument("prepareTrackerHits: useHitTime requires a hit time resolution function");
   }
@@ -540,7 +543,7 @@ void prepareTrackerHits(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geom
     // Optionally measure the hit time as a third coordinate.
     ACTSTracking::Measurement meas = [&] {
       if (useHitTime) {
-        const double hitT = hitTime(hitPair.second);
+        const double hitT = hitTime(hitPair.second, betaHypothesis);
         Acts::Vector3 loc3;
         loc3 << loc[0], loc[1], hitT;
         const double timeRes = hitTimeResolutionFor(hitPair.second);
@@ -602,6 +605,8 @@ estimateSeedParamsAtStart(const Acts::GeometryContext& geoCtx, const Acts::Surfa
  *                          parameters at the top SP (position and helix
  *                          tangent) on @p startSurface instead of at the bottom
  *                          SP; see estimateSeedParamsAtStart.
+ * @param betaHypothesis    The seed time is the start hit's time shifted for a
+ *                          particle of this beta from the origin (see hitTime()).
  *
  * @return The estimated parameters, or std::nullopt if the estimation fails. A
  *         field-lookup failure throws, matching the tracking algorithms.
@@ -612,7 +617,8 @@ estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geome
                        const Acts::Surface& startSurface, const Acts::Vector3& bottomPos,
                        const Acts::Vector3& middlePos, const Acts::Vector3& topPos, const edm4hep::TrackerHit& startHit,
                        Acts::MagneticFieldProvider::Cache& magCache, double errPos, double errPhi, double errLambda,
-                       double errRelP, double errTime, double errQOverP = 0, bool propagateBackward = false) {
+                       double errRelP, double errTime, double errQOverP = 0, bool propagateBackward = false,
+                       double betaHypothesis = 1.0) {
   // Magnetic field at the seed start position (bottom SP for inside-out,
   // top SP for outside-in), assumed homogeneous over the seed.
   const Acts::Vector3& seedPos = propagateBackward ? topPos : bottomPos;
@@ -621,8 +627,9 @@ estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geome
     throw std::runtime_error("Field lookup error: " + std::to_string(seedField.error().value()));
   }
 
-  Acts::Result<Acts::BoundVector> optParams = estimateSeedParamsAtStart(
-      geoCtx, startSurface, bottomPos, hitTime(startHit), middlePos, topPos, *seedField, propagateBackward);
+  Acts::Result<Acts::BoundVector> optParams =
+      estimateSeedParamsAtStart(geoCtx, startSurface, bottomPos, hitTime(startHit, betaHypothesis), middlePos, topPos,
+                                *seedField, propagateBackward);
   if (!optParams.ok()) {
     alg.debug() << "Failed estimation of track parameters for seed." << endmsg;
     return std::nullopt;
@@ -691,6 +698,7 @@ std::vector<SeedHit> collectSeedHits(const HitRange& candidateHits,
  * @param hits              Radius-ordered seed hits.
  * @param propagateBackward Express the seed at the outermost hit, for a
  *                          backward (outside-in) CKF; see the other overload.
+ * @param betaHypothesis    Shifts the seed time; see the other overload.
  * @return The estimated parameters, or std::nullopt if there are no hits, the
  *         start hit's surface is unknown or the estimation itself fails.
  */
@@ -699,7 +707,8 @@ std::optional<Acts::BoundTrackParameters>
 estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::GeometryContext& geoCtx,
                        const std::vector<SeedHit>& hits, const ACTSTracking::HitContainer& hitContainer,
                        Acts::MagneticFieldProvider::Cache& magCache, double errPos, double errPhi, double errLambda,
-                       double errRelP, double errTime, double errQOverP = 0, bool propagateBackward = false) {
+                       double errRelP, double errTime, double errQOverP = 0, bool propagateBackward = false,
+                       double betaHypothesis = 1.0) {
   if (hits.empty()) {
     return std::nullopt;
   }
@@ -717,7 +726,7 @@ estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geome
 
   return estimateSeedParameters(alg, geo, geoCtx, *startSurface, bottom.pos, middle.pos, top.pos,
                                 hitContainer[start.sl.index()], magCache, errPos, errPhi, errLambda, errRelP, errTime,
-                                errQOverP, propagateBackward);
+                                errQOverP, propagateBackward, betaHypothesis);
 }
 
 } // namespace ACTSTracking

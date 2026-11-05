@@ -56,6 +56,7 @@
 #include "k4ActsTracking/SourceLink.hxx"
 
 // Standard
+#include <cmath>
 #include <cstddef>
 #include <optional>
 #include <vector>
@@ -72,9 +73,18 @@ using TrackResult =
     Acts::TrackContainer<Acts::VectorTrackContainer, Acts::VectorMultiTrajectory, std::shared_ptr>::TrackProxy;
 
 /// Hit time in Acts native units; use this for every hit time passed to ACTS.
+///
+/// @p betaHypothesis < 1 shifts the time by -|x| (1/beta - 1) / c, so that a
+/// particle of that beta coming from the origin looks like beta = 1 to the
+/// seeding time cuts.
 template <class Hit>
-double hitTime(const Hit& hit) {
-  return static_cast<double>(hit.getTime()) * Acts::UnitConstants::ns;
+double hitTime(const Hit& hit, double betaHypothesis = 1.0) {
+  const double t = static_cast<double>(hit.getTime()) * Acts::UnitConstants::ns;
+  if (betaHypothesis == 1.0) {
+    return t;
+  }
+  const auto& pos = hit.getPosition();
+  return t - std::hypot(pos.x, pos.y, pos.z) * (1.0 / betaHypothesis - 1.0);
 }
 
 //! Get path to a resource file
