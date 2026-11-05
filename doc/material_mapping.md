@@ -31,11 +31,12 @@ this page covers how to do it for the geometry `ActsGeoSvc` builds:
 5. **Validate** the map.
 
 The options files for steps 2, 3 and 5 are installed in
-`share/k4ActsTracking/options` (`k4ActsTracking/options` in the sources), written
-`$OPTS` below, and the plotting script `compare_material_tracks.py` in `bin`.
-For MAIA_v0, steps 2 to 5 are:
+`share/k4ActsTracking/options` (`k4ActsTracking/options` in the sources), and
+the plotting script `compare_material_tracks.py` in `bin`. For MAIA_v0, steps 2
+to 5 are:
 
 ```bash
+OPTS=$LCG_VIEW_DIR/share/k4ActsTracking/options  # or <install prefix>/share/k4ActsTracking/options
 COMPACT=$k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml
 mkdir -p scan
 for seed in 1 2 3 4 5 6 7 8 9 10; do
