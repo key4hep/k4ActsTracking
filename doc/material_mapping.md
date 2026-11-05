@@ -19,339 +19,173 @@ limitations under the License.
 # Material mapping for the Gen3 (blueprint) geometry
 
 ACTS does not use the full simulation geometry for tracking. It keeps the
-sensitive surfaces and throws the passive material away, then puts that material
-back by *projecting* it onto a small number of dedicated surfaces. Getting that
-material back is a four step process:
+sensitive surfaces, drops the passive material, and puts that material back by
+projecting it onto a few dedicated surfaces. The concepts are explained in the
+[ACTS material mapping how-to](https://acts-project.github.io/material_mapping_howto.html);
+this page covers how to do it for the geometry `ActsGeoSvc` builds:
 
-1. **Designate** which surfaces receive the projected material.
-2. **Record** the material seen by geantinos shot through the detector
-   geometry.
-3. **Map** the recorded material onto the designated surfaces and write it out.
-4. **Read back** the resulting map when running reconstruction.
+1. **Designate** the surfaces that receive the material (in the blueprint).
+2. **Record** the material along straight geantino rays.
+3. **Map** the recorded material onto the designated surfaces.
+4. **Use** the map in reconstruction.
+5. **Validate** the map.
 
-This document covers the Gen3 (blueprint) geometry built by `ActsGeoSvc`.
+The options files for steps 2, 3 and 5 are installed in
+`share/k4ActsTracking/options` (`k4ActsTracking/options` in the sources), written
+`$OPTS` below, and the plotting script `compare_material_tracks.py` in `bin`.
+For MAIA_v0, steps 2 to 5 are:
 
-> **The Gen1 files in `data/` are not usable here.** `MAIA_v0_material.json` is a
-> Gen1 *markup* file (every entry has null material), and `material-maps.json` is
-> keyed on Gen1 TGeo volume/layer/approach identifiers, which a blueprint-built
-> geometry does not have. Do not pass either to `MaterialMapFile`.
+```bash
+COMPACT=$k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml
+mkdir -p scan
+for seed in 1 2 3 4 5 6 7 8 9 10; do
+  k4run $OPTS/material_recording.py --compactFile $COMPACT \
+    --numTracks 100000 --seed $seed --outputFile scan/material_tracks_$seed.root
+done
+k4run $OPTS/material_mapping.py --compactFile $COMPACT \
+  --inputFiles scan/ --outputFile MAIA_v0_gen3_material_map.json
+k4run $OPTS/material_validation.py --compactFile $COMPACT \
+  --materialMapFile MAIA_v0_gen3_material_map.json \
+  --inputFiles scan/ --outputFile propagated_material_tracks.root
+compare_material_tracks.py scan/ propagated_material_tracks.root -o validation/
+```
+
+The Gen1 files in `data/` (`MAIA_v0_material.json`, `material-maps.json`) use
+a different key scheme and do not work with a blueprint-built geometry.
 
 ## 1. Designation
 
-Done in
+Receivers are designated in
 [`DD4hepBlueprintConstruction.cpp`](../k4ActsTracking/src/components/DD4hepBlueprintConstruction.cpp),
-see the `Material designation` block in the `Blueprints` namespace. Currently
-wired up for **MAIA_v0** (and MuSIC_v2, which shares its blueprint).
+in the `Material designation` block of the `Blueprints` namespace. This is done
+for **MAIA_v0** (and MuSIC_v2, which shares its blueprint); the other
+detectors carry no material yet.
 
-Two ACTS rules decide which faces may be designated:
+The scheme is: **on every layer volume, designate the face pointing towards the
+interaction point** (the inner cylinder of a barrel layer, the IP-facing disc of
+an endcap layer). That face is shared with the inward neighbour, so every gap
+between two layers gets one receiver. Two ACTS rules limit which faces can be
+used:
 
-- a portal **shared** by two adjacent volumes (*fused* while stacking) may carry
-  material from only one of the two sides — otherwise
-  `Cannot fuse portals if both have material`;
-- a face that a container has to **merge** while stacking its children may not
-  carry material at all; construction aborts.
-
-Which faces are which follows from the stacking direction:
+- a portal **shared** by two volumes may carry material from one side only;
+- a face that a container **merges** while stacking its children may not carry
+  material at all.
 
 | container stacks along | children's cylinder faces | children's disc faces |
 | ---------------------- | ------------------------- | --------------------- |
-| r                      | fused (safe)              | merged (unsafe)       |
-| z                      | merged (unsafe)           | fused (safe)          |
+| r                      | fused (one side allowed)  | merged (not allowed)  |
+| z                      | merged (not allowed)      | fused (one side allowed) |
 
-A face that is *interior* to a stack is always safe. A face at the extreme of a
-stack becomes the container's own face and propagates up the tree, where an
-ancestor may merge it.
+A layer whose IP-facing face is the extreme face of its container (rather than
+shared with a neighbour inside it) is excluded with `LayerMaterial::skipInnermost`.
+Nothing is lost: that face is the same surface as a receiver designated from the
+other side (e.g. the beampipe's outer cylinder).
 
-The scheme that follows from this: **designate, on every layer volume, only the
-face pointing towards the interaction point** — the inner cylinder of a barrel
-layer, and the IP-facing disc of an endcap layer. That is exactly the portal the
-layer shares with its inward neighbour, so only one side is ever designated.
+Passive structures without a volume of their own, such as MAIA's solenoid in
+front of the calorimeter, get one so that their faces can be designated
+(`addCylindricalSolenoid`).
 
-The exception is a layer whose IP-facing face happens to be the **extreme** face
-of its container rather than an interior one. Such a face is not a shared portal
-at all; it becomes the container's own face and is merged higher up. Those layers
-are excluded with `LayerMaterial::skipInnermost`.
-
-Note the rule is "*never designate a face that is the extreme of its container*",
-**not** "always skip layer 0". Whether the innermost layer's inner cylinder is
-the container extreme depends on what else sits inside the same radial stack, and
-in MAIA the three barrels do not agree:
-
-- `OuterTrackerBarrel` is a plain radial stack `[layer0 | layer1 | layer2]`, so
-  `layer0`'s inner cylinder *is* the container's inner cylinder. The container is
-  then a child of the `OuterTracker` z-stack, which merges its children's
-  cylinder faces — so `layer0` **is skipped**. Removing the skip aborts
-  construction with:
-
-  ```
-  [OuterTracker]: Material is designated on portal faces that are merged when stacking child volumes in AxisZ direction.
-    - CylinderStackShell(dir=AxisR, 3 children) carries material on face InnerCylinder
-  ```
-
-- `InnerTrackerBarrel` is *not* a plain stack: `makeNestedInnerTracker` puts the
-  whole `Vertex` node inside it as a radial child, giving
-  `[Vertex | layer0 | layer1]`. So `layer0`'s inner cylinder is an interior
-  portal, fused with `Vertex`'s outer cylinder — and since nothing designates the
-  vertex's outer side, exactly one side carries material. `layer0` **is
-  designated**.
-
-- `VertexBarrel` is a plain stack inside the `Vertex` z-stack, so `layer_0`
-  **is skipped**, for the same reason as the outer tracker.
-
-Skipping loses nothing, because the excluded face always survives as part of a
-receiver that *is* designated. Following the outer-tracker case up the tree:
-`OuterTrackerBarrel.InnerCylinder` → merged into `OuterTracker.InnerCylinder` →
-fused with `InnerTracker.OuterCylinder`, which is designated. The two are the
-same physical portal, so designating both would have been a double designation of
-one surface even if it were legal. Likewise the vertex barrel's skipped face is
-the beampipe's outer cylinder, shared all the way down.
-
-### The solenoid
-
-The layer surfaces alone are not enough for a detector whose solenoid sits
-between the tracker and the calorimeter, as MAIA_v0's does: the coil spans
-**r = 1500 → 1857 mm** and the ECAL barrel face is at **1857 mm**, so every
-extrapolation to the calorimeter face crosses several hundred mm of vacuum tank,
-stabilisation material and conductor.
-
-The radial stack closes gaps by expanding the inner volume, so the outer tracker
-— whose sensors end at 1498.5 mm — was stretched all the way out to 1856 mm,
-leaving the coil straddling a single volume with no boundary anywhere inside it.
-Its material could only be projected onto the outermost tracker layer (well inside
-the coil) or onto that stretched boundary (hard against the calorimeter face).
-
-`addCylindricalSolenoid` inserts a `Solenoid` volume covering the coil, which
-splits that region:
-
-```
-OuterTracker   612.50 → 1499.80   ← outer cylinder designated (coil inner face)
-Solenoid      1499.80 → 1856.00   ← outer cylinder designated (coil outer face)
-CaloBarrel    1856.00 → 1923.51       ECAL face at 1857
-```
-
-The two designations now bracket the coil, so the mapping can spread its material
-across the thickness instead of lumping it at one edge. A surface *inside* the
-coil might be better still; that is the obvious next refinement.
-
-The inner radius is read from the `Solenoid` DetElement's envelope shape rather
-than hard-coded, and the insertion is **guarded** on the coil actually lying
-inside the calorimeter face. MuSIC_v2 shares this blueprint but puts its coil at
-r = 2055 mm, outside its calorimeter (1690 → 1960 mm), where it is irrelevant for
-the extrapolation and a volume would not fit the radial stack at all — so it
-correctly gets none.
-
-### Receiver inventory
-
-For MAIA this yields **51 receivers**:
-
-| receiver                                        | count |
-| ----------------------------------------------- | ----: |
-| `Beampipe` outer cylinder                           |     1 |
-| `VertexBarrel` layers (`layer_0` skipped: extreme)  |     4 |
-| `VertexEndcap` layers                               |    16 |
-| `InnerTrackerBarrel` layers (none skipped: interior) |     3 |
-| `InnerTrackerEndcap` layers                         |    14 |
-| `OuterTrackerBarrel` layers (`layer0` skipped: extreme) |  2 |
-| `OuterTrackerEndcap` layers                         |     8 |
-| `InnerTracker` / `OuterTracker` outer cylinders     |     2 |
-| `Solenoid` outer cylinder                           |     1 |
-
-`ActsGeoSvc` reports the total on every run:
+For MAIA_v0 this gives 51 receivers. `ActsGeoSvc` prints the count on every
+run:
 
 ```
 ActsGeoSvc INFO 51 of 76706 surfaces in the tracking geometry carry material, 51 of them a proto-material placeholder.
 ```
 
-Getting the designation wrong is not silent: ACTS throws during construction and
-names the offending portal. The `load_geo_*` tests catch it.
+A designation that breaks one of the rules aborts geometry construction and
+names the portal; the `load_geo_*` tests catch it.
 
 ### Adding a detector
 
-The helpers in the `Blueprints` namespace all take optional material arguments
-that default to "no material", so the other detectors (`ILD_FCCee_v01/v02`,
-`CLD_o2_v07`, `LUXE_v0`) are unaffected. To add one, work out its tree's fused
-and merged faces using the table above, then pass `LayerMaterial` into
-`makeGroupedBarrel` / `makeBarrel` / `attachEndcaps` / `makeRegularTracker` /
-`makeNestedInnerTracker`, and wrap whole containers with `withMaterial` where a
-subdetector envelope should also receive material.
+1. Pass `LayerMaterial` to `makeGroupedBarrel` / `makeBarrel` /
+   `attachEndcaps` / `makeRegularTracker` / `makeNestedInnerTracker`, and wrap
+   containers with `withMaterial` where an envelope face should receive
+   material. Without these arguments a helper designates nothing.
+2. Give passive structures between the tracker and the calorimeter a volume, as
+   above.
+3. Check the scan region the recording and mapping jobs print (`Rays stop at
+   ...`, `Mapping recorded material at ...`): it must be the ECAL inner face
+   and enclose every receiver. It is taken from the first detector, by name,
+   with the type flags `CALORIMETER | ELECTROMAGNETIC | BARREL` (not
+   `FORWARD`) or `CALORIMETER | ELECTROMAGNETIC | ENDCAP` and its
+   `LayeredCalorimeterData`. If that picks the wrong detector, set `--maxR` /
+   `--maxZ` in both jobs.
 
-Also check for passive structures that sit in the path to the calorimeter face
-but have no volume in the tree — a solenoid, a support tube, a cryostat. Anything
-like that ends up inside whichever volume the radial stack stretches over it,
-with no surface nearby to project onto. `addCylindricalSolenoid` is the pattern:
-give the structure a volume of its own so its boundaries become designatable
-surfaces.
+## 2. Recording
 
-Finally, check the region the scan covers (section 2a): the recording and the
-mapping print it (`Rays stop at ...`, `Mapping recorded material at ...`). It
-must enclose every receiver and end at the calorimeter face. It comes from the
-calo-face surfaces `ActsGeoSvc` builds: the first detector, by name, with the
-type flags `CALORIMETER | ELECTROMAGNETIC | BARREL` (not `FORWARD`) or
-`CALORIMETER | ELECTROMAGNETIC | ENDCAP`, and its `LayeredCalorimeterData`. A
-forward calorimeter flagged like an endcap ECAL and named before it, a missing
-extension or a non-polygonal barrel give a different region; set `MaxR` /
-`MaxZ` for such a detector.
-
-## 2. Recording the geantino scan
-
-A geantino neither interacts nor bends, so the scan is ray tracing: shoot
-straight lines from the origin and note every volume each one crosses, with its
-material and path length. That is all the mapper needs (an
-`Acts::RecordedMaterialTrack`: start point, direction and one
-`Acts::MaterialInteraction` per crossing). The scan knows nothing about the
-blueprint or the designated surfaces, so all it depends on is the DD4hep compact
-file being the same one reconstruction uses.
-
-### 2a. Record with `MaterialRecordingAlg`
+A geantino neither interacts nor bends, so the recording is ray tracing: each
+ray from the origin notes every volume it crosses, with its material and path
+length. The recording knows nothing about the receivers; it only needs the same
+compact file as reconstruction.
 
 [`MaterialRecordingAlg`](../k4ActsTracking/src/components/MaterialRecordingAlg.cpp)
-walks the rays with the TGeo navigator through the geometry `GeoSvc` builds from
-the compact file and writes them in the `material_tracks` format the mapping
-reads. It needs nothing beyond what `k4ActsTrackingPlugins` already links: no
-Geant4, no GDML export and no ACTS Python bindings.
+walks the rays with the TGeo navigator through the geometry `GeoSvc` builds:
 
 ```bash
-k4run test/options/material_recording.py \
+k4run $OPTS/material_recording.py \
   --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \
   --numTracks 100000 --seed 1 \
-  --outputFile scan/material_tracks_seed1.root
+  --outputFile scan/material_tracks_1.root
 ```
 
-Directions are flat in η (`--etaRange`, default −4 to 4) and φ. For a large scan
-run several jobs with different `--seed`s into one directory; the mapping chains
-every `*.root` file in it, so there is no `hadd` step. A job is single-threaded;
-100 000 rays take about a minute.
+- Directions are flat in η (`--etaRange`, default −4 to 4) and φ.
+- A job is single-threaded; 100 000 rays take about a minute. For a larger scan
+  run several jobs with different `--seed`s into one directory.
+- Rays stop at the ECAL inner face (printed as `Rays stop at ...`);
+  `--maxR` / `--maxZ` (mm) set other values. A detector without a calorimeter
+  face falls back to the extent of the tracking world.
+- `Air` and `Vacuum` are not recorded, as in ACTS' Geant4 recording.
+- `--replayFiles <files or directories>` takes the start points and directions
+  from an existing scan instead of sampling new ones, so the two scans can be
+  compared track by track.
 
-**Where the rays stop.** At the ECAL inner face: the cylinder inscribed in the
-barrel polygon and the endcap discs, taken from the calorimeter-face surfaces
-`ActsGeoSvc` builds ([`MaterialScanRegion.h`](../k4ActsTracking/src/components/MaterialScanRegion.h));
-the job prints it (`Rays stop at ...`). A detector without a calorimeter face
-falls back to the extent of the tracking world, and `--maxR` / `--maxZ` (mm)
-override either value. The tracking world is not used by default because it
-contains the calorimeter volumes that carry the calo-face surfaces.
+### Cross-check with Geant4
 
-The boundary matters because the mapper hands every recorded step to the nearest
-receiver: anything recorded behind the calorimeter face would end up on the
-outermost receivers. The mapping clips its input to the same region (section 3),
-so keep `--maxR` / `--maxZ` the same in both jobs if you change them.
-
-**Excluded materials.** `Air` and `Vacuum` are not recorded, as in ACTS' Geant4
-recording (`ExcludeMaterials`).
-
-**Where a crossing is placed.** At the point where the ray enters the volume,
-which is where ACTS' Geant4 recording places a step (its pre-step point), so the
-two give the same maps. The mapper assigns a whole crossing to the receiver
-nearest that point, which matters for long crossings of dense material (forward
-shielding, the beam pipe at grazing angles).
-
-**Forward rays.** A receiver bin crossed both by rays through dense forward
-material (MAIA_v0's tungsten nozzle) and by rays just outside it gets their
-average, so rays at the edge of such material see far too much of it after
-mapping. Limit `--etaRange` to the acceptance if that region matters.
-
-**Replaying a scan.** `--replayFiles <files or directories>` takes the start
-points and directions from an existing scan, entry by entry, instead of sampling
-new ones; `--numTracks` then defaults to all entries. The output lines up track
-by track with the input, e.g. to compare with a Geant4 scan (2b).
-
-### 2b. Recording with Geant4 instead
-
-ACTS' own recording runs a Geant4 geantino scan of a GDML export. It needs ACTS
-built with its Python bindings and Geant4 examples, which no Key4hep stack
-currently provides, so it needs a private ACTS build; it is useful as a
-cross-check of 2a.
-
-Export the geometry to GDML:
+ACTS provides the same recording as a ddsim plugin (`ActsMaterialRecorder`,
+[acts#6304](https://github.com/acts-project/acts/pull/6304)), which runs Geant4
+on the geometry DDG4 builds. It needs an ACTS build with the DD4hep and Geant4
+plugins (library `ActsPluginDD4hepGeant4` on `LD_LIBRARY_PATH`), which the
+Key4hep stack does not provide at the moment, and the steering file from ACTS'
+`Examples/Scripts/Python` (`$ACTS_SCRIPTS` below):
 
 ```bash
-ddsim --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml --outputFile /tmp/gdmldump.root --numberOfEvents 1 --enableGun --geometry.dumpGDML MAIA_v0.gdml
+ddsim --steeringFile $ACTS_SCRIPTS/material_recording_ddsim.py \
+  --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \
+  --numberOfEvents 200 --outputFile geant4_material_tracks.root \
+  --outputConfig.recordingMaxR=1857 \
+  --outputConfig.recordingMinZ=-2307.3 --outputConfig.recordingMaxZ=2307.3
 ```
 
-This produces a ~44 MB `MAIA_v0.gdml`. Check the log is free of shape conversion
-errors — anything DD4hep cannot express in GDML silently drops out of the scan
-and its material will be missing from the map.
-
-Then run ACTS' script (`Examples/Scripts/Python/material_recording.py` in the
-ACTS sources) on it:
+The steering file shoots 1000 geantinos per event. The `recording*` limits
+stop the rays at the ECAL face as above; the mapping clips its input to that
+region anyway. To compare with `MaterialRecordingAlg` along the same
+directions:
 
 ```bash
-python3 material_recording.py --input MAIA_v0.gdml -n 200 -t 1000 --eta-range -4 4 -o geant4_material_tracks
-```
-
-Run it as a single job: the script uses a fixed random seed, so several jobs
-record the same geantinos. The scan runs to the end of the world, through the
-calorimeters; the mapping clips it to the region in front of the calorimeter
-face. To compare it with a TGeo scan, replay its directions:
-
-```bash
-k4run test/options/material_recording.py \
+k4run $OPTS/material_recording.py \
   --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \
   --replayFiles geant4_material_tracks.root --outputFile tgeo_material_tracks.root
 ```
 
-### Inputs from several jobs
-
-Pass all scan files to the mapping step at once — `MaterialMappingAlg` chains
-its `InputFiles`, so there is no `hadd` step. The simplest way is to hand
-`--inputFiles` the directory:
-
-```bash
-k4run test/options/material_mapping.py \
-  --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \
-  --inputFiles scan/ \
-  --outputFile MAIA_v0_gen3_material_map.json
-```
-
-Every `*.root` file directly inside the directory is used, in sorted order;
-anything else in there (logs, notes) is ignored, and the search does not recurse.
-Files and directories can be mixed, and a file named twice — say a directory plus
-one of its own members — is only chained once, since chaining a scan file twice
-would double count its geantinos instead of failing visibly.
-
-**Statistics.** Cylinder receivers are binned 20 (φ) × 200 (z), discs 50 (r) ×
-20 (φ), so MAIA_v0's 51 receivers carry 90 000 bins. A few million rays bring the
-bin contents to the percent level. Some bins stay empty however many rays (rays
-cross them, but every step nearby lies closer to another receiver), so judge the
-statistics by comparing maps from two independent scans, not by empty bins.
-
-**Compatibility checklist.** Both recordings write the format the step 3 reader
-is configured for, but if you write your own driver these must hold:
-
-| `RootMaterialTrackWriter` | value | why |
-| ------------------------- | ----- | --- |
-| `treeName`                | `material_tracks` | what the reader opens |
-| `prePostStep`             | `True`  | the reader binds the pre/post-step branches |
-| `recalculateTotals`       | `True`  | cross-check of the per-step sums |
-| `storeSurface`            | `False` | the scan knows nothing of our surfaces |
-| `storeVolume`             | `False` | likewise |
-
 ## 3. Mapping
 
-> **The mapping must run against *our* geometry.** This is the one thing that
-> cannot be delegated to an external ACTS job. The map is keyed by
-> `Acts::GeometryIdentifier`, and a stock ACTS DD4hep conversion produces
-> completely different volume numbering from our blueprint. A map produced
-> outside this repository will load without complaint and decorate nothing (or,
-> worse, the wrong surfaces).
->
-> ACTS ships its own `Examples/Scripts/Python/material_mapping.py`, and it will
-> run happily here. Do not use it. It maps onto whatever geometry it built itself,
-> not onto ours.
-
-That is why the mapping is a Gaudi algorithm here rather than an external
-script: `MaterialMappingAlg` runs in the same job as `ActsGeoSvc`, so it projects
-onto the very geometry reconstruction will use. It needs no dependencies beyond
-what `k4ActsTrackingPlugins` already links (`Acts::Core` for the mapper,
-`Acts::PluginRoot` to read the scan, `Acts::PluginJson` to write the map).
+[`MaterialMappingAlg`](../k4ActsTracking/src/components/MaterialMappingAlg.cpp)
+runs in the same job as `ActsGeoSvc` and projects the scan onto its receivers.
+The map is keyed by `Acts::GeometryIdentifier`, which depends on the blueprint,
+so it has to be made against this geometry: a map from ACTS' own
+`material_mapping.py` would not match it.
 
 ```bash
-k4run test/options/material_mapping.py \
+k4run $OPTS/material_mapping.py \
   --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \
   --inputFiles scan/ \
   --outputFile MAIA_v0_gen3_material_map.json
 ```
 
-Expected output (1 M rays from `MaterialRecordingAlg`, progress lines left out):
+`--inputFiles` takes files and directories; every `*.root` file directly inside
+a directory is chained in sorted order, so there is no `hadd` step.
+
+Output for 1M rays from `MaterialRecordingAlg` (progress lines left out):
 
 ```
 MaterialMappingAlg INFO Mapping material onto 51 designated surfaces.
@@ -362,69 +196,34 @@ MaterialMappingAlg INFO Material in x/X0 summed over all tracks: 1.811e+08 mappe
 MaterialMappingAlg INFO Wrote material for 51 surfaces to 'MAIA_v0_gen3_material_map.json'.
 ```
 
-The surface count on the first and last lines must agree, and must match what
-`ActsGeoSvc` reports for the geometry. If the last number is smaller, some
-receivers were never crossed by a geantino.
-
-**The recorded material is clipped to the region in front of the calorimeter**
-(section 2a, `MaxR` / `MaxZ`) before it is mapped: steps that start outside are
-dropped and the one that crosses the boundary is cut there, taking a step to
-start at its recorded position as both recordings do. A scan from
-`MaterialRecordingAlg` already ends there, so only float rounding at the
-boundary shows up as "outside"; for a Geant4 scan of the whole detector most of
-the material does. Material "on tracks crossing no receiver" should be zero; it
-is lost from the map.
-
-**Do not pass `--materialMapFile` to the mapping job.** The mapper identifies its
-targets by their proto-material placeholders, and loading a map replaces exactly
-those. The algorithm refuses to run if it finds no receivers, which is what that
-mistake looks like.
-
-### Properties
+- The surface counts on the first and last line should agree with the
+  `ActsGeoSvc` count; a smaller last number means some receivers were never
+  crossed.
+- Recorded material outside the scan region is not mapped, since the mapper
+  gives every step to the nearest receiver and material behind the ECAL face
+  would pile up on the outermost ones. For a scan that already stops there,
+  "outside" is only rounding at the boundary. Keep `--maxR` / `--maxZ` equal to
+  the recording's if you set them.
+- "On tracks crossing no receiver" should be zero; that material is lost.
+- Cylinders are binned 20 (φ) × 200 (z), discs 50 (r) × 20 (φ): 90 000 bins for
+  MAIA_v0. A few million rays bring them to the percent level. Some bins stay
+  empty however many rays are used, so judge the statistics by comparing maps
+  from two independent scans.
 
 | property | default | note |
 | -------- | ------- | ---- |
-| `InputFiles` | *(required)* | scan ROOT files; several may be chained. The options file also accepts directories and expands them to the `*.root` files inside |
-| `TreeName` | `material_tracks` | must match the recording job's `treeName` |
-| `OutputFile` | `material-map.json` | `.json` via `MaterialMapJsonConverter` |
-| `MaxTracks` | `-1` | cap for quick smoke tests; negative reads everything |
+| `InputFiles` | *(required)* | scan ROOT files, chained |
+| `TreeName` | `material_tracks` | |
+| `OutputFile` | `material-map.json` | written with `MaterialMapJsonConverter` |
+| `MaxTracks` | `-1` | cap for quick tests; negative reads everything |
 | `EmptyBinCorrection` | `true` | correct bins no geantino crossed |
-| `PrePostStepInfo` | `true` | must match the writer's `prePostStep` |
-| `SurfaceInfo` | `false` | must match the writer's `storeSurface` |
-| `VolumeInfo` | `false` | must match the writer's `storeVolume` |
-| `MaxR` | `-1` | recorded material beyond this radius (mm) is not mapped; non-positive: the ECAL barrel inner face. Keep it equal to the recording's |
-| `MaxZ` | `-1` | the same for \|z\| (mm); non-positive: the ECAL endcap inner face |
+| `PrePostStepInfo`, `SurfaceInfo`, `VolumeInfo` | `true`, `false`, `false` | must match how the scan was written; a mismatch shows up as ROOT branch errors |
+| `MaxR`, `MaxZ` | `-1` | scan region (mm); non-positive: the ECAL inner face |
 
-`PrePostStepInfo`, `SurfaceInfo` and `VolumeInfo` are the ones to check first if
-the input will not read: they select which branches the reader binds, so a mismatch with step 2's writer
-settings shows up as ROOT branch errors rather than as wrong numbers.
+## 4. Using the map
 
-### Two things about the job structure
-
-It is a **one-shot job, not an event loop**: the algorithm reads the whole scan
-on its first `execute()`. The options file therefore sets `EvtMax=1` *and*
-`EvtSel="NONE"`. The second one matters — without an event selector there is no
-event source, the loop runs zero events, and the algorithm initializes and
-finalizes without ever executing. That failure is silent apart from the
-algorithm refusing to write an empty map.
-
-The receivers are found with `MaterialSurfaces::collectProtoMaterialSurfaces`
-([`MaterialSurfaces.h`](../k4ActsTracking/src/components/MaterialSurfaces.h)),
-which `ActsGeoSvc` also uses for its proto count, so the two cannot disagree
-about what counts as a designated surface.
-
-The writer is configured for a Gen3 geometry: `processBoundaries = true`,
-everything else off. The receivers are volume portals, the sensors carry no
-material, and there is no volume material.
-
-## 4. Reading the map back
-
-`ActsGeoSvc` applies the map itself, after construction, by walking the
-geometry and decorating volumes, portal surfaces and sensitive surfaces
-(`MaterialDecorationVisitor` in
-[`ActsGeoSvc.cpp`](../k4ActsTracking/src/components/ActsGeoSvc.cpp)).
-
-Point the `MaterialMapFile` property at the map:
+Pass the map to `ActsGeoSvc` with the `MaterialMapFile` property, e.g. with
+`--materialMapFile` of the CKF test jobs in `test/options`:
 
 ```bash
 k4run test/options/MAIA_CKFTrackingAlg.py \
@@ -432,147 +231,65 @@ k4run test/options/MAIA_CKFTrackingAlg.py \
   --materialMapFile MAIA_v0_gen3_material_map.json
 ```
 
-A `.root` file is read with `ActsPlugins::RootMaterialDecorator`, anything else
-(`.json`, `.cbor`) with `Acts::JsonMaterialDecorator`. A missing or unparseable
-file fails service initialisation with a message naming the file.
+`.root` files are read with `ActsPlugins::RootMaterialDecorator`, anything else
+(`.json`, `.cbor`) with `Acts::JsonMaterialDecorator`. The `ActsGeoSvc` line
+shows whether the map applied:
 
-Check the summary line afterwards. The proto count is the diagnostic:
+- `51 of them a proto-material placeholder`: none of its entries matched (map
+  made for a different geometry or blueprint). The service warns.
+- `0 of them a proto-material placeholder`: every receiver got material, as
+  it should.
+- a number in between: some receivers got no material (too few rays, or a
+  receiver no ray crosses).
 
-- `51 ... 51 of them a proto-material placeholder` — no map applied, or none of
-  its entries matched. A proto placeholder contributes no actual material, so
-  tracking still sees none; the service warns about this.
-- `51 ... 0 of them a proto-material placeholder` — the map filled in every
-  designated receiver. This is what a correct map looks like.
+## 5. Validation
 
-## 5. Testing the result
-
-Work up this ladder; each rung isolates a different failure.
-
-**5a. The designation is intact (no map needed).**
-
-```bash
-ctest -R load_geo --output-on-failure
-```
-
-Every detector must construct. A designation on a merged portal aborts here with
-the offending portal named. Then confirm the receiver count:
+[`MaterialValidationAlg`](../k4ActsTracking/src/components/MaterialValidationAlg.cpp)
+propagates the scan's directions through the mapped geometry and records the
+material it finds, in the same format as the scan and entry by entry, so the
+two can be compared track by track. Give it the scan the map was made from:
 
 ```bash
-k4run k4ActsTracking/examples/test_visualize_acts_geo.py --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml
-```
-
-Expect `51 ... 51 of them a proto-material placeholder`. A different total means
-the blueprint changed and **any existing map is now invalid** — regenerate it.
-
-**5b. The map keys line up.** To catch a
-map produced against the wrong geometry:
-
-```bash
-k4run k4ActsTracking/examples/test_visualize_acts_geo.py --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml --materialMapFile MAIA_v0_gen3_material_map.json
-```
-
-- proto count drops `51 → 0`: correct.
-- proto count unchanged at 51: none of the map's identifiers matched. The map was
-  built against a different geometry.
-- proto count drops only partly: some receivers got no material. Usually too few
-  geantinos, or a receiver the scan never crosses.
-- **total** rises above 51: the map carries entries for surfaces we never
-  designated. Harmless but a sign the map writer config in step 3 was too
-  permissive (`processSensitives` left on).
-
-**5c. Physics validation.** `MaterialValidationAlg` propagates geantinos through
-the *mapped* geometry and compares the accumulated X₀/L₀ against the original
-scan, binned in η and φ. Agreement to a few percent is the target; a systematic
-deficit means material that fell outside every receiver.
-
-Expect it to differ beyond the tracking acceptance, where single receiver bins
-collect rays through very different amounts of material (section 2a).
-
-The reference must cover the same region as the map. A Geant4 scan of the whole
-detector includes the calorimeters, which the map leaves out on purpose; replay
-its directions with `MaterialRecordingAlg` (`--replayFiles`) and compare against
-that recording instead.
-
-Feed it the *same* scan the map was built from — directions are taken from it
-entry by entry, so the two files line up track by track and need no rebinning to
-difference. `--inputFiles` expands directories exactly as the mapping job does,
-so the same `scan/` works for both:
-
-```bash
-k4run test/options/material_validation.py \
+k4run $OPTS/material_validation.py \
   --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \
   --materialMapFile MAIA_v0_gen3_material_map.json \
   --inputFiles scan/ \
   --outputFile propagated_material_tracks.root
 ```
 
-The expansion is sorted, so a directory always yields the same order and that
-track-by-track correspondence is reproducible.
+`--assigner intersection` (default) intersects the receivers, as the mapping
+does, and checks the content of the map; `--assigner propagator` uses the
+navigator and also checks that tracking reaches the material. A propagation
+that fails is written with no material and counted in a warning at the end;
+exclude those entries from the comparison.
 
-It has two assigners, selected with the `Assigner` property:
-
-- `intersection` (default) uses `Acts::IntersectionMaterialAssigner`, which
-  intersects the designated surfaces geometrically. This is what the mapping step
-  uses, so it validates the map's *content*.
-- `propagator` uses `ACTSTracking::GeantinoMaterialAssigner`, which walks the
-  geometry with the navigator. It additionally validates that *navigation*
-  reaches the material, i.e. that tracking will actually apply it.
-
-> **The geantino propagator must be field-free**, which is why
-> `ACTSTracking::makeGeantinoPropagator` uses a `StraightLineStepper` rather than
-> the CKF's `EigenStepper` over the detector field.
-
-> **Why not `Acts::PropagatorMaterialAssigner` directly.** It calls `.value()` on
-> the propagation result, which throws if the propagation did not terminate
-> normally, so one pathological direction in a million-geantino scan aborts the
-> whole job — after writing every track before it, which reads as a crash rather
-> than as one unusable track:
->
-> ```
-> Value called on error value: PropagatorError: Propagation reached the configured maximum number of steps
-> ```
->
-> `GeantinoMaterialAssigner` counts such a track instead, records it with no
-> material so the output stays aligned entry-by-entry with the scan, and names
-> the entry so you can exclude it. The run then ends with a summary:
->
-> ```
-> MaterialValidationAlg    INFO Deepest propagation took 44 of the 1000 allowed steps.
-> MaterialValidationAlg WARNING 1 of 50000 propagations failed and were written with no material [...]
-> ```
->
-> **`MaxPropagationSteps` is a safety valve, not a budget.** A geantino through
-> MAIA_v0 needs about 40 steps, so the default of 1000 is already ample. A track
-> that exceeds it is *stuck*, not slow: raising the limit a hundredfold does not
-> rescue it, it only takes longer to give up. Treat a non-zero failure count as a
-> navigation problem for those directions, and exclude those entries from the
-> comparison rather than trusting their zero.
-
-**5d. No tracking regression.**
+Then plot the comparison:
 
 ```bash
-ctest -R reco_MAIA_Gen3 --output-on-failure
+compare_material_tracks.py scan/ propagated_material_tracks.root -o validation/
 ```
 
-Note that adding real material *should* change the fit results — this test checks
-the chain still runs, not that the numbers are unchanged.
+This writes the material against η and φ for both, with their ratio
+(`x0_vs_eta.png`, `x0_vs_phi.png`), the per-track ratio (`x0_ratio.png`) and
+the ratio in η-φ (`x0_map_eta_phi.png`), and prints the totals. Inside the
+tracking acceptance the ratio should be close to 1; a deficit in some η range
+means material that is on no receiver. At the edge of dense forward material
+(MAIA's tungsten nozzle) single receiver bins average rays through and beside
+it, so the ratio there is far from 1; limit `--etaRange` of the recording if
+that region matters.
 
-**5e. Add the map to the repository.** Once validated, upload the file to the
-data server under its md5 hash (`md5sum <file>`), commit a content link
-`data/<file>.md5` containing that hash, and add the file name to `data_files` in
-`data/CMakeLists.txt`, which downloads it at build time (CMake `ExternalData`)
-and installs it.
+Finally, `ctest -R reco_MAIA_Gen3` checks that reconstruction still runs with
+the geometry (it does not use a map by default).
 
-## Caveat: maps are tied to the blueprint that produced them
+## 6. Adding a map to the repository
 
-Maps are keyed by `Acts::GeometryIdentifier`. For a Gen3 geometry those are
-assigned by traversal order in `Blueprint::construct` (volume / boundary /
-sensitive — there is no layer or approach component). **Changing the blueprint
-tree silently invalidates an existing map**, because the same identifier now
-refers to a different surface. Regenerate the map whenever
-`DD4hepBlueprintConstruction.cpp` changes the MAIA tree.
+Upload the validated file to the data server under its md5 hash
+(`md5sum <file>`), commit `data/<file>.md5` containing that hash, and add the
+file name to `data_files` in `data/CMakeLists.txt`, which downloads it at build
+time and installs it.
 
-`Acts::PortalDesignatorBlueprintNode` (ACTS
-[#5593](https://github.com/acts-project/acts/pull/5593)) gives portals stable
-string tags and could be a way to make this robust later; it is not used
-yet.
+**A map belongs to the blueprint it was made with.** The
+`Acts::GeometryIdentifier`s are assigned in traversal order of the blueprint,
+so any change to a detector's tree in `DD4hepBlueprintConstruction.cpp` makes
+existing maps put material on the wrong surfaces, without an error. Regenerate
+the map after such a change.
