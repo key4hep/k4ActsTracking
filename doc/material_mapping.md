@@ -51,9 +51,6 @@ k4run $SHARE/options/material_validation.py --compactFile $COMPACT \
 $SHARE/scripts/compare_material_tracks.py scan/ propagated_material_tracks.root -o validation/
 ```
 
-The Gen1 files in `data/` (`MAIA_v0_material.json`, `material-maps.json`) use
-a different key scheme and do not work with a blueprint-built geometry.
-
 **A map belongs to the geometry and blueprint it was made with.** Its
 `Acts::GeometryIdentifier`s are assigned in traversal order of the blueprint, so
 a change to a detector's tree in `DD4hepBlueprintConstruction.cpp` puts the
