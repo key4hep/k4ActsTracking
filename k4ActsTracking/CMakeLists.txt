@@ -46,6 +46,7 @@ set(_plugin_sources
   src/components/DD4hepBlueprintConstruction.cpp
   src/components/CKFTrackingAlg.cpp
   src/components/CKFTrackingFromSeedsAlg.cpp
+  src/components/MaterialRecordingAlg.cpp
   src/components/MaterialMappingAlg.cpp
   src/components/MaterialValidationAlg.cpp
   src/components/VertexFindingAlg.cpp
@@ -78,3 +79,14 @@ install(TARGETS k4ActsTrackingPlugins
 
 set(GAUDI_GENCONF_DIR "genConfDir")
 set_property(TARGET k4ActsTrackingPlugins PROPERTY GAUDI_GENCONF TRUE)
+
+# Material mapping workflow: the k4run options files, the Python module they
+# share (k4ActsTracking.material_helpers) and the comparison script
+install(FILES
+  options/material_recording.py
+  options/material_mapping.py
+  options/material_validation.py
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/k4ActsTracking/options)
+gaudi_install(PYTHON)
+install(PROGRAMS examples/compare_material_tracks.py
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/k4ActsTracking/scripts)

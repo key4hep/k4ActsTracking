@@ -19,39 +19,28 @@
 #
 """Project a recorded geantino scan onto the blueprint's material receivers.
 
-This is step 3 of doc/material_mapping.md. It has to run in the same job as
-ActsGeoSvc, because the map is keyed by Acts::GeometryIdentifier and those are
-assigned by the blueprint traversal order -- a map produced against any other
-geometry will not match.
-
-Usage:
-
-  k4run material_mapping.py \\
-      --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \\
-      --inputFiles geant4_material_tracks.root \\
-      --outputFile MAIA_v0_gen3_material_map.json
-
---inputFiles also takes directories, which is the convenient way to consume a
-scan that was split across batch jobs by examples/material_recording_chunk.py:
+It has to run in the same job as ActsGeoSvc, because the map is keyed by
+Acts::GeometryIdentifier and those are assigned by the blueprint traversal
+order -- a map produced against any other geometry will not match.
 
   k4run material_mapping.py \\
       --compactFile $k4geo_DIR/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml \\
       --inputFiles scan/ \\
       --outputFile MAIA_v0_gen3_material_map.json
 
-Every *.root file directly inside such a directory is mapped, in sorted order.
-Files and directories can be mixed freely. MaterialMappingAlg chains them, so
-there is no hadd step.
+--inputFiles takes files and/or directories; every *.root file directly inside
+a directory is chained, in sorted order, so a scan split across jobs needs no
+hadd step.
 
-Do NOT pass --materialMapFile here: the mapping needs the geometry to still
-carry its proto-material placeholders, which is what a loaded map replaces.
+Recorded material behind the ECAL inner face is not mapped (--maxR/--maxZ
+override that; keep them equal to the recording's).
 """
 
 from Gaudi.Configuration import INFO
 from Configurables import ApplicationMgr, MaterialMappingAlg
 from k4FWCore.parseArgs import parser
 
-from _ckf_helpers import expand_scan_inputs, make_services
+from k4ActsTracking.material_helpers import expand_scan_inputs, make_services
 
 parser.add_argument(
     "--inputFiles",
@@ -77,6 +66,19 @@ parser.add_argument(
     help="Stop after this many tracks; negative (default) processes everything",
 )
 
+parser.add_argument(
+    "--maxR",
+    type=float,
+    default=-1.0,
+    help="Recorded material at a larger radius [mm] is not mapped; default: the ECAL barrel inner face",
+)
+parser.add_argument(
+    "--maxZ",
+    type=float,
+    default=-1.0,
+    help="Recorded material at a larger |z| [mm] is not mapped; default: the ECAL endcap inner face",
+)
+
 args = parser.parse_known_args()[0]
 
 mapping = MaterialMappingAlg(
@@ -85,6 +87,8 @@ mapping = MaterialMappingAlg(
     TreeName=args.treeName,
     OutputFile=args.outputFile,
     MaxTracks=args.maxTracks,
+    MaxR=args.maxR,
+    MaxZ=args.maxZ,
     OutputLevel=INFO,
 )
 

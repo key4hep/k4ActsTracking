@@ -50,27 +50,26 @@
 #include <vector>
 
 /// Re-measures the material of the tracking geometry by propagating geantinos
-/// through it, so the result can be compared against the Geant4 scan the map was
-/// built from.
+/// through it, so the result can be compared against the scan the map was built
+/// from.
 ///
-/// This is step 5 of doc/material_mapping.md, the physics validation. Run it with
+/// See doc/material_mapping.md for the workflow. Run it with
 /// @c ActsGeoSvc.MaterialMapFile pointing at the map under test: the geometry
 /// then carries the mapped material, and what this algorithm records is what
 /// reconstruction will actually see.
 ///
 /// Directions are not sampled independently. They are taken from the same scan
-/// file the map was produced from, so every propagated track has a Geant4
-/// counterpart at the same entry index and the comparison is track by track,
+/// file the map was produced from, so every propagated track has a counterpart
+/// in the scan at the same entry index and the comparison is track by track,
 /// with no binning or sampling differences to confound it.
 ///
 /// The output is written in the same format as the scan (a `material_tracks`
 /// tree via @c ActsPlugins::RootMaterialTrackIo), so both files can be read by
 /// the same tooling -- see examples/compare_material_tracks.py.
 ///
-/// The assigner is the propagator-based one rather than the intersection-based
-/// one used for mapping: it reports the material the *navigator* finds, which is
-/// what tracking sees, and can differ from a pure geometric intersection if
-/// navigation misses a surface.
+/// The default assigner intersects the designated surfaces, as the mapping
+/// does. The propagator-based one reports the material the *navigator* finds,
+/// which is what tracking sees, and can differ if navigation misses a surface.
 struct MaterialValidationAlg final : public Gaudi::Algorithm {
   using Gaudi::Algorithm::Algorithm;
 

@@ -19,16 +19,17 @@
 #
 """Compare a geantino scan against the material re-measured from the map.
 
-Step 5 of doc/material_mapping.md. Takes the Geant4 scan (the truth) and the
-output of ``material_validation.py`` (the mapped geometry, re-measured by
-propagation) and reports how faithfully the map reproduces the material.
+Takes the scan (the truth, from ``material_recording.py`` or a Geant4
+recording) and the output of ``material_validation.py`` (the mapped geometry,
+re-measured by propagation) and reports how faithfully the map reproduces the
+material.
 
 Both files are in the same ``material_tracks`` format and, because the validation
 propagates the scan's own directions in order, entry *i* of one is the same
 geantino as entry *i* of the other. The comparison is therefore track by track,
 with no binning or sampling differences in the way.
 
-  python3 compare_material_tracks.py geant4_material_tracks.root \\
+  python3 compare_material_tracks.py scan/ \\
       propagated_material_tracks.root -o validation/
 
 Produces, in the output directory:
@@ -39,8 +40,7 @@ Produces, in the output directory:
   x0_map_eta_phi.png  2D map of the ratio, to localise where material is missing
 
 and prints a summary. A uniform ratio near 1 is the goal. A deficit confined to
-some eta range points at material that fell outside every designated receiver;
-see the "Designation" section of the workflow doc.
+some eta range points at material that fell outside every designated receiver.
 """
 
 import argparse
@@ -49,17 +49,26 @@ import sys
 from pathlib import Path
 
 
-def read_tracks(path, tree_name="material_tracks", max_tracks=-1):
+def expand_inputs(entries):
+    """Files as given, directories as their *.root files in sorted order, as the
+    validation job chains them."""
+    files = []
+    for entry in entries:
+        path = Path(entry)
+        found = sorted(path.glob("*.root")) if path.is_dir() else [path]
+        files += [str(f) for f in found if str(f) not in files]
+    return files
+
+
+def read_tracks(paths, tree_name="material_tracks", max_tracks=-1):
     """Read (eta, phi, X0, L0) per track. Returns four numpy arrays."""
     import numpy as np
     import ROOT
 
-    f = ROOT.TFile.Open(str(path))
-    if f is None or f.IsZombie():
-        raise SystemExit(f"Could not open {path}")
-    tree = f.Get(tree_name)
-    if not tree:
-        raise SystemExit(f"No tree '{tree_name}' in {path}")
+    tree = ROOT.TChain(tree_name)
+    for path in expand_inputs(paths):
+        if tree.Add(path, 0) == 0:
+            raise SystemExit(f"No tree '{tree_name}' in {path}")
 
     n = tree.GetEntries()
     if max_tracks >= 0:
@@ -75,7 +84,6 @@ def read_tracks(path, tree_name="material_tracks", max_tracks=-1):
         phi[i] = tree.v_phi
         x0[i] = tree.t_X0
         l0[i] = tree.t_L0
-    f.Close()
     return eta, phi, x0, l0
 
 
@@ -102,7 +110,7 @@ def plot_profile(ax_top, ax_bot, var, scan_v, prop_v, x0_scan, x0_prop, bins, lo
     cs, ms, es = profile(scan_v, x0_scan, bins, lo, hi)
     cp, mp, ep = profile(prop_v, x0_prop, bins, lo, hi)
 
-    ax_top.errorbar(cs, ms, yerr=es, fmt="o-", ms=3, label="Geant4 scan (truth)")
+    ax_top.errorbar(cs, ms, yerr=es, fmt="o-", ms=3, label="scan (truth)")
     ax_top.errorbar(cp, mp, yerr=ep, fmt="s-", ms=3, label="mapped geometry")
     ax_top.set_ylabel(r"$\langle X/X_0 \rangle$")
     ax_top.legend()
@@ -125,7 +133,11 @@ def main():
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    p.add_argument("scan", help="Geant4 geantino scan ROOT file")
+    p.add_argument(
+        "scan",
+        nargs="+",
+        help="geantino scan ROOT file(s) and/or directories, as given to material_validation.py",
+    )
     p.add_argument("propagated", help="output of material_validation.py")
     p.add_argument("-o", "--output-dir", default="material_validation")
     p.add_argument("--tree-name", default="material_tracks")
@@ -147,7 +159,7 @@ def main():
     import numpy as np
 
     eta_s, phi_s, x0_s, l0_s = read_tracks(args.scan, args.tree_name, args.max_tracks)
-    eta_p, phi_p, x0_p, l0_p = read_tracks(args.propagated, args.tree_name, args.max_tracks)
+    eta_p, phi_p, x0_p, l0_p = read_tracks([args.propagated], args.tree_name, args.max_tracks)
 
     n = min(len(eta_s), len(eta_p))
     if len(eta_s) != len(eta_p):
@@ -181,7 +193,7 @@ def main():
     ]:
         fig, (a, b) = plt.subplots(2, 1, sharex=True, height_ratios=[3, 1], figsize=(7, 6))
         plot_profile(a, b, None, var_s, var_p, x0_s, x0_p, args.bins, lo_, hi_, xlabel)
-        a.set_title("Material: Geant4 scan vs mapped geometry")
+        a.set_title("Material: scan vs mapped geometry")
         fig.tight_layout()
         fig.savefig(out / fname, dpi=140)
         plt.close(fig)
@@ -223,7 +235,7 @@ def main():
 
     tot_s, tot_p = x0_s.sum(), x0_p.sum()
     print(f"tracks compared        : {n}")
-    print(f"<X/X0> Geant4 scan     : {x0_s.mean():.4f}")
+    print(f"<X/X0> scan            : {x0_s.mean():.4f}")
     print(f"<X/X0> mapped geometry : {x0_p.mean():.4f}")
     print(f"integral ratio         : {tot_p / tot_s:.4f}" if tot_s > 0 else "integral ratio: n/a")
     if finite.size:
