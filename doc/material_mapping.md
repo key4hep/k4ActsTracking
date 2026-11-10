@@ -219,7 +219,7 @@ MaterialMappingAlg INFO Wrote material for 51 surfaces to 'MAIA_v0_gen3_material
 | -------- | ------- | ---- |
 | `InputFiles` | *(required)* | scan ROOT files, chained |
 | `TreeName` | `material_tracks` | |
-| `OutputFile` | `material-map.json` | written with `MaterialMapJsonConverter` |
+| `OutputFile` | `material-map.json` | ACTS' versioned material format; `.json`, `.cbor`, optionally `.zst` |
 | `MaxTracks` | `-1` | cap for quick tests; negative reads everything |
 | `EmptyBinCorrection` | `true` | correct bins no geantino crossed |
 | `PrePostStepInfo`, `SurfaceInfo`, `VolumeInfo` | `true`, `false`, `false` | must match how the scan was written; a mismatch shows up as ROOT branch errors |
@@ -244,6 +244,9 @@ The `ActsGeoSvc` line shows whether the map applied:
   it should.
 - a number in between: some receivers got no material (too few rays, or a
   receiver no ray crosses).
+
+JSON maps written before ACTS' versioned material format (v48.1.0) are no
+longer read; convert them with ACTS' `ActsMaterialMapMigrate <input> <output>`.
 
 ## 5. Validation
 

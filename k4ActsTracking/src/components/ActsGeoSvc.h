@@ -84,7 +84,8 @@ public:
   Gaudi::Property<std::string> m_materialMapFile{
       this, "MaterialMapFile", "",
       "Path to an ACTS material map to decorate the tracking geometry with. A '.root' file is read with ACTS' "
-      "RootMaterialDecorator, anything else ('.json', '.cbor') with the JsonMaterialDecorator. Empty (the default) "
+      "RootMaterialDecorator, anything else ('.json', '.cbor') as ACTS' versioned JSON material format (convert "
+      "older maps with ActsMaterialMapMigrate). Empty (the default) "
       "leaves the geometry carrying only the proto-material placeholders that the material mapping step projects "
       "onto. The map is keyed by geometry identifier, which for a Gen3 geometry is assigned by the blueprint "
       "traversal order, so a map is only valid for the blueprint that produced it."};
