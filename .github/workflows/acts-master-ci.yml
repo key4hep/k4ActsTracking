@@ -58,7 +58,7 @@ jobs:
           echo "=== Building ACTS from master ==="
           cd "$GITHUB_WORKSPACE/acts"
           cmake -B build -S . -GNinja \
-            -DCMAKE_CXX_STANDARD=20 \
+            -DCMAKE_CXX_STANDARD=23 \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=install \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
@@ -79,7 +79,7 @@ jobs:
           mkdir -p build
           cd build
           cmake .. \
-            -DCMAKE_CXX_STANDARD=20 \
+            -DCMAKE_CXX_STANDARD=23 \
             -DCMAKE_INSTALL_PREFIX=../install \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_FLAGS="-Werror -Wno-error=cpp -Wno-error=deprecated-declarations" \
