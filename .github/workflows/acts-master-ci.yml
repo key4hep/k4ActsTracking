@@ -54,12 +54,13 @@ jobs:
           ccache --set-config=max_size=500M
           ccache -z
 
-          # Build ACTS from master
+          # Build ACTS from master without treating upstream warnings as errors.
           echo "=== Building ACTS from master ==="
           cd "$GITHUB_WORKSPACE/acts"
           cmake -B build -S . -GNinja \
             -DCMAKE_CXX_STANDARD=23 \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF \
             -DCMAKE_INSTALL_PREFIX=install \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DACTS_BUILD_PLUGIN_DD4HEP=ON \
@@ -94,12 +95,12 @@ jobs:
 
           ccache -s
 
-      - name: Check deferred compiler warnings
+      - name: Check k4ActsTracking compiler warnings
         if: ${{ !cancelled() }}
         run: |
           log="$GITHUB_WORKSPACE/build/build.log"
           if [[ -f "$log" ]] && grep -E -- '\[-W(deprecated-declarations|cpp)\]' "$log"; then
-            echo "::error::Deprecation or #warning diagnostics found; see the build log above."
+            echo "::error::k4ActsTracking deprecation or #warning diagnostics found; see the build log above."
             exit 1
           fi
 
