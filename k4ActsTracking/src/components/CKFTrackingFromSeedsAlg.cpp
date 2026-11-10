@@ -95,6 +95,12 @@ struct CKFTrackingFromSeedsAlg final
 private:
   /// @name Run control
   ///@{
+  Gaudi::Property<bool> m_doTwoWayCKF{this, "DoTwoWayCKF", false,
+                                      "Run two-way CKF: first pass + smooth + second pass in opposite direction."};
+  Gaudi::Property<bool> m_inflateCovarianceTwoWay{this, "InflateCovarianceTwoWay", true,
+                                                  "Inflate covariance before the second CKF pass."};
+  Gaudi::Property<double> m_twoWayInflateCovarianceFactor{this, "TwoWayInflateCovarianceFactor", 100.0,
+                                                          "Covariance inflation factor for the second CKF pass."};
   Gaudi::Property<bool> m_propagateBackward{
       this, "PropagateBackward", false,
       "Find tracks outside-in: start the CKF at the outermost hit of each input candidate and propagate backward "
@@ -185,13 +191,16 @@ StatusCode CKFTrackingFromSeedsAlg::initialize() {
               << endmsg;
   }
 
-  m_ckfRunner.emplace(*m_actsGeoSvc,
-                      ACTSTracking::CKFRunner::Config{.chi2CutOff = m_CKF_chi2CutOff,
-                                                      .numMeasurementsCutOff = m_CKF_numMeasurementsCutOff,
-                                                      .propagateBackward = m_propagateBackward,
-                                                      .extrapolateToCalo = m_extrapolateToCalo,
-                                                      .maxSteps = m_maxPropagationSteps,
-                                                      .addEndcapCaloState = m_addEndcapCaloState});
+  m_ckfRunner.emplace(
+      *m_actsGeoSvc, ACTSTracking::CKFRunner::Config{.chi2CutOff = m_CKF_chi2CutOff,
+                                                     .numMeasurementsCutOff = m_CKF_numMeasurementsCutOff,
+                                                     .propagateBackward = m_propagateBackward,
+                                                     .extrapolateToCalo = m_extrapolateToCalo,
+                                                     .maxSteps = m_maxPropagationSteps,
+                                                     .addEndcapCaloState = m_addEndcapCaloState,
+                                                     .doTwoWayCKF = m_doTwoWayCKF,
+                                                     .inflateCovarianceTwoWay = m_inflateCovarianceTwoWay,
+                                                     .twoWayInflateCovarianceFactor = m_twoWayInflateCovarianceFactor});
 
   return StatusCode::SUCCESS;
 }
@@ -199,6 +208,9 @@ StatusCode CKFTrackingFromSeedsAlg::initialize() {
 StatusCode CKFTrackingFromSeedsAlg::finalize() {
   if (m_extrapolateToCalo) {
     info() << m_caloMonitor.summary() << endmsg;
+  }
+  if (m_doTwoWayCKF && m_ckfRunner) {
+    info() << m_ckfRunner->twoWaySummary() << endmsg;
   }
   return StatusCode::SUCCESS;
 }
