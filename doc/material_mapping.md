@@ -103,6 +103,11 @@ barrel stack therefore fills this space with a gap volume (resize strategy
 `Gap`), so the first layer's inner face stays at its sensors and gets its own
 receiver.
 
+The gap between two layers is attached to the layer closer to the IP, so every
+receiver sits just in front of its own layer's sensors. In an endcap that is
+`VolumeAttachmentStrategy::First` on the positive side and `Second` on the
+negative side (`attachTowardsIP`).
+
 Passive structures without a volume of their own, such as MAIA's solenoid in
 front of the calorimeter, get one so that their faces can be designated
 (`addCylindricalSolenoid`).
