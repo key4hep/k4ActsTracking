@@ -23,8 +23,8 @@
 #include <Acts/EventData/BoundTrackParameters.hpp>
 #include <Acts/Geometry/GeometryContext.hpp>
 #include <Acts/MagneticField/MagneticFieldContext.hpp>
+#include <Acts/Material/IAssignmentFinder.hpp>
 #include <Acts/Material/PropagatorMaterialAssigner.hpp>
-#include <Acts/Material/interface/IAssignmentFinder.hpp>
 #include <Acts/Propagator/ActorList.hpp>
 #include <Acts/Propagator/StandardAborters.hpp>
 #include <Acts/Propagator/SurfaceCollector.hpp>
