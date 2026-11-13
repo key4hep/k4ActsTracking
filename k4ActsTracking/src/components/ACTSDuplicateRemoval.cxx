@@ -24,6 +24,7 @@
 
 // Standard
 #include <algorithm>
+#include <vector>
 
 // ACTSTracking
 #include "k4ActsTracking/Helpers.hxx"
@@ -108,25 +109,34 @@ edm4hep::TrackCollection ACTSDuplicateRemoval::operator()(const edm4hep::TrackCo
 
   std::stable_sort(sortedInput.begin(), sortedInput.end(), ACTSTracking::track_duplicate_compare);
 
-  // Loop through all inputs and search for nearby equals
-  // Remove if they are too similar
+  // Loop through all inputs and search for nearby equals. Drop a track if an
+  // equal kept track is at least as good, else replace all equal kept tracks.
   std::vector<edm4hep::Track> finalTracks;
   for (const edm4hep::Track& track : sortedInput) {
-    bool foundAnEqual = false;
+    bool hasBetterEqual = false;
+    std::vector<size_t> worseEquals;
     size_t startIdx = (finalTracks.size() >= 10) ? finalTracks.size() - 10 : 0;
     for (size_t i = startIdx; i < finalTracks.size(); ++i) {
       const edm4hep::Track& otherTrack = finalTracks[i];
 
       if (!ACTSTracking::tracks_equal(track, otherTrack))
         continue;
-      foundAnEqual = true;
-      if (ACTSTracking::track_quality_compare(track, otherTrack)) {
-        finalTracks[i] = track;
+      if (!ACTSTracking::track_quality_compare(track, otherTrack)) {
+        hasBetterEqual = true;
         break;
       }
+      worseEquals.push_back(i);
     }
-    if (!foundAnEqual) {
+    if (hasBetterEqual) {
+      continue;
+    }
+    if (worseEquals.empty()) {
       finalTracks.push_back(track);
+      continue;
+    }
+    finalTracks[worseEquals.front()] = track;
+    for (size_t k = worseEquals.size() - 1; k > 0; --k) {
+      finalTracks.erase(finalTracks.begin() + worseEquals[k]);
     }
   }
 
