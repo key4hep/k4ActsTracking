@@ -714,14 +714,22 @@ std::shared_ptr<CylinderContainerBlueprintNode> attachEndcaps(
 ///                       layer as a material receiver
 /// @param endcapMaterial If set, designate the IP-facing disc of every endcap
 ///                       layer as a material receiver
+/// @param innerBarrelGap If true, the space between the endcaps' inner radius
+///                       and the first barrel layer becomes a gap volume
+///                       instead of part of that layer, so the layer's inner
+///                       cylinder stays at its sensors
 ///
 /// @returns The tracker blueprint node
 std::shared_ptr<CylinderContainerBlueprintNode>
 makeRegularTracker(ActsPlugins::DD4hep::BlueprintBuilder& builder, const TrackerSpec& spec,
                    const std::string& trackerName, const std::optional<LayerMaterial>& barrelMaterial = std::nullopt,
-                   const std::optional<LayerMaterial>& endcapMaterial = std::nullopt) {
+                   const std::optional<LayerMaterial>& endcapMaterial = std::nullopt, bool innerBarrelGap = false) {
   auto tracker = std::make_shared<CylinderContainerBlueprintNode>(trackerName, AxisZ);
-  tracker->addChild(makeBarrel(builder, spec, kTrackerEnvelope, identityKey, barrelMaterial));
+  auto barrel = makeBarrel(builder, spec, kTrackerEnvelope, identityKey, barrelMaterial);
+  if (innerBarrelGap) {
+    barrel->setResizeStrategies(Acts::VolumeResizeStrategy::Gap, Acts::VolumeResizeStrategy::Expand);
+  }
+  tracker->addChild(barrel);
   addBothEndcapSides(builder, *tracker, spec.endcapContainer, spec.endcapPosFilter, spec.endcapNegFilter,
                      spec.endcapAxes, spec.endcapLayout, kTrackerEnvelope,
                      fmt::format("{}|layer_pos", spec.endcapContainer),
@@ -1131,22 +1139,43 @@ namespace ILD_FCCee_v02 {
 namespace CLD_o2_v07 {
   void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
                          ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo) {
+    // Material receivers for CLD. The tree has the same shape as MAIA_v0's, so
+    // the same faces are designated and skipped for the same reasons (see
+    // there), except for the first outer-tracker barrel layer: its modules sit
+    // ~280 mm outside the inner-tracker container, so it gets a gap volume
+    // below it and its own receiver. The vertex barrel is built from sensors
+    // here, so its layers are matched by their blueprint node name instead of
+    // a DetElement name: the group label from makeLayerGrouper, prefixed with
+    // the container name.
+    //
+    // Unlike MAIA_v0 there is no solenoid volume: the CLD coil sits outside
+    // the calorimeter (r = 3719 mm vs. an ECAL barrel face at 2150 mm), so the
+    // extrapolation to the calorimeter face never crosses it.
+    const auto vertexBarrelMaterial =
+        Blueprints::LayerMaterial{.skipInnermost = std::regex{"VertexBarrel\\|VertexBarrel\\|doubleLayer_0"}};
+    const auto innerBarrelMaterial = Blueprints::LayerMaterial{};
+    const auto outerBarrelMaterial = Blueprints::LayerMaterial{};
+    const auto endcapMaterial = Blueprints::LayerMaterial{};
+
     // Build the tracker detectors as radial children of the supplied
     // container.
     auto buildTrackers = [&](ContainerBlueprintNode& outer) {
-      Blueprints::addCylindricalBeampipe(outer);
-      auto vtxBarrel = Blueprints::makeBarrel(builder, Blueprints::UngroupedDoubleBarrelLayerVertexSpec,
-                                              Blueprints::kBarrelEnvelope, Blueprints::doubleLayerKey);
-      auto vertex = Blueprints::attachEndcaps(builder, std::move(vtxBarrel),
-                                              Blueprints::UngroupedDoubleBarrelLayerVertexSpec, "Vertex");
+      Blueprints::addCylindricalBeampipe(outer, /*designateMaterial=*/true);
+      auto vtxBarrel =
+          Blueprints::makeBarrel(builder, Blueprints::UngroupedDoubleBarrelLayerVertexSpec, Blueprints::kBarrelEnvelope,
+                                 Blueprints::doubleLayerKey, vertexBarrelMaterial);
+      auto vertex = Blueprints::attachEndcaps(
+          builder, std::move(vtxBarrel), Blueprints::UngroupedDoubleBarrelLayerVertexSpec, "Vertex", endcapMaterial);
 
-      auto innerTracker =
-          Blueprints::makeNestedInnerTracker(builder, std::move(vertex), Blueprints::UngroupedNestedInnerTrackerSpec);
-      outer.addChild(innerTracker);
+      auto innerTracker = Blueprints::makeNestedInnerTracker(
+          builder, std::move(vertex), Blueprints::UngroupedNestedInnerTrackerSpec, innerBarrelMaterial, endcapMaterial);
+      outer.addChild(Blueprints::withMaterial(innerTracker, "InnerTracker_Material",
+                                              Acts::CylinderVolumeBounds::Face::OuterCylinder));
 
-      auto outerTracker =
-          Blueprints::makeRegularTracker(builder, Blueprints::UngroupedOuterTrackerSpec, "OuterTracker");
-      outer.addChild(outerTracker);
+      auto outerTracker = Blueprints::makeRegularTracker(builder, Blueprints::UngroupedOuterTrackerSpec, "OuterTracker",
+                                                         outerBarrelMaterial, endcapMaterial, /*innerBarrelGap=*/true);
+      outer.addChild(Blueprints::withMaterial(outerTracker, "OuterTracker_Material",
+                                              Acts::CylinderVolumeBounds::Face::OuterCylinder));
     };
 
     if (calo.empty()) {

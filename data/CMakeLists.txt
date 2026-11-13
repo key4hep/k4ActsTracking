@@ -21,6 +21,7 @@ include(ExternalData)
 
 set(ExternalData_URL_TEMPLATES
   "https://key4hep.web.cern.ch/key4hep/k4ActsTracking/MuColl/data/%(hash)"
+  "https://key4hep.web.cern.ch/key4hep/k4ActsTracking/FCCee/data/%(hash)"
 )
 # Copy the files into the build tree instead of symlinking to the object store,
 # so that install() installs the files themselves
@@ -29,6 +30,7 @@ set(ExternalData_NO_SYMLINKS ON)
 set(data_files
   # Material maps
   MAIA_v0_gen3_material_map.json
+  CLD_o2_v08_gen3_material_map.json
 )
 
 set(data_args)

@@ -62,8 +62,10 @@ makes the recorded material out of date. Redo the map after either.
 Receivers are designated in
 [`DD4hepBlueprintConstruction.cpp`](../k4ActsTracking/src/components/DD4hepBlueprintConstruction.cpp),
 in the `Material designation` block of the `Blueprints` namespace. This is done
-for **MAIA_v0** (and MAIA_v1 and MuSIC_v2, which share its blueprint); the
-other detectors carry no material yet.
+for **MAIA_v0** (and MAIA_v1 and MuSIC_v2, which share its blueprint) and
+**CLD_o2_v07** (and CLD_o2_v08, likewise); the other detectors carry no material
+yet. The MAIA case is described in detail below; CLD follows the same scheme, see
+[CLD](#cld).
 
 The scheme is: **on every layer volume, designate the face pointing towards the
 interaction point** (the inner cylinder of a barrel layer, the IP-facing disc of
@@ -98,6 +100,53 @@ ActsGeoSvc INFO 51 of 76706 surfaces in the tracking geometry carry material, 51
 
 A designation that breaks one of the rules aborts geometry construction and
 names the portal.
+
+### CLD
+
+CLD's tree has the same shape as MAIA's — beampipe, vertex nested inside the
+inner tracker, a regular outer tracker — so the same faces are designated. Three
+differences:
+
+- The vertex barrel is built from sensors (`layersFromSensors`), so there is no
+  layer DetElement to match. `skipInnermost` is matched against the blueprint
+  node name instead, which is the `makeLayerGrouper` label prefixed with the
+  container: `VertexBarrel|VertexBarrel|doubleLayer_0`. The match is a full
+  `std::regex_match`, so a regex for just `VertexBarrel|doubleLayer_0` matches
+  nothing and construction aborts on the `Vertex` z-stack.
+- The first outer-tracker barrel layer is not skipped. Its modules sit at
+  r ≈ 1000 mm, ~280 mm outside the inner-tracker container (r = 713 mm, which
+  also sets the inner radius of the outer-tracker container through its endcap
+  discs). Stretched down to 713 mm, the layer would put its own material on the
+  inner-tracker outer cylinder, 290 mm before its hits, and the fit would
+  underestimate the curvature errors in the barrel several times over. A gap
+  volume below the layer (`makeRegularTracker(..., innerBarrelGap = true)`,
+  resize strategy `Gap`) keeps its inner face at the sensors, so it gets its own
+  receiver.
+- There is no solenoid volume. CLD's coil starts at r = 3719 mm, outside the
+  ECAL barrel face at 2150 mm, so the extrapolation to the calorimeter never
+  crosses it.
+
+This yields **39 receivers**:
+
+| receiver                                                  | count |
+| --------------------------------------------------------- | ----: |
+| `Beampipe` outer cylinder                                 |     1 |
+| `VertexBarrel` double layers (`doubleLayer_0` skipped)    |     2 |
+| `VertexEndcap` double layers                              |     6 |
+| `InnerTrackerBarrel` layers (none skipped: interior)      |     3 |
+| `InnerTrackerEndcap` layers                               |    14 |
+| `OuterTrackerBarrel` layers (gap volume below `layer0`)   |     3 |
+| `OuterTrackerEndcap` layers                               |     8 |
+| `InnerTracker` / `OuterTracker` outer cylinders           |     2 |
+
+```
+ActsGeoSvc INFO 39 of 97401 surfaces in the tracking geometry carry material, 39 of them a proto-material placeholder.
+```
+
+CLD has a lot of passive material at small radius and large |z| (conical
+beampipe, beampipe shells, vertex cables, synchrotron radiation masks) with no
+volume of its own. It ends up on the beampipe cylinder and the IP-facing endcap
+discs. Check the forward region specifically when validating a CLD map.
 
 ### Adding material designators to a detector
 
