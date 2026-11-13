@@ -28,6 +28,9 @@ from Gaudi.Configurables import (
     CollectionMerger,
     EventDataSvc,
     GeoSvc,
+    GreedyAmbiguityResolutionAlg,
+    SplitTrackRemovalAlg,
+    UnusedHitsAlg,
 )
 from k4FWCore.parseArgs import parser
 
@@ -130,6 +133,88 @@ def make_ckf_tracking(
     )
     props.update(ckf_args)
     return CKFTrackingAlg("CKFTracking", **props)
+
+
+def make_multipass_tracking(
+    hit_merger,
+    hit_rel_merger,
+    passes,
+    common,
+    ambiguity,
+    split_max_chi2,
+    output="CKFTracks",
+):
+    """Configure several CKFTrackingAlg passes that together fill one track collection.
+
+    passes: (name, seeding_cellids, settings) per pass, in the order they run; settings override
+    common. Each pass runs CKF -> GreedyAmbiguityResolutionAlg (configured by ambiguity). Every
+    pass after the first only sees the hits not used by the tracks kept so far, and drops tracks
+    that are pieces of those (SplitTrackRemovalAlg, MaxChi2 = split_max_chi2). The kept tracks of
+    all passes are merged and resolved once more into output.
+
+    Returns the algorithms in execution order.
+    """
+    algs = []
+    kept = []
+    for i, (name, seeding, settings) in enumerate(passes):
+        hits = hit_merger.OutputCollection
+        if i > 0:
+            hits = f"UnusedHits{name}"
+            algs.append(
+                UnusedHitsAlg(
+                    f"UnusedHits{name}",
+                    InputTrackerHitCollection=[hit_merger.OutputCollection],
+                    InputTrackCollections=list(kept),
+                    OutputTrackerHitCollection=[hits],
+                )
+            )
+        algs.append(
+            CKFTrackingAlg(
+                f"CKFTracking{name}",
+                **{**common, **settings},
+                SeedingSensorsCellIDs=seeding,
+                InputTrackerHitCollection=hits,
+                InputTrackerHitRelationCollection=hit_rel_merger.OutputCollection,
+                OutputTrackCollection=f"CKFTracks{name}",
+                OutputSeedCollection=f"CKFTrackSeeds{name}",
+            )
+        )
+        algs.append(
+            GreedyAmbiguityResolutionAlg(
+                f"AmbiguityResolution{name}",
+                InputTrackCollectionName=[f"CKFTracks{name}"],
+                OutputTrackCollectionName=[f"CKFTracks{name}Resolved"],
+                **ambiguity,
+            )
+        )
+        if i == 0:
+            kept.append(f"CKFTracks{name}Resolved")
+            continue
+        algs.append(
+            SplitTrackRemovalAlg(
+                f"SplitTrackRemoval{name}",
+                InputTrackCollection=[f"CKFTracks{name}Resolved"],
+                KeptTrackCollections=list(kept),
+                OutputTrackCollection=[f"CKFTracks{name}Kept"],
+                MaxChi2=split_max_chi2,
+            )
+        )
+        kept.append(f"CKFTracks{name}Kept")
+
+    algs.append(
+        CollectionMerger(
+            "MergeTracks", InputCollections=list(kept), OutputCollection=f"{output}All"
+        )
+    )
+    algs.append(
+        GreedyAmbiguityResolutionAlg(
+            "AmbiguityResolution",
+            InputTrackCollectionName=[f"{output}All"],
+            OutputTrackCollectionName=[output],
+            **ambiguity,
+        )
+    )
+    return algs
 
 
 def make_telescope_ckf_tracking(
