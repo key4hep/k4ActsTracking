@@ -46,7 +46,7 @@ jobs:
 
       - name: Build and test
         run: |
-          set -e
+          set -eo pipefail
           source /cvmfs/sw-nightlies.hsf.org/key4hep/setup.sh --lcg
 
           export CCACHE_DIR=/root/.cache/ccache
@@ -54,12 +54,13 @@ jobs:
           ccache --set-config=max_size=500M
           ccache -z
 
-          # Build ACTS from master
+          # Build ACTS from master without treating upstream warnings as errors.
           echo "=== Building ACTS from master ==="
           cd "$GITHUB_WORKSPACE/acts"
           cmake -B build -S . -GNinja \
             -DCMAKE_CXX_STANDARD=23 \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF \
             -DCMAKE_INSTALL_PREFIX=install \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DACTS_BUILD_PLUGIN_DD4HEP=ON \
@@ -69,7 +70,7 @@ jobs:
             -DACTS_USE_SYSTEM_LIBS=ON \
             -DACTS_SETUP_DETRAY=OFF \
             -DACTS_SETUP_VECMEM=OFF
-          cmake --build build -- -j$(nproc)
+          cmake --build build -- -k 0 -j$(nproc)
           cmake --install build
           k4_local_repo
 
@@ -78,13 +79,14 @@ jobs:
           k4_local_repo
           mkdir -p build
           cd build
+          # Defer the exempted warnings to the final check so all sources and tests run.
           cmake .. \
             -DCMAKE_CXX_STANDARD=23 \
             -DCMAKE_INSTALL_PREFIX=../install \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_FLAGS="-Werror -Wno-error=cpp -Wno-error=deprecated-declarations" \
             -GNinja
-          cmake --build . -- -j$(nproc)
+          cmake --build . -- -k 0 -j$(nproc) 2>&1 | tee build.log
 
           echo "=== Running tests ==="
           ctest -j $(nproc) --output-on-failure
@@ -93,12 +95,22 @@ jobs:
 
           ccache -s
 
-      - name: Upload CTest logs
+      - name: Check k4ActsTracking compiler warnings
+        if: ${{ !cancelled() }}
+        run: |
+          log="$GITHUB_WORKSPACE/build/build.log"
+          if [[ -f "$log" ]] && grep -E -- '\[-W(deprecated-declarations|cpp)\]' "$log"; then
+            echo "::error::k4ActsTracking deprecation or #warning diagnostics found; see the build log above."
+            exit 1
+          fi
+
+      - name: Upload build and CTest logs
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: CTest logs_acts-master_run${{ github.run_id }}_attempt${{ github.run_attempt }}
           path: |
+            ${{ github.workspace }}/build/build.log
             ${{ github.workspace }}/build/Testing/Temporary
             !${{ github.workspace }}/build/Testing/Temporary/CTestCostData.txt
           if-no-files-found: warn
