@@ -104,8 +104,8 @@ names the portal.
 ### CLD
 
 CLD's tree has the same shape as MAIA's — beampipe, vertex nested inside the
-inner tracker, a regular outer tracker — so the same faces are designated and
-the same two barrels skip their innermost layer. Two differences:
+inner tracker, a regular outer tracker — so the same faces are designated. Three
+differences:
 
 - The vertex barrel is built from sensors (`layersFromSensors`), so there is no
   layer DetElement to match. `skipInnermost` is matched against the blueprint
@@ -113,11 +113,20 @@ the same two barrels skip their innermost layer. Two differences:
   container: `VertexBarrel|VertexBarrel|doubleLayer_0`. The match is a full
   `std::regex_match`, so a regex for just `VertexBarrel|doubleLayer_0` matches
   nothing and construction aborts on the `Vertex` z-stack.
+- The first outer-tracker barrel layer is not skipped. Its modules sit at
+  r ≈ 1000 mm, ~280 mm outside the inner-tracker container (r = 713 mm, which
+  also sets the inner radius of the outer-tracker container through its endcap
+  discs). Stretched down to 713 mm, the layer would put its own material on the
+  inner-tracker outer cylinder, 290 mm before its hits, and the fit would
+  underestimate the curvature errors in the barrel several times over. A gap
+  volume below the layer (`makeRegularTracker(..., innerBarrelGap = true)`,
+  resize strategy `Gap`) keeps its inner face at the sensors, so it gets its own
+  receiver.
 - There is no solenoid volume. CLD's coil starts at r = 3719 mm, outside the
   ECAL barrel face at 2150 mm, so the extrapolation to the calorimeter never
   crosses it.
 
-This yields **38 receivers**:
+This yields **39 receivers**:
 
 | receiver                                                  | count |
 | --------------------------------------------------------- | ----: |
@@ -126,12 +135,12 @@ This yields **38 receivers**:
 | `VertexEndcap` double layers                              |     6 |
 | `InnerTrackerBarrel` layers (none skipped: interior)      |     3 |
 | `InnerTrackerEndcap` layers                               |    14 |
-| `OuterTrackerBarrel` layers (`layer0` skipped: extreme)   |     2 |
+| `OuterTrackerBarrel` layers (gap volume below `layer0`)   |     3 |
 | `OuterTrackerEndcap` layers                               |     8 |
 | `InnerTracker` / `OuterTracker` outer cylinders           |     2 |
 
 ```
-ActsGeoSvc INFO 38 of 97400 surfaces in the tracking geometry carry material, 38 of them a proto-material placeholder.
+ActsGeoSvc INFO 39 of 97401 surfaces in the tracking geometry carry material, 39 of them a proto-material placeholder.
 ```
 
 CLD has a lot of passive material at small radius and large |z| (conical
