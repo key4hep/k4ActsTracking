@@ -481,6 +481,27 @@ LayerGrouper makeLayerGrouper(std::regex groupRgx, std::string labelBase, Transf
   };
 }
 
+/// Side of the interaction point an endcap lies on.
+enum class EndcapSide { Positive, Negative };
+
+/// Attachment strategy for the gaps between the layers of one endcap side.
+///
+/// A gap goes to the layer closer to the IP, so that every layer volume
+/// begins just in front of its sensors and its IP-facing face, the material
+/// receiver, sits right in front of them, as in the barrels. The layers are
+/// stacked in increasing z, so that is the first of two neighbours on the
+/// positive side but the second on the negative side; @c First on both sides
+/// would put the negative-side receivers right behind the previous layer
+/// instead, and the material of each negative-side layer onto the receiver
+/// behind it.
+///
+/// @param side The endcap side
+///
+/// @returns The attachment strategy for that side
+Acts::VolumeAttachmentStrategy attachTowardsIP(EndcapSide side) {
+  return side == EndcapSide::Positive ? Acts::VolumeAttachmentStrategy::First : Acts::VolumeAttachmentStrategy::Second;
+}
+
 /// Add one endcap side to @p parent using pre-grouped layer DetElements.
 ///
 /// Delegates to @c builder.layers().endcap(), which requires the layers to
@@ -491,11 +512,12 @@ LayerGrouper makeLayerGrouper(std::regex groupRgx, std::string labelBase, Transf
 /// @param parent    Node to attach the endcap side to
 /// @param container Name of the DetElement that contains the endcap layers
 /// @param filter    Regex selecting the relevant layer DetElements
+/// @param side      Side of the IP, see @c attachTowardsIP
 /// @param axes      Sensor coordinate axes for this endcap side
 /// @param envelope  Extent envelope applied to the resulting volume
 /// @param onLayer   Optional per-layer customization, e.g. from @c designateLayers
 void addGroupedEndcapSide(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::BlueprintNode& parent,
-                          const std::string& container, const std::regex& filter, AxisDefinition axes,
+                          const std::string& container, const std::regex& filter, EndcapSide side, AxisDefinition axes,
                           const Acts::ExtentEnvelope& envelope, LayerCustomizer onLayer = {}) {
   builder.layers()
       .endcap()
@@ -503,7 +525,7 @@ void addGroupedEndcapSide(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::
       .setContainer(container)
       .setLayerFilter(filter)
       .setEnvelope(envelope)
-      .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+      .setAttachmentStrategy(attachTowardsIP(side))
       .onLayer(std::move(onLayer))
       .addTo(parent);
 }
@@ -520,6 +542,7 @@ void addGroupedEndcapSide(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::
 /// @param container   Name of the DetElement that contains the sensors
 /// @param filter      Regex selecting sensor DetElements; capture group 1
 ///                    is used as the layer discriminator
+/// @param side        Side of the IP, see @c attachTowardsIP
 /// @param axes        Sensor coordinate axes for this endcap side
 /// @param labelPrefix Prefix passed to @c makeLayerGrouper as the label base
 /// @param envelope    Extent envelope applied to the resulting volume
@@ -528,7 +551,8 @@ void addGroupedEndcapSide(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::
 /// @param onLayer     Optional per-layer customization, e.g. from @c designateLayers
 void addUngroupedEndcapSide(
     ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::BlueprintNode& parent, const std::string& container,
-    const std::regex& filter, AxisDefinition axes, const std::string& labelPrefix, const Acts::ExtentEnvelope& envelope,
+    const std::regex& filter, EndcapSide side, AxisDefinition axes, const std::string& labelPrefix,
+    const Acts::ExtentEnvelope& envelope,
     std::function<std::string(const std::string&)> keyXform = [](const std::string& m) { return m; },
     LayerCustomizer onLayer = {}) {
   const auto detElem = builder.findDetElementByName(container);
@@ -541,7 +565,7 @@ void addUngroupedEndcapSide(
       .setSensors(std::move(sensors))
       .groupBy(std::move(grouper))
       .setEnvelope(envelope)
-      .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+      .setAttachmentStrategy(attachTowardsIP(side))
       .onLayer(std::move(onLayer))
       .addTo(parent);
 }
@@ -574,11 +598,13 @@ void addBothEndcapSides(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::Bl
   auto onNeg = designateLayers(material, PositiveDisc, container);
 
   if (layout == Layout::Grouped) {
-    addGroupedEndcapSide(builder, parent, container, posFilter, axes, envelope, std::move(onPos));
-    addGroupedEndcapSide(builder, parent, container, negFilter, axes, envelope, std::move(onNeg));
+    addGroupedEndcapSide(builder, parent, container, posFilter, EndcapSide::Positive, axes, envelope, std::move(onPos));
+    addGroupedEndcapSide(builder, parent, container, negFilter, EndcapSide::Negative, axes, envelope, std::move(onNeg));
   } else {
-    addUngroupedEndcapSide(builder, parent, container, posFilter, axes, posLabel, envelope, keyXform, std::move(onPos));
-    addUngroupedEndcapSide(builder, parent, container, negFilter, axes, negLabel, envelope, keyXform, std::move(onNeg));
+    addUngroupedEndcapSide(builder, parent, container, posFilter, EndcapSide::Positive, axes, posLabel, envelope,
+                           keyXform, std::move(onPos));
+    addUngroupedEndcapSide(builder, parent, container, negFilter, EndcapSide::Negative, axes, negLabel, envelope,
+                           keyXform, std::move(onNeg));
   }
 }
 
@@ -682,17 +708,17 @@ std::shared_ptr<CylinderContainerBlueprintNode> attachEndcaps(
   auto onNeg = designateLayers(material, PositiveDisc, spec.endcapContainer);
 
   if (spec.endcapLayout == Layout::Grouped) {
-    addGroupedEndcapSide(builder, *node, spec.endcapContainer, spec.endcapPosFilter, spec.endcapAxes,
-                         kVertexEndcapEnvelope, std::move(onPos));
-    addGroupedEndcapSide(builder, *node, spec.endcapContainer, spec.endcapNegFilter, spec.endcapAxes,
-                         kVertexEndcapEnvelope, std::move(onNeg));
+    addGroupedEndcapSide(builder, *node, spec.endcapContainer, spec.endcapPosFilter, EndcapSide::Positive,
+                         spec.endcapAxes, kVertexEndcapEnvelope, std::move(onPos));
+    addGroupedEndcapSide(builder, *node, spec.endcapContainer, spec.endcapNegFilter, EndcapSide::Negative,
+                         spec.endcapAxes, kVertexEndcapEnvelope, std::move(onNeg));
   } else {
-    addUngroupedEndcapSide(builder, *node, spec.endcapContainer, spec.endcapPosFilter, spec.endcapAxes,
-                           fmt::format("{}|doubleLayer_pos", spec.endcapContainer), kUngroupedVertexEndcapEnvelope,
-                           keyXform, std::move(onPos));
-    addUngroupedEndcapSide(builder, *node, spec.endcapContainer, spec.endcapNegFilter, spec.endcapAxes,
-                           fmt::format("{}|doubleLayer_neg", spec.endcapContainer), kUngroupedVertexEndcapEnvelope,
-                           std::move(keyXform), std::move(onNeg));
+    addUngroupedEndcapSide(builder, *node, spec.endcapContainer, spec.endcapPosFilter, EndcapSide::Positive,
+                           spec.endcapAxes, fmt::format("{}|doubleLayer_pos", spec.endcapContainer),
+                           kUngroupedVertexEndcapEnvelope, keyXform, std::move(onPos));
+    addUngroupedEndcapSide(builder, *node, spec.endcapContainer, spec.endcapNegFilter, EndcapSide::Negative,
+                           spec.endcapAxes, fmt::format("{}|doubleLayer_neg", spec.endcapContainer),
+                           kUngroupedVertexEndcapEnvelope, std::move(keyXform), std::move(onNeg));
   }
   return node;
 }

@@ -85,6 +85,11 @@ shared with a neighbour inside it) is excluded with `LayerMaterial::skipInnermos
 Nothing is lost: that face is the same surface as a receiver designated from the
 other side (e.g. the beampipe's outer cylinder).
 
+The gap between two layers is attached to the layer closer to the IP, so every
+receiver sits just in front of its own layer's sensors. In an endcap that is
+`VolumeAttachmentStrategy::First` on the positive side and `Second` on the
+negative side (`attachTowardsIP`).
+
 Passive structures without a volume of their own, such as MAIA's solenoid in
 front of the calorimeter, get one so that their faces can be designated
 (`addCylindricalSolenoid`).
