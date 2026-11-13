@@ -330,7 +330,15 @@ add_k4run_test(ckf_tracking_CLD_o2_v08
              --IOSvc.Output particle_gun_CLD_o2_v08_CKFTracks.edm4hep.root
   USE_TEST_ENV
   FIXTURES_REQUIRED reco_CLD_fixture
+  FIXTURES_SETUP ckf_CLD_fixture
 )
+
+add_test(NAME check_ckf_tracking_CLD_o2_v08
+  WORKING_DIRECTORY ${_cld_dir}
+  COMMAND python ${CMAKE_CURRENT_LIST_DIR}/scripts/multipass_check_tracks.py
+                 particle_gun_CLD_o2_v08_CKFTracks.edm4hep.root
+)
+set_tests_properties(check_ckf_tracking_CLD_o2_v08 PROPERTIES FIXTURES_REQUIRED ckf_CLD_fixture)
 
 add_k4run_test(vertexing_CLD_o2_v08
   WORKING_DIRECTORY ${_cld_dir}
