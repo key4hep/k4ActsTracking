@@ -43,6 +43,7 @@
 #include <Acts/MagneticField/ConstantBField.hpp>
 #include <Acts/Material/IMaterialDecorator.hpp>
 #include <Acts/Material/ProtoSurfaceMaterial.hpp>
+#include <Acts/Material/TrackingGeometryMaterial.hpp>
 #include <Acts/Surfaces/DiscSurface.hpp>
 #include <Acts/Surfaces/PlaneSurface.hpp>
 #include <Acts/Surfaces/RectangleBounds.hpp>
@@ -52,7 +53,7 @@
 #include <ActsPlugins/DD4hep/BlueprintBuilder.hpp>
 #include <ActsPlugins/DD4hep/DD4hepDetectorElement.hpp>
 #include <ActsPlugins/DD4hep/DD4hepFieldAdapter.hpp>
-#include <ActsPlugins/Json/JsonMaterialDecorator.hpp>
+#include <ActsPlugins/Json/TrackingGeometryMaterialJsonConverter.hpp>
 #include <ActsPlugins/Root/RootMaterialDecorator.hpp>
 
 #include <DD4hep/DD4hepUnits.h>
@@ -144,6 +145,21 @@ private:
   std::unordered_set<const Acts::Surface*> m_seen{};
   std::size_t m_nWithMaterial{0};
   std::size_t m_nProto{0};
+};
+
+/// Decorator for a map in ACTS' versioned JSON material format, so that it is
+/// applied by the same visitor as the ROOT one.
+class JsonMaterialDecorator final : public Acts::IMaterialDecorator {
+public:
+  explicit JsonMaterialDecorator(const std::filesystem::path& mapFile)
+      : m_material(Acts::TrackingGeometryMaterialJsonConverter{}.fromFile(mapFile)) {}
+
+  void decorate(Acts::Surface& surface) const override { m_material.apply(surface); }
+
+  void decorate(Acts::TrackingVolume& volume) const override { m_material.apply(volume); }
+
+private:
+  Acts::TrackingGeometryMaterial m_material;
 };
 } // namespace
 
@@ -386,8 +402,7 @@ StatusCode ActsGeoSvc::makeMaterialDecorator(std::shared_ptr<const Acts::IMateri
       cfg.fileName = mapFile.string();
       decorator = std::make_shared<const ActsPlugins::RootMaterialDecorator>(cfg, Acts::Logging::INFO);
     } else {
-      decorator = std::make_shared<const Acts::JsonMaterialDecorator>(Acts::MaterialMapJsonConverter::Config{},
-                                                                      mapFile.string(), Acts::Logging::INFO);
+      decorator = std::make_shared<const JsonMaterialDecorator>(mapFile);
     }
   } catch (const std::exception& e) {
     error() << fmt::format("Failed to read the material map '{}': {}", mapFile.string(), e.what()) << endmsg;
