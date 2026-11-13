@@ -57,6 +57,7 @@
 #include <Acts/Surfaces/Surface.hpp>
 #include <Acts/TrackFinding/CombinatorialKalmanFilter.hpp>
 #include <Acts/TrackFinding/MeasurementSelector.hpp>
+#include <Acts/TrackFinding/TrackSelector.hpp>
 #include <Acts/TrackFinding/TrackStateCreator.hpp>
 #include <Acts/TrackFitting/GainMatrixUpdater.hpp>
 #include <Acts/Utilities/TrackHelpers.hpp>
@@ -217,6 +218,10 @@ public:
     /// tracks - which never approach the z-axis line - still have a reachable,
     /// well-defined reference.
     std::shared_ptr<const Acts::Surface> referenceSurface{nullptr};
+
+    /// Optional ACTS track selection, applied to each track after the
+    /// extrapolation to the reference surface.
+    std::optional<Acts::TrackSelector::Config> trackSelector{};
   };
 
   /// Builds the event-independent propagators and CKF once. The event-local
@@ -244,7 +249,11 @@ public:
         m_extrapolator(std::make_unique<CKFPropagator>(makePropagator(geo, false))),
         m_caloAppender(
             geo, m_geoCtx, m_magCtx,
-            {.enabled = cfg.extrapolateToCalo, .addEndcapState = cfg.addEndcapCaloState, .maxSteps = cfg.maxSteps}) {}
+            {.enabled = cfg.extrapolateToCalo, .addEndcapState = cfg.addEndcapCaloState, .maxSteps = cfg.maxSteps}) {
+    if (cfg.trackSelector) {
+      m_trackSelector.emplace(*cfg.trackSelector);
+    }
+  }
 
   CKFRunner(const CKFRunner&) = delete;
   CKFRunner(CKFRunner&&) = delete;
@@ -489,6 +498,9 @@ public:
           alg.warning() << "Reference-surface extrapolation error: " << exResult.error() << endmsg;
           continue;
         }
+        if (m_trackSelector && !m_trackSelector->isValidTrack(trackTip)) {
+          continue;
+        }
 
         auto track = ACTSTracking::ACTS2edm4hep_track(m_geoCtx, m_magCtx, trackTip, hits, m_geo.magneticField());
 
@@ -568,6 +580,7 @@ private:
   std::shared_ptr<const Acts::Surface> m_referenceSurface;
   std::unique_ptr<CKFPropagator> m_extrapolator;
   CaloStateAppender m_caloAppender;
+  std::optional<Acts::TrackSelector> m_trackSelector;
 
   // Two-way CKF counters: findTracks() is const and runs concurrently.
   mutable std::atomic<std::size_t> m_nTwoWayStitched{0};
