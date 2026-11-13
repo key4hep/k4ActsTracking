@@ -49,7 +49,9 @@
 #include <Acts/Geometry/TrackingGeometry.hpp>
 #include <Acts/MagneticField/MagneticFieldContext.hpp>
 #include <Acts/MagneticField/MagneticFieldProvider.hpp>
+#include <Acts/Propagator/ActorList.hpp>
 #include <Acts/Propagator/EigenStepper.hpp>
+#include <Acts/Propagator/MaterialInteractor.hpp>
 #include <Acts/Propagator/Navigator.hpp>
 #include <Acts/Propagator/Propagator.hpp>
 #include <Acts/Seeding/EstimateTrackParamsFromSeed.hpp>
@@ -479,8 +481,11 @@ public:
         // for telescope clients) so its track-level parameters (and hence
         // the AtIP edm4hep TrackState) are defined there, not at the
         // innermost measurement surface. Must happen before
-        // ACTS2edm4hep_track, which fills the AtIP state.
-        typename CKFPropagator::template Options<> exOptions(m_geoCtx, m_magCtx);
+        // ACTS2edm4hep_track, which fills the AtIP state. Include the material
+        // crossed on the way (beam pipe) in the covariance.
+        using ExtrapolationOptions =
+            typename CKFPropagator::template Options<Acts::ActorList<Acts::MaterialInteractor>>;
+        ExtrapolationOptions exOptions(m_geoCtx, m_magCtx);
         exOptions.maxSteps = m_maxSteps;
         const CKFPropagator& extrapolator = *m_extrapolator;
         auto exResult = Acts::extrapolateTrackToReferenceSurface(trackTip, *m_referenceSurface, extrapolator, exOptions,
