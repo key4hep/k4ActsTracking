@@ -266,6 +266,7 @@ const auto kCylinderMaterialBinning =
 const auto kDiscMaterialBinning =
     std::pair{Acts::AxisSpec::DeferredEquidistant(50, AxisR), Acts::AxisSpec::DeferredEquidistant(20, AxisPhi)};
 
+namespace {
 /// Wrap @p child in a material designator marking @p face of the child's
 /// volume as a receiver for the projected material.
 ///
@@ -288,6 +289,7 @@ std::shared_ptr<BlueprintNode> withMaterial(std::shared_ptr<BlueprintNode> child
   designator->addChild(std::move(child));
   return designator;
 }
+} // namespace
 
 /// Material designation for the layer volumes of a (sub)detector
 struct LayerMaterial {
@@ -343,6 +345,7 @@ LayerCustomizer designateLayers(const std::optional<LayerMaterial>& material, Ac
 
 /// @}
 
+namespace {
 /// Add a cylindrical beampipe to the passed node using the measures passed as arguments.
 ///
 /// We use this to enclose our actual beampipe because that is not a sipmle
@@ -480,6 +483,7 @@ LayerGrouper makeLayerGrouper(std::regex groupRgx, std::string labelBase, Transf
     throw std::invalid_argument(fmt::format("Could not match regex for grouping layers. DetElem name: {}", elemName));
   };
 }
+} // namespace
 
 /// Add one endcap side to @p parent using pre-grouped layer DetElements.
 ///
@@ -508,6 +512,7 @@ void addGroupedEndcapSide(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::
       .addTo(parent);
 }
 
+namespace {
 /// Add one endcap side to @p parent by collecting sensor DetElements and
 /// grouping them into layers via @c builder.layersFromSensors().
 ///
@@ -728,6 +733,7 @@ makeRegularTracker(ActsPlugins::DD4hep::BlueprintBuilder& builder, const Tracker
                      fmt::format("{}|layer_neg", spec.endcapContainer), identityKey, endcapMaterial);
   return tracker;
 }
+} // namespace
 
 /// Make a nested inner tracker that encloses the vertex.
 ///
@@ -815,6 +821,7 @@ makeNestedInnerTracker(ActsPlugins::DD4hep::BlueprintBuilder& builder,
   return innerTracker;
 }
 
+namespace {
 /// Navigation policy factory for the passive calo volumes. Each calo volume
 /// holds only a handful of explicitly added surfaces (the polygon barrel
 /// faces, or a single endcap disc). A TryAll policy (portals plus all passive
@@ -929,6 +936,7 @@ void addCaloPlanarFace(BlueprintNode& parent, const IActsGeoSvc::CaloFaceSurface
   vol->addSurface(calo.planarFace);
   parent.addStaticVolume(std::move(vol)).setNavigationPolicyFactory(makeCaloNavigationPolicyFactory());
 }
+} // namespace
 
 } // namespace Blueprints
 
