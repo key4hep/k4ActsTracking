@@ -1,3 +1,62 @@
+# v00-07
+
+* 2026-11-13 Juan Miguel Carceller ([PR#150](https://github.com/key4hep/k4ActsTracking/pull/150))
+  - Fix MAIA two-way tracking checks crashing when EDM4hep already loads the vector utilities.
+
+* 2026-11-13 Juan Miguel Carceller ([PR#149](https://github.com/key4hep/k4ActsTracking/pull/149))
+  - Fail ACTS master CI on k4ActsTracking deprecation and preprocessor warnings after building and testing, while keeping ACTS build warnings non-fatal.
+
+* 2026-11-10 Juan Miguel Carceller ([PR#146](https://github.com/key4hep/k4ActsTracking/pull/146))
+  - Use C++23 for ACTS master and k4ActsTracking in the ACTS master workflow, as ACTS now requires it to build.
+
+* 2026-11-10 Joshua Beirer ([PR#145](https://github.com/key4hep/k4ActsTracking/pull/145))
+  - Include `Acts/Material/IAssignmentFinder.hpp` instead of the deprecated `Acts/Material/interface/IAssignmentFinder.hpp`.
+
+* 2026-11-10 Federico Meloni ([PR#142](https://github.com/key4hep/k4ActsTracking/pull/142))
+  - Update CKFTrackingFromSeedsAlg to support two-way CKF
+
+* 2026-11-09 Thomas Madlener ([PR#140](https://github.com/key4hep/k4ActsTracking/pull/140))
+  - Remove the legacy (ACTS Gen1 geometry based) material maps and tracking geometries.
+
+* 2026-11-06 Joshua Beirer ([PR#129](https://github.com/key4hep/k4ActsTracking/pull/129))
+  - Add `MaterialRecordingAlg`, which records the material for the material mapping by walking straight (geantino) rays with the TGeo navigator through the DD4hep geometry. The scan runs as a `k4run` job from the compact file (`test/options/material_recording.py`) and needs no GDML export, Geant4 or ACTS Python bindings. Scans can be split across jobs with `--seed`; `--replayFiles` replays the directions of an existing scan.
+  - Stop the rays at the ECAL inner face, taken from the calorimeter-face surfaces of `ActsGeoSvc` (`MaterialScanRegion.h`), and clip the input of `MaterialMappingAlg` to the same region, so that material behind the calorimeter face no longer ends up on the outermost receivers. New `MaxR`/`MaxZ` properties override the region.
+  - Add a record -> map -> validate test on MAIA_v0.
+  - Remove `examples/material_recording_chunk.py`; a Geant4 cross-check can run ACTS' `material_recording.py` directly.
+  - Update `doc/material_mapping.md` accordingly.
+
+* 2026-11-05 Thomas Madlener ([PR#139](https://github.com/key4hep/k4ActsTracking/pull/139))
+  - Allow blueprint construction for MAIA_v1 which only differs in magnetic fields from MAIA_v0
+
+* 2026-11-05 Mark Larson ([PR#108](https://github.com/key4hep/k4ActsTracking/pull/108))
+  - Enables running two-way CKF, with seeds first extended outward (or inward), and then inward (or outward) starting from the smoothed state at the end of the first chain, with the two chains then stitched together into a single track. The exact implementation was inspired by the `athena` ACTS wrapper implementation. This ensures when a seed starts outside of the innermost layer, the track can still be extrapolated backwards to the interaction point, and enables efficient seeding in the inner tracker. 
+  - Adds 3 new parameters: `doTwoWayCKF`, `inflateCovarianceTwoWay` and `twoWayInflateCovarianceFactor` that control whether the outside-in or two-way tracking passes are enabled, and whether the covariance of the second pass is inflated, and by what factor
+
+* 2026-11-04 Juan Miguel Carceller ([PR#138](https://github.com/key4hep/k4ActsTracking/pull/138))
+  - Initialize GNU install directories before configuring RPATH (no behavior change).
+
+* 2026-10-29 Jackson Carl Burzynski ([PR#137](https://github.com/key4hep/k4ActsTracking/pull/137))
+  Use the hit time error for the hit time resolution
+
+* 2026-10-29 Joshua Beirer ([PR#109](https://github.com/key4hep/k4ActsTracking/pull/109))
+  - Add an initial ACTS Adaptive Multi-Vertex Finder (AMVF) implementation for primary vertex reconstruction from existing edm4hep tracks.
+  - Add configurable track selection, beam-spot constraints, seeding, annealing and vertex-fit settings.
+  - Store reconstructed vertex-to-track associations through `ReconstructedParticle`s and weighted `VertexRecoParticleLink`s.
+  - Add generic vertexing configuration together with a CLD-specific setup tuned for FCC-ee beam conditions.
+  - Add a CLD integration test validating vertex reconstruction and output relations.
+
+* 2026-10-27 Federico Meloni ([PR#135](https://github.com/key4hep/k4ActsTracking/pull/135))
+  - Adapted MAIA digitiser configurations (CorrectTimeWindowForPropagation and CorrectTimesForPropagation) in test options to reflect updated algorithms in k4reco
+
+* 2026-10-23 Mark Larson ([PR#127](https://github.com/key4hep/k4ActsTracking/pull/127))
+  - Fix `PropagateBackward` (outside-in CKF) so that the CKF starts at the outermost seed space point instead of the innermost one. Previously the outer seed hits were left out of the final track.
+    - Seed parameters are now estimated at the start space point. The magnetic field is evaluated at that point. This now applies to the default inside-out seeding as well.
+  - With `PropagateBackward`:
+    - the found tracks are reversed after smoothing, so the output is ordered inside-out as for forward tracks.
+    - the CKF stops at the reference surface (IP perigee, or the telescope reference plane).
+    - seed track states are labelled `AtLastHit`, since their parameters are at the outermost space point. `makeSeedTrackState` takes the location as a new optional argument.
+  - `ACTSTracking::estimateSeedParameters` gains an optional `propagateBackward` argument. Its first argument (the surface) now means the start surface.
+
 # v00-06
 
 * 2026-10-16 Jackson Carl Burzynski ([PR#125](https://github.com/Key4hep/k4ActsTracking/pull/125))
