@@ -30,44 +30,44 @@
 
 namespace ACTSTracking {
 namespace {
-/**
- * @brief Return true if `trk1` and `trk2` share at least 50% of hits.
- * @param trk1 One of two tracks to compare
- * @param tkr2 One of two tracks to compare
- * @return True if they share too many of the same Tracker Hits
- */
-bool tracks_equal(const edm4hep::Track& trk1, const edm4hep::Track& trk2) {
-  // Get an iterator for the Track hits of the first Track
-  uint32_t hitOlap = 0;
-  // Loop through each track hit and see if it overlaps with the second track
-  for (size_t itrackHit = 0; itrackHit < trk1.trackerHits_size(); ++itrackHit) {
-    auto it = std::find(trk2.trackerHits_begin(), trk2.trackerHits_end(), trk1.getTrackerHits(itrackHit));
-    if (it != trk2.trackerHits_end()) {
-      hitOlap++; // If it does overlap, increment hitOlap
+  /**
+   * @brief Return true if `trk1` and `trk2` share at least 50% of hits.
+   * @param trk1 One of two tracks to compare
+   * @param tkr2 One of two tracks to compare
+   * @return True if they share too many of the same Tracker Hits
+   */
+  bool tracks_equal(const edm4hep::Track& trk1, const edm4hep::Track& trk2) {
+    // Get an iterator for the Track hits of the first Track
+    uint32_t hitOlap = 0;
+    // Loop through each track hit and see if it overlaps with the second track
+    for (size_t itrackHit = 0; itrackHit < trk1.trackerHits_size(); ++itrackHit) {
+      auto it = std::find(trk2.trackerHits_begin(), trk2.trackerHits_end(), trk1.getTrackerHits(itrackHit));
+      if (it != trk2.trackerHits_end()) {
+        hitOlap++; // If it does overlap, increment hitOlap
+      }
     }
+
+    // Smaller track count
+    uint32_t size = std::min(trk1.trackerHits_size(), trk2.trackerHits_size());
+    return 2 * hitOlap > size; // half of smaller track belong to larger track
   }
 
-  // Smaller track count
-  uint32_t size = std::min(trk1.trackerHits_size(), trk2.trackerHits_size());
-  return 2 * hitOlap > size; // half of smaller track belong to larger track
-}
+  /**
+   * @brief Determine which of two tracks is of better quality
+   * @details Quality is determined first by number of hits, then by chi2
+   * @param trk1 One of two tracks to compare
+   * @param trk2 One of two tracks to compare
+   * @return True if the first track is of better quality
+   */
+  bool track_quality_compare(const edm4hep::Track& trk1, const edm4hep::Track& trk2) {
+    // If number of hits are different, then the one with more
+    // hits should be chosen first
+    if (trk1.trackerHits_size() != trk2.trackerHits_size())
+      return trk1.trackerHits_size() > trk2.trackerHits_size();
 
-/**
- * @brief Determine which of two tracks is of better quality
- * @details Quality is determined first by number of hits, then by chi2
- * @param trk1 One of two tracks to compare
- * @param trk2 One of two tracks to compare
- * @return True if the first track is of better quality
- */
-bool track_quality_compare(const edm4hep::Track& trk1, const edm4hep::Track& trk2) {
-  // If number of hits are different, then the one with more
-  // hits should be chosen first
-  if (trk1.trackerHits_size() != trk2.trackerHits_size())
-    return trk1.trackerHits_size() > trk2.trackerHits_size();
-
-  // Same number of hits means I want smaller chi2
-  return trk1.getChi2() < trk2.getChi2();
-}
+    // Same number of hits means I want smaller chi2
+    return trk1.getChi2() < trk2.getChi2();
+  }
 } // namespace
 
 /**
