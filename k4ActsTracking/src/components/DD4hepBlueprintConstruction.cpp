@@ -310,42 +310,43 @@ struct LayerMaterial {
   std::regex skipInnermost{};
 };
 
-/// Build an `onLayer` customizer that designates @p face of every layer
-/// volume as a material receiver, on top of whatever @p customize does.
-///
-/// Layers are matched against @c LayerMaterial::skipInnermost by their
-/// DD4hep DetElement name where one exists (the Grouped layouts), and by the
-/// blueprint node name otherwise (the Ungrouped layouts, where the layers are
-/// assembled from sensors and carry the group label from @c makeLayerGrouper).
-///
-/// @param material  The designation config; if unset the returned customizer
-///                  only forwards to @p customize
-/// @param face      The (IP-facing) face to designate
-/// @param label     Prefix for the designator node names
-/// @param customize Layer customization to apply first (e.g. @c unsetXYCoG)
-LayerCustomizer designateLayers(const std::optional<LayerMaterial>& material, Acts::CylinderVolumeBounds::Face face,
-                                const std::string& label, LayerCustomizer customize = {}) {
-  return [=, customize = std::move(customize)](const std::optional<dd4hep::DetElement>& elem,
-                                               std::shared_ptr<LayerBlueprintNode> layer) {
-    const std::string layerName = elem.has_value() ? std::string{elem->name()} : layer->name();
-
-    std::shared_ptr<BlueprintNode> node;
-    if (customize) {
-      node = customize(elem, std::move(layer));
-    } else {
-      node = std::move(layer);
-    }
-
-    if (!material.has_value() || std::regex_match(layerName, material->skipInnermost)) {
-      return node;
-    }
-    return withMaterial(std::move(node), fmt::format("{}_{}_Material", label, layerName), face);
-  };
-}
-
-/// @}
-
 namespace {
+
+  /// Build an `onLayer` customizer that designates @p face of every layer
+  /// volume as a material receiver, on top of whatever @p customize does.
+  ///
+  /// Layers are matched against @c LayerMaterial::skipInnermost by their
+  /// DD4hep DetElement name where one exists (the Grouped layouts), and by the
+  /// blueprint node name otherwise (the Ungrouped layouts, where the layers are
+  /// assembled from sensors and carry the group label from @c makeLayerGrouper).
+  ///
+  /// @param material  The designation config; if unset the returned customizer
+  ///                  only forwards to @p customize
+  /// @param face      The (IP-facing) face to designate
+  /// @param label     Prefix for the designator node names
+  /// @param customize Layer customization to apply first (e.g. @c unsetXYCoG)
+  LayerCustomizer designateLayers(const std::optional<LayerMaterial>& material, Acts::CylinderVolumeBounds::Face face,
+                                  const std::string& label, LayerCustomizer customize = {}) {
+    return [=, customize = std::move(customize)](const std::optional<dd4hep::DetElement>& elem,
+                                                 std::shared_ptr<LayerBlueprintNode> layer) {
+      const std::string layerName = elem.has_value() ? std::string{elem->name()} : layer->name();
+
+      std::shared_ptr<BlueprintNode> node;
+      if (customize) {
+        node = customize(elem, std::move(layer));
+      } else {
+        node = std::move(layer);
+      }
+
+      if (!material.has_value() || std::regex_match(layerName, material->skipInnermost)) {
+        return node;
+      }
+      return withMaterial(std::move(node), fmt::format("{}_{}_Material", label, layerName), face);
+    };
+  }
+
+  /// @}
+
   /// Add a cylindrical beampipe to the passed node using the measures passed as arguments.
   ///
   /// We use this to enclose our actual beampipe because that is not a sipmle
@@ -485,36 +486,34 @@ namespace {
       throw std::invalid_argument(fmt::format("Could not match regex for grouping layers. DetElem name: {}", elemName));
     };
   }
-} // namespace
 
-/// Add one endcap side to @p parent using pre-grouped layer DetElements.
-///
-/// Delegates to @c builder.layers().endcap(), which requires the layers to
-/// already be organised into dedicated DetElements matched by @p filter
-/// inside @p container.
-///
-/// @param builder   Blueprint builder driving the construction
-/// @param parent    Node to attach the endcap side to
-/// @param container Name of the DetElement that contains the endcap layers
-/// @param filter    Regex selecting the relevant layer DetElements
-/// @param axes      Sensor coordinate axes for this endcap side
-/// @param envelope  Extent envelope applied to the resulting volume
-/// @param onLayer   Optional per-layer customization, e.g. from @c designateLayers
-void addGroupedEndcapSide(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::BlueprintNode& parent,
-                          const std::string& container, const std::regex& filter, AxisDefinition axes,
-                          const Acts::ExtentEnvelope& envelope, LayerCustomizer onLayer = {}) {
-  builder.layers()
-      .endcap()
-      .setSensorAxes(std::move(axes))
-      .setContainer(container)
-      .setLayerFilter(filter)
-      .setEnvelope(envelope)
-      .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
-      .onLayer(std::move(onLayer))
-      .addTo(parent);
-}
+  /// Add one endcap side to @p parent using pre-grouped layer DetElements.
+  ///
+  /// Delegates to @c builder.layers().endcap(), which requires the layers to
+  /// already be organised into dedicated DetElements matched by @p filter
+  /// inside @p container.
+  ///
+  /// @param builder   Blueprint builder driving the construction
+  /// @param parent    Node to attach the endcap side to
+  /// @param container Name of the DetElement that contains the endcap layers
+  /// @param filter    Regex selecting the relevant layer DetElements
+  /// @param axes      Sensor coordinate axes for this endcap side
+  /// @param envelope  Extent envelope applied to the resulting volume
+  /// @param onLayer   Optional per-layer customization, e.g. from @c designateLayers
+  void addGroupedEndcapSide(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::BlueprintNode& parent,
+                            const std::string& container, const std::regex& filter, AxisDefinition axes,
+                            const Acts::ExtentEnvelope& envelope, LayerCustomizer onLayer = {}) {
+    builder.layers()
+        .endcap()
+        .setSensorAxes(std::move(axes))
+        .setContainer(container)
+        .setLayerFilter(filter)
+        .setEnvelope(envelope)
+        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+        .onLayer(std::move(onLayer))
+        .addTo(parent);
+  }
 
-namespace {
   /// Add one endcap side to @p parent by collecting sensor DetElements and
   /// grouping them into layers via @c builder.layersFromSensors().
   ///
@@ -738,95 +737,94 @@ namespace {
                        fmt::format("{}|layer_neg", spec.endcapContainer), identityKey, endcapMaterial);
     return tracker;
   }
-} // namespace
 
-/// Make a nested inner tracker that encloses the vertex.
-///
-/// Nesting in this case means that at least one of the endcap layers
-/// protrudes into the cylinder described by the barrel layers. This makes it
-/// necessary to stack the volumes surrounding the layers in the correct order
-/// in r and z to avoid overlapping volumes.
-///
-/// For this specific case the tracker can only be nested "once" this means
-/// that it looks something like the following.
-///
-///      b                                            b
-///      a                                            a
-///      r   endcap(Pos|Neg)OuterFilter               r
-///      r    ⌄  ⌄  ⌄                       ⌄  ⌄  ⌄   r
-///      r    |  |  | ───────────────────── |  |  | < e
-///      e    |  |  | ───────────────────── |  |  | < l
-///      l >  |  |  |  |  | ───────── |  |  |  |  |   O
-///      I >  |  |  |  |  | ───────── |  |  |  |  |   u
-///      n    |  |  |  |  |           |  |  |  |  |   t
-///      n    |  |  |  |  |    VTX    |  |  |  |  |   e
-///      e    |  |  |  |  |           |  |  |  |  |   r
-///      r >  |  |  |  |  | ───────── |  |  |  |  |   F
-///      F >  |  |  |  |  | ───────── |  |  |  |  |   i
-///      i    |  |  | ───────────────────── |  |  | < l
-///      l    |  |  | ───────────────────── |  |  | < t
-///      t                                            e
-///      e             ^  ^           ^  ^            r
-///      r             endcap(Pos|Neg)InnerFilter
-///
-/// The labels correspond to the members of the NestedInnerTrackerSpec.
-/// Dispatches on @p spec.layout for grouped vs. ungrouped endcap sensors.
-///
-/// @param builder  The Blueprint builder that drives the construction
-/// @param vertex   The vertex detector blueprint node
-/// @param spec     The spec for defining how the nesting is done specifically
-///                 for this detector
-/// @param barrelMaterial If set, designate the inner cylinder of every barrel
-///                       layer as a material receiver
-/// @param endcapMaterial If set, designate the IP-facing disc of every endcap
-///                       layer as a material receiver
-///
-/// @returns The inner tracker blueprint node
-std::shared_ptr<CylinderContainerBlueprintNode>
-makeNestedInnerTracker(ActsPlugins::DD4hep::BlueprintBuilder& builder,
-                       std::shared_ptr<CylinderContainerBlueprintNode>&& vertex,
-                       const NestedInnerTrackerSpec& spec = NestedInnerTrackerSpec{},
-                       const std::optional<LayerMaterial>& barrelMaterial = std::nullopt,
-                       const std::optional<LayerMaterial>& endcapMaterial = std::nullopt) {
-  // We have to create the inner tracker in several steps, because the inner
-  // most endcap layer protrudes into the envelope that is created by the
-  // outermost barrel layer. That creates an overlap in z while stacking.
-  // Hence, we build it in steps grouping the innermost two layers of the
-  // barrel and the innermost layer of the endcap into an "inner" inner
-  // tracker (stacking them along z), we then stack the last barrel layer
-  // along r, before stacking the remaining endcap layers along z.
-  // Additionally, we have to first put the whole vertex detector inside the
-  // two innermost InnerTrackerBarrel layers because the outermost vertex
-  // layer extends further in r, than the innermost border of the InnerTracker
-  // endcaps. Hence, we also need to stack them in the correct order.
-  auto innerInnerBarrel = makeGroupedBarrel(builder, spec.barrelContainer, spec.barrelInnerFilter, spec.barrelAxes,
-                                            kTrackerEnvelope, barrelMaterial);
-  innerInnerBarrel->addChild(vertex);
+  /// Make a nested inner tracker that encloses the vertex.
+  ///
+  /// Nesting in this case means that at least one of the endcap layers
+  /// protrudes into the cylinder described by the barrel layers. This makes it
+  /// necessary to stack the volumes surrounding the layers in the correct order
+  /// in r and z to avoid overlapping volumes.
+  ///
+  /// For this specific case the tracker can only be nested "once" this means
+  /// that it looks something like the following.
+  ///
+  ///      b                                            b
+  ///      a                                            a
+  ///      r   endcap(Pos|Neg)OuterFilter               r
+  ///      r    ⌄  ⌄  ⌄                       ⌄  ⌄  ⌄   r
+  ///      r    |  |  | ───────────────────── |  |  | < e
+  ///      e    |  |  | ───────────────────── |  |  | < l
+  ///      l >  |  |  |  |  | ───────── |  |  |  |  |   O
+  ///      I >  |  |  |  |  | ───────── |  |  |  |  |   u
+  ///      n    |  |  |  |  |           |  |  |  |  |   t
+  ///      n    |  |  |  |  |    VTX    |  |  |  |  |   e
+  ///      e    |  |  |  |  |           |  |  |  |  |   r
+  ///      r >  |  |  |  |  | ───────── |  |  |  |  |   F
+  ///      F >  |  |  |  |  | ───────── |  |  |  |  |   i
+  ///      i    |  |  | ───────────────────── |  |  | < l
+  ///      l    |  |  | ───────────────────── |  |  | < t
+  ///      t                                            e
+  ///      e             ^  ^           ^  ^            r
+  ///      r             endcap(Pos|Neg)InnerFilter
+  ///
+  /// The labels correspond to the members of the NestedInnerTrackerSpec.
+  /// Dispatches on @p spec.layout for grouped vs. ungrouped endcap sensors.
+  ///
+  /// @param builder  The Blueprint builder that drives the construction
+  /// @param vertex   The vertex detector blueprint node
+  /// @param spec     The spec for defining how the nesting is done specifically
+  ///                 for this detector
+  /// @param barrelMaterial If set, designate the inner cylinder of every barrel
+  ///                       layer as a material receiver
+  /// @param endcapMaterial If set, designate the IP-facing disc of every endcap
+  ///                       layer as a material receiver
+  ///
+  /// @returns The inner tracker blueprint node
+  std::shared_ptr<CylinderContainerBlueprintNode>
+  makeNestedInnerTracker(ActsPlugins::DD4hep::BlueprintBuilder& builder,
+                         std::shared_ptr<CylinderContainerBlueprintNode>&& vertex,
+                         const NestedInnerTrackerSpec& spec = NestedInnerTrackerSpec{},
+                         const std::optional<LayerMaterial>& barrelMaterial = std::nullopt,
+                         const std::optional<LayerMaterial>& endcapMaterial = std::nullopt) {
+    // We have to create the inner tracker in several steps, because the inner
+    // most endcap layer protrudes into the envelope that is created by the
+    // outermost barrel layer. That creates an overlap in z while stacking.
+    // Hence, we build it in steps grouping the innermost two layers of the
+    // barrel and the innermost layer of the endcap into an "inner" inner
+    // tracker (stacking them along z), we then stack the last barrel layer
+    // along r, before stacking the remaining endcap layers along z.
+    // Additionally, we have to first put the whole vertex detector inside the
+    // two innermost InnerTrackerBarrel layers because the outermost vertex
+    // layer extends further in r, than the innermost border of the InnerTracker
+    // endcaps. Hence, we also need to stack them in the correct order.
+    auto innerInnerBarrel = makeGroupedBarrel(builder, spec.barrelContainer, spec.barrelInnerFilter, spec.barrelAxes,
+                                              kTrackerEnvelope, barrelMaterial);
+    innerInnerBarrel->addChild(vertex);
 
-  auto innerInnerTracker = std::make_shared<CylinderContainerBlueprintNode>("InnerInnerTracker", AxisZ);
-  innerInnerTracker->addChild(innerInnerBarrel);
+    auto innerInnerTracker = std::make_shared<CylinderContainerBlueprintNode>("InnerInnerTracker", AxisZ);
+    innerInnerTracker->addChild(innerInnerBarrel);
 
-  addBothEndcapSides(builder, *innerInnerTracker, spec.endcapContainer, spec.endcapPosInnerFilter,
-                     spec.endcapNegInnerFilter, spec.endcapAxes, spec.layout, kTrackerEnvelope,
-                     fmt::format("{}|layer_pos", spec.endcapContainer),
-                     fmt::format("{}|layer_neg", spec.endcapContainer), identityKey, endcapMaterial);
+    addBothEndcapSides(builder, *innerInnerTracker, spec.endcapContainer, spec.endcapPosInnerFilter,
+                       spec.endcapNegInnerFilter, spec.endcapAxes, spec.layout, kTrackerEnvelope,
+                       fmt::format("{}|layer_pos", spec.endcapContainer),
+                       fmt::format("{}|layer_neg", spec.endcapContainer), identityKey, endcapMaterial);
 
-  auto innerTracker = std::make_shared<CylinderContainerBlueprintNode>("InnerTracker", AxisZ);
-  innerTracker->addCylinderContainer("InnerTrackerBarrel", AxisR, [&](auto& innerBarrel) {
-    innerBarrel.addChild(innerInnerTracker);
-    auto outerBarrel = makeGroupedBarrel(builder, spec.barrelContainer, spec.barrelOuterFilter, spec.barrelAxes,
-                                         kTrackerEnvelope, barrelMaterial);
-    innerBarrel.addChild(outerBarrel);
-  });
+    auto innerTracker = std::make_shared<CylinderContainerBlueprintNode>("InnerTracker", AxisZ);
+    innerTracker->addCylinderContainer("InnerTrackerBarrel", AxisR, [&](auto& innerBarrel) {
+      innerBarrel.addChild(innerInnerTracker);
+      auto outerBarrel = makeGroupedBarrel(builder, spec.barrelContainer, spec.barrelOuterFilter, spec.barrelAxes,
+                                           kTrackerEnvelope, barrelMaterial);
+      innerBarrel.addChild(outerBarrel);
+    });
 
-  addBothEndcapSides(builder, *innerTracker, spec.endcapContainer, spec.endcapPosOuterFilter, spec.endcapNegOuterFilter,
-                     spec.endcapAxes, spec.layout, kTrackerEnvelope, fmt::format("{}|layer_pos", spec.endcapContainer),
-                     fmt::format("{}|layer_neg", spec.endcapContainer), identityKey, endcapMaterial);
+    addBothEndcapSides(builder, *innerTracker, spec.endcapContainer, spec.endcapPosOuterFilter,
+                       spec.endcapNegOuterFilter, spec.endcapAxes, spec.layout, kTrackerEnvelope,
+                       fmt::format("{}|layer_pos", spec.endcapContainer),
+                       fmt::format("{}|layer_neg", spec.endcapContainer), identityKey, endcapMaterial);
 
-  return innerTracker;
-}
+    return innerTracker;
+  }
 
-namespace {
   /// Navigation policy factory for the passive calo volumes. Each calo volume
   /// holds only a handful of explicitly added surfaces (the polygon barrel
   /// faces, or a single endcap disc). A TryAll policy (portals plus all passive
