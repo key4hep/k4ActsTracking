@@ -72,6 +72,7 @@
 #include <cmath>
 #include <filesystem>
 #include <numbers>
+#include <ranges>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -154,14 +155,14 @@ makeDetectorElement(const dd4hep::DetElement& detElement, ActsPlugins::DD4hep::D
                     double lengthScale) {
   dd4hep::DetElement source = detElement;
   if (!detElement.volume().isSensitive()) {
-    std::vector<dd4hep::DetElement> sensitiveChildren;
-    for (const auto& [name, child] : detElement.children()) {
-      if (child.placement().isValid() && child.volume().isSensitive() && child.volumeID() == detElement.volumeID()) {
-        sensitiveChildren.push_back(child);
-      }
-    }
-    if (sensitiveChildren.size() == 1) {
-      source = sensitiveChildren.front();
+    // Only if unique: several sensitive slices share the module's volume ID, then none is the right surface
+    auto silicon =
+        detElement.children() | std::views::values | std::views::filter([&](const dd4hep::DetElement& child) {
+          return child.placement().isValid() && child.volume().isSensitive() &&
+                 child.volumeID() == detElement.volumeID();
+        });
+    if (std::ranges::distance(silicon) == 1) {
+      source = silicon.front();
     }
   }
   return ActsPlugins::DD4hep::DD4hepBackend::defaultElementFactory(source, axes, lengthScale);
