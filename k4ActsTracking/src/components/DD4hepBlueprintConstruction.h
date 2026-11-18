@@ -53,6 +53,10 @@ namespace CLD_o2_v07 {
                          ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo);
 }
 
+namespace IDEA_o1_v04 {
+  void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
+                         ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo);
+}
 } // namespace FCCee
 
 namespace LUXE {
