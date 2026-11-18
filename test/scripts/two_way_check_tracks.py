@@ -31,8 +31,8 @@ import edm4hep
 import ROOT
 from podio.reading import get_reader
 
-# Load edm4hep vector utils for the rxy and dist functions
-ROOT.gInterpreter.LoadFile("edm4hep/utils/vector_utils.h")
+# Include vector utils without reloading a header already loaded by edm4hep.
+ROOT.gInterpreter.Declare('#include "edm4hep/utils/vector_utils.h"')
 rxy = edm4hep.utils.magnitudeTransverse
 dist = edm4hep.utils.magnitude
 
