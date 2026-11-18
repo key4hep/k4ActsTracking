@@ -441,6 +441,9 @@ private:
                                     "Drop a branch with |pT| (GeV) below this; <=0 disables."};
   Gaudi::Property<int> m_bsPtMinMeasurements{this, "BranchStopper_PtMinMeasurements", 3,
                                              "Minimum measurements before the pT branch stop is applied."};
+
+  Gaudi::Property<int> m_tsMinMeasurements{this, "TrackSelector_MinMeasurements", -1,
+                                           "Acts::TrackSelector: minimum measurements per track (< 0: no selection)."};
   ///@}
   ///@}
 
@@ -463,6 +466,16 @@ private:
   k4ActsTracking::CellIDSelector m_seedSelector{};
 
   std::vector<std::pair<k4ActsTracking::CellIDSelector, double>> m_hitTimeResolutionSelectors{};
+
+  /// Acts::TrackSelector configuration from TrackSelector_MinMeasurements, if set.
+  std::optional<Acts::TrackSelector::Config> makeTrackSelectorConfig() const {
+    if (m_tsMinMeasurements < 0) {
+      return std::nullopt;
+    }
+    Acts::TrackSelector::Config cfg;
+    cfg.minMeasurements = m_tsMinMeasurements;
+    return cfg;
+  }
 
   bool usesHitTimeResolutions() const {
     return m_useHitTimeInCKF || m_seedFinding_doubletTimeCutNSigma > 0.0f || m_seedFinding_tripletTimeChi2Max > 0.0f;
@@ -599,7 +612,8 @@ StatusCode CKFTrackingAlg::initialize() {
                                                       .doTwoWayCKF = m_doTwoWayCKF,
                                                       .inflateCovarianceTwoWay = m_inflateCovarianceTwoWay,
                                                       .twoWayInflateCovarianceFactor = m_twoWayInflateCovarianceFactor,
-                                                      .referenceSurface = referenceSurface});
+                                                      .referenceSurface = referenceSurface,
+                                                      .trackSelector = makeTrackSelectorConfig()});
 
   return StatusCode::SUCCESS;
 }
