@@ -264,6 +264,9 @@ private:
                                                        "Number of sigmas allowed in scattering angle."};
   Gaudi::Property<float> m_seedFinding_radLengthPerSeed{this, "SeedFinding_RadLengthPerSeed", 0.1,
                                                         "Average radiation length per seed."};
+  Gaudi::Property<float> m_seedFinding_spacePointVarianceScale{
+      this, "SeedFinding_SpacePointVarianceScale", 1.0,
+      "Factor applied to the seeding space point variances (rho, z), k^2 for a k sigma slope compatibility."};
   Gaudi::Property<float> m_seedFinding_minPt{this, "SeedFinding_MinPt", 500.0, "Minimum pT of tracks to seed [MeV]."};
   Gaudi::Property<float> m_seedFinding_impactMax{this, "SeedFinding_ImpactMax", 3.0,
                                                  "Maximum d0 of tracks to seed [mm]."};
@@ -672,8 +675,8 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
         sp.z = static_cast<float>(globalPos[Acts::ePos2]);
         sp.r = std::hypot(sp.x, sp.y);
         sp.phi = std::atan2(sp.y, sp.x);
-        sp.varR = static_cast<float>(var[0]);
-        sp.varZ = static_cast<float>(var[1]);
+        sp.varR = static_cast<float>(m_seedFinding_spacePointVarianceScale * var[0]);
+        sp.varZ = static_cast<float>(m_seedFinding_spacePointVarianceScale * var[1]);
         sp.t = static_cast<float>(ACTSTracking::hitTime(hit));
         sp.varT = usesHitTimeResolutions()
                       ? static_cast<float>(std::pow(hitTimeResolutionFor(hit) * Acts::UnitConstants::ns, 2))
