@@ -658,7 +658,7 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
         // Jacobian from global (x,y,z) to (rho, z)
         double x = globalPos[Acts::ePos0];
         double y = globalPos[Acts::ePos1];
-        double scale = 2 / std::hypot(x, y);
+        double scale = 1 / std::hypot(x, y);
         Acts::Matrix<2, 3> jacXyzToRhoZ = Acts::Matrix<2, 3>::Zero();
         jacXyzToRhoZ(0, Acts::ePos0) = scale * x;
         jacXyzToRhoZ(0, Acts::ePos1) = scale * y;
