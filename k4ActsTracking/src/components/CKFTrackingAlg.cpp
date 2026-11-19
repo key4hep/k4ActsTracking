@@ -82,6 +82,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <numbers>
 #include <numeric>
 #include <optional>
 #include <span>
@@ -166,7 +167,19 @@ private:
     float varR, varZ;
     float t, varT;
     ACTSTracking::SourceLink sourceLink;
+    float sigma = 0.f;         ///< position resolution (largest local direction)
+    int miniDoubletLayer = -1; ///< index into MiniDoublet_Layers, -1 if not required
   };
+
+  /// Hit on a partner sensor of a mini-doublet layer.
+  struct MiniDoubletPartner {
+    float r, phi, z, sigma;
+  };
+
+  /// Remove the seeding space points on mini-doublet layers that have no
+  /// compatible hit on the partner sensor (see MiniDoublet_Layers).
+  void filterMiniDoublets(std::vector<SeedInput>& seedInputs, std::vector<std::vector<MiniDoubletPartner>>& partners,
+                          float bFieldInZ) const;
 
   /// Convert the seeds found by the triplet seeder into ACTS bound track
   /// parameters and create the corresponding edm4hep seed tracks. The space
@@ -456,6 +469,22 @@ private:
       "Multiple entries are OR-ed together. Omitted fields act as wildcards."};
   ///@}
 
+  /// @name Mini-doublets on double layers
+  ///@{
+  Gaudi::Property<std::vector<std::string>> m_miniDoubletLayers{
+      this, "MiniDoublet_Layers", m_default_empty_vec,
+      "Double layers on which seeding space points need a partner hit. Each entry is "
+      "\"<seeding sensors>;<partner sensors>\", both in the SeedingSensorsCellIDs syntax. A seeding space point on "
+      "the first sensors is kept only if a hit on the second sensors forms a mini-doublet with it. Empty: no "
+      "requirement."};
+  Gaudi::Property<float> m_miniDoubletPtMin{this, "MiniDoublet_PtMin", 1.0,
+                                            "Minimum pT of a mini-doublet, from its azimuthal offset [GeV]."};
+  Gaudi::Property<float> m_miniDoubletZ0Max{this, "MiniDoublet_Z0Max", 6.0,
+                                            "Maximum |z0| of the straight line through a mini-doublet [mm]."};
+  Gaudi::Property<float> m_miniDoubletNSigma{this, "MiniDoublet_NSigma", 3.0,
+                                             "Hit resolution tolerance of the mini-doublet windows, in sigmas."};
+  ///@}
+
   /// @name Multi-threading
   ///@{
   Gaudi::Property<int> m_numThreads{this, "NumThreads", 1, "Number of threads for internal TBB parallelism."};
@@ -464,6 +493,10 @@ private:
   SmartIF<IActsGeoSvc> m_actsGeoSvc;
 
   k4ActsTracking::CellIDSelector m_seedSelector{};
+  /// (seeding sensors, partner sensors) per MiniDoublet_Layers entry
+  std::vector<std::pair<k4ActsTracking::CellIDSelector, k4ActsTracking::CellIDSelector>> m_miniDoubletSelectors{};
+  mutable std::atomic<std::size_t> m_nMiniDoubletCandidates{0};
+  mutable std::atomic<std::size_t> m_nMiniDoubletKept{0};
 
   std::vector<std::pair<k4ActsTracking::CellIDSelector, double>> m_hitTimeResolutionSelectors{};
 
@@ -525,6 +558,18 @@ StatusCode CKFTrackingAlg::initialize() {
 
   m_seedSelector =
       k4ActsTracking::CellIDSelector(m_actsGeoSvc->cellIDEncodingString(), m_seedingSensorsCellIDs.value());
+
+  m_miniDoubletSelectors.clear();
+  for (const std::string& entry : m_miniDoubletLayers.value()) {
+    const auto sep = entry.find(';');
+    if (sep == std::string::npos || entry.find(';', sep + 1) != std::string::npos) {
+      error() << "MiniDoublet_Layers entry '" << entry << "' must be \"<seeding sensors>;<partner sensors>\"" << endmsg;
+      return StatusCode::FAILURE;
+    }
+    const std::string& enc = m_actsGeoSvc->cellIDEncodingString();
+    m_miniDoubletSelectors.emplace_back(k4ActsTracking::CellIDSelector(enc, {entry.substr(0, sep)}),
+                                        k4ActsTracking::CellIDSelector(enc, {entry.substr(sep + 1)}));
+  }
 
   if (m_seedingMode.value() != "Cylindrical" && m_seedingMode.value() != "Telescope") {
     error() << "Unknown SeedingMode '" << m_seedingMode.value() << "'; expected \"Cylindrical\" or \"Telescope\"."
@@ -619,6 +664,12 @@ StatusCode CKFTrackingAlg::initialize() {
 }
 
 StatusCode CKFTrackingAlg::finalize() {
+  if (!m_miniDoubletSelectors.empty()) {
+    const std::size_t n = m_nMiniDoubletCandidates.load();
+    info() << fmt::format("Mini-doublets: kept {} of {} seeding space points on double layers ({:.1f}%)",
+                          m_nMiniDoubletKept.load(), n, n > 0 ? 100.0 * m_nMiniDoubletKept.load() / n : 0.0)
+           << endmsg;
+  }
   if (m_extrapolateToCalo) {
     info() << m_caloMonitor.summary() << endmsg;
   }
@@ -642,6 +693,7 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
   ACTSTracking::MeasurementContainer measurements;
   ACTSTracking::HitContainer hits;
   std::vector<SeedInput> seedInputs;
+  std::vector<std::vector<MiniDoubletPartner>> miniDoubletPartners(m_miniDoubletSelectors.size());
 
   // Build measurements + source links for all hits (shared with the other CKF
   // algorithms); for seed-selected surfaces also record a seeding space point
@@ -650,7 +702,21 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
       *this, *m_actsGeoSvc, geoCtx, trackerHitCollection, measurements, sourceLinks, hits, m_numThreads.value(),
       [&](const edm4hep::TrackerHitPlane& hit, const ACTSTracking::SourceLink& sourceLink,
           const Acts::Vector3& globalPos, const Acts::Surface& surface, const Acts::SquareMatrix2& localCov) {
-        if (!m_seedSelector.accept(hit.getCellID())) {
+        const auto cellID = hit.getCellID();
+        const float sigma = static_cast<float>(std::sqrt(std::max(localCov(0, 0), localCov(1, 1))));
+        int miniDoubletLayer = -1;
+        for (std::size_t k = 0; k < m_miniDoubletSelectors.size(); ++k) {
+          if (m_miniDoubletSelectors[k].second.accept(cellID)) {
+            const float px = static_cast<float>(globalPos[Acts::ePos0]);
+            const float py = static_cast<float>(globalPos[Acts::ePos1]);
+            miniDoubletPartners[k].push_back(
+                {std::hypot(px, py), std::atan2(py, px), static_cast<float>(globalPos[Acts::ePos2]), sigma});
+          }
+          if (miniDoubletLayer < 0 && m_miniDoubletSelectors[k].first.accept(cellID)) {
+            miniDoubletLayer = static_cast<int>(k);
+          }
+        }
+        if (!m_seedSelector.accept(cellID)) {
           return;
         }
         Acts::RotationMatrix3 rotLocalToGlobal = surface.referenceFrame(geoCtx, globalPos, {0, 0, 0});
@@ -679,6 +745,8 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
                       ? static_cast<float>(std::pow(hitTimeResolutionFor(hit) * Acts::UnitConstants::ns, 2))
                       : 0.f;
         sp.sourceLink = sourceLink;
+        sp.sigma = sigma;
+        sp.miniDoubletLayer = miniDoubletLayer;
         seedInputs.push_back(sp);
       },
       m_useHitTimeInCKF.value(), [this](const edm4hep::TrackerHitPlane& hit) { return hitTimeResolutionFor(hit); });
@@ -700,6 +768,9 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
   static const Acts::Vector3 zeropos(0, 0, 0);
 
   const float bFieldInZ = (*m_actsGeoSvc->magneticField()->getField(zeropos, magCache))[2];
+  if (!m_miniDoubletSelectors.empty()) {
+    filterMiniDoublets(seedInputs, miniDoubletPartners, bFieldInZ);
+  }
   const float cotThetaMax = 7.40627f; // ~2.7 η
   const float minPt = m_seedFinding_minPt * Acts::UnitConstants::MeV;
   const float impactMax = m_seedFinding_impactMax * Acts::UnitConstants::mm;
@@ -1023,6 +1094,80 @@ CKFTrackingAlg::seedsToParameters(const Acts::SeedContainer& seeds, const Acts::
 
   debug() << "Seeds found: " << paramseeds.size() << endmsg;
   return paramseeds;
+}
+
+void CKFTrackingAlg::filterMiniDoublets(std::vector<SeedInput>& seedInputs,
+                                        std::vector<std::vector<MiniDoubletPartner>>& partners, float bFieldInZ) const {
+  // Helix through the IP: radius R = pT / B, and between transverse radii r1, r2
+  // the azimuth changes by |dphi| ~ |r2 - r1| / (2 R). A pT > PtMin pair has
+  // |dphi| <= |r2 - r1| * B / (2 PtMin). The straight line through both hits in
+  // r-z must point to |z0| < Z0Max.
+  const double ptMin = m_miniDoubletPtMin * Acts::UnitConstants::GeV;
+  const double halfCurvMax = std::abs(bFieldInZ) / (2 * ptMin);
+  const double z0Max = m_miniDoubletZ0Max * Acts::UnitConstants::mm;
+  const double nSigma = m_miniDoubletNSigma;
+
+  for (auto& layer : partners) {
+    std::ranges::sort(layer, [](const MiniDoubletPartner& a, const MiniDoubletPartner& b) { return a.phi < b.phi; });
+  }
+
+  std::size_t nCandidates = 0;
+  auto hasPartner = [&](const SeedInput& sp) {
+    const auto& layer = partners[sp.miniDoubletLayer];
+    if (layer.empty()) {
+      return false;
+    }
+    // azimuthal search window: generous bound on |r2 - r1| (both sensors of a double layer)
+    const double maxDr = 0.25 * sp.r + 5 * Acts::UnitConstants::mm;
+    const double window = maxDr * halfCurvMax + nSigma * 2 * sp.sigma / sp.r;
+    auto compatible = [&](const MiniDoubletPartner& o) {
+      const double dr = o.r - sp.r;
+      const double sigma2 = std::hypot(sp.sigma, o.sigma);
+      if (std::abs(dr) < 1e-3) {
+        return false;
+      }
+      const double z0 = sp.z - sp.r * (o.z - sp.z) / dr;
+      if (std::abs(z0) > z0Max + nSigma * sigma2 * sp.r / std::abs(dr)) {
+        return false;
+      }
+      const double dphi = std::remainder(o.phi - sp.phi, 2 * std::numbers::pi);
+      return std::abs(dphi) <= std::abs(dr) * halfCurvMax + nSigma * sigma2 / sp.r;
+    };
+    auto scan = [&](double lo, double hi) {
+      auto it = std::ranges::lower_bound(layer, static_cast<float>(lo), {}, &MiniDoubletPartner::phi);
+      for (; it != layer.end() && it->phi <= hi; ++it) {
+        if (compatible(*it)) {
+          return true;
+        }
+      }
+      return false;
+    };
+    const double lo = sp.phi - window;
+    const double hi = sp.phi + window;
+    if (scan(std::max(lo, -std::numbers::pi), std::min(hi, std::numbers::pi))) {
+      return true;
+    }
+    if (lo < -std::numbers::pi && scan(lo + 2 * std::numbers::pi, std::numbers::pi)) {
+      return true;
+    }
+    return hi > std::numbers::pi && scan(-std::numbers::pi, hi - 2 * std::numbers::pi);
+  };
+
+  std::erase_if(seedInputs, [&](const SeedInput& sp) {
+    if (sp.miniDoubletLayer < 0) {
+      return false;
+    }
+    ++nCandidates;
+    return !hasPartner(sp);
+  });
+  std::size_t nKept = 0;
+  for (const SeedInput& sp : seedInputs) {
+    nKept += sp.miniDoubletLayer >= 0;
+  }
+  m_nMiniDoubletCandidates += nCandidates;
+  m_nMiniDoubletKept += nKept;
+  debug() << fmt::format("Mini-doublets: kept {} of {} seeding space points on double layers", nKept, nCandidates)
+          << endmsg;
 }
 
 void CKFTrackingAlg::runTelescopeSeeding(const std::vector<SeedInput>& seedInputs,
