@@ -269,6 +269,30 @@ add_test(NAME check_greedy_ambiguity_resolution
 )
 set_tests_properties(check_greedy_ambiguity_resolution PROPERTIES FIXTURES_REQUIRED greedy_ambiguity_fixture)
 
+# ACTSDuplicateRemoval on synthetic tracks: write -> remove duplicates -> check
+add_test(NAME write_duplicate_removal_tracks
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  COMMAND python ${CMAKE_CURRENT_LIST_DIR}/scripts/duplicate_removal_tracks.py
+                 write duplicate_removal_input.edm4hep.root
+)
+set_tests_properties(write_duplicate_removal_tracks PROPERTIES FIXTURES_SETUP duplicate_removal_input_fixture)
+
+add_k4run_test(duplicate_removal
+  OPTIONS_FILE ${CMAKE_CURRENT_LIST_DIR}/options/duplicate_removal.py
+  EXTRA_ARGS --IOSvc.Input duplicate_removal_input.edm4hep.root
+             --IOSvc.Output duplicate_removal_output.edm4hep.root
+  USE_TEST_ENV
+  FIXTURES_REQUIRED duplicate_removal_input_fixture
+  FIXTURES_SETUP duplicate_removal_fixture
+)
+
+add_test(NAME check_duplicate_removal
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  COMMAND python ${CMAKE_CURRENT_LIST_DIR}/scripts/duplicate_removal_tracks.py
+                 check duplicate_removal_output.edm4hep.root
+)
+set_tests_properties(check_duplicate_removal PROPERTIES FIXTURES_REQUIRED duplicate_removal_fixture)
+
 
 
 # === LUXE chain (self-contained: particle gun + digitization + CKF) ===
