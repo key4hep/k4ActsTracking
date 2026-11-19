@@ -58,10 +58,8 @@
 #include <Acts/Seeding/EstimateTrackParamsFromSeed.hpp>
 #include <Acts/Seeding/TripletSeedFinder.hpp>
 #include <Acts/Seeding/TripletSeeder.hpp>
-#include <Acts/Surfaces/PlaneSurface.hpp>
 #include <Acts/Utilities/Logger.hpp>
 #include <Acts/Utilities/RangeXD.hpp>
-#include <Acts/Utilities/VectorHelpers.hpp>
 
 // TBB
 #include <tbb/blocked_range.h>
@@ -82,7 +80,6 @@
 #include <map>
 #include <memory>
 #include <mutex>
-#include <numeric>
 #include <optional>
 #include <span>
 #include <string>
@@ -93,51 +90,12 @@ using namespace Acts::UnitLiterals;
 template <>
 struct fmt::formatter<podio::ObjectID> : fmt::ostream_formatter {};
 
-namespace {
-/// Build straight-line bound track parameters for a telescope seed.
-///
-/// In a field-free tracker (the ACTS constant field is 0 for a telescope like
-/// LUXE) the trajectory through the planar layers is a straight line, so the
-/// conformal/helix estimate used by the cylindrical seeder does not apply.
-/// The seed direction is taken from the bottom->top space points; the momentum
-/// magnitude is not measurable without curvature, so a nominal value is used
-/// (it does not affect the straight-line propagation, only the covariance
-/// scale and the reported q/p). The parameters are expressed at the start SP:
-/// the bottom one, or the top one with @p propagateBackward (outside-in), whose
-/// surface @p startSurface is and whose hit @p startHit gives the time.
-std::optional<Acts::BoundTrackParameters> estimateStraightLineSeedParameters(
-    const Acts::GeometryContext& geoCtx, const Acts::Surface& startSurface, const Acts::Vector3& bottomPos,
-    const Acts::Vector3& topPos, const edm4hep::TrackerHit& startHit, double nominalP, double errPos, double errPhi,
-    double errLambda, double errRelP, double errTime, double errQOverP, bool propagateBackward) {
-  const Acts::Vector3 dir = (topPos - bottomPos).normalized();
-  const Acts::Vector3& startPos = propagateBackward ? topPos : bottomPos;
-
-  // The start position is derived from the surface, so it lies on it; use a
-  // generous tolerance to guard against round-off in the global<->local map.
-  Acts::Result<Acts::Vector2> local = startSurface.globalToLocal(geoCtx, startPos, dir, 1 * Acts::UnitConstants::mm);
-  if (!local.ok()) {
-    return std::nullopt;
-  }
-
-  Acts::BoundVector params = Acts::BoundVector::Zero();
-  params[Acts::eBoundLoc0] = (*local)[0];
-  params[Acts::eBoundLoc1] = (*local)[1];
-  params[Acts::eBoundPhi] = Acts::VectorHelpers::phi(dir);
-  params[Acts::eBoundTheta] = Acts::VectorHelpers::theta(dir);
-  params[Acts::eBoundQOverP] = 1.0 / nominalP; // charge sign is irrelevant at B = 0
-  params[Acts::eBoundTime] = ACTSTracking::hitTime(startHit);
-
-  Acts::BoundMatrix cov =
-      ACTSTracking::makeInitialCovariance(nominalP, errPos, errPhi, errLambda, errRelP, errTime, errQOverP);
-  return Acts::BoundTrackParameters(startSurface.getSharedPtr(), params, cov, Acts::ParticleHypothesis::pion());
-}
-} // namespace
-
 /**
  * @brief Seeded CKF tracking algorithm using ActsGeoSvc.
  *
  * Obtains the tracking geometry, magnetic field and surface–cellID mapping
- * directly from IActsGeoSvc.
+ * directly from IActsGeoSvc. Seeds with the cylindrical (barrel/endcap)
+ * triplet helix seeder; telescope geometries use TelescopeCKFTrackingAlg.
  *
  * ACTS contexts (geometry, magnetic-field, calibration) are default-
  * constructed as documented by the ACTS framework.
@@ -158,9 +116,7 @@ struct CKFTrackingAlg final
   // ----- private helpers ---------------------------------------------------
 private:
   /// Minimal per-hit information needed to build the seeding space points. The
-  /// global position and rho/z variances are computed during the hit loop; the
-  /// cylindrical seeder additionally uses r/phi/varR/varZ, while the telescope
-  /// seeder only needs the global position and source link.
+  /// global position, rho/z variances and time are computed during the hit loop.
   struct SeedInput {
     float x, y, z, r, phi;
     float varR, varZ;
@@ -176,17 +132,6 @@ private:
                                                             const ACTSTracking::HitContainer& hits,
                                                             edm4hep::TrackCollection& seedCollection,
                                                             Acts::MagneticFieldProvider::Cache& magCache) const;
-
-  /// Straight-line telescope seeding for field-free planar geometries (e.g.
-  /// LUXE). Groups the seed-selected space points into layers along z, forms
-  /// collinear triplets, builds straight-line seed parameters + edm4hep seed
-  /// tracks and, when RunCKF is set, runs the CKF over them. Only used when
-  /// SeedingMode == "Telescope"; the cylindrical clients never reach it.
-  void runTelescopeSeeding(const std::vector<SeedInput>& seedInputs,
-                           const ACTSTracking::MeasurementContainer& measurements,
-                           const ACTSTracking::SourceLinkContainer& sourceLinks, const ACTSTracking::HitContainer& hits,
-                           edm4hep::TrackCollection& seedCollection, edm4hep::TrackCollection& trackCollection,
-                           Acts::MagneticFieldProvider::Cache& magCache) const;
 
   // ----- Gaudi properties --------------------------------------------------
 
@@ -215,31 +160,23 @@ private:
       "by location would silently see only the barrel one. Ignored unless ExtrapolateToCalo is set."};
   ///@}
 
-  /// @name Seeding mode
+  /// @name Deprecated telescope options
+  /// Telescope tracking moved to TelescopeCKFTrackingAlg. These properties are
+  /// only kept so that existing configurations reach the explicit error in
+  /// initialize() instead of failing on an unknown property; they will be
+  /// removed in the next release.
   ///@{
-  /// Selects the seeding strategy. "Cylindrical" (default) is the collider/
-  /// barrel triplet helix seeder and is used by all existing clients. "Telescope"
-  /// switches to the straight-line, layer-based seeder for field-free planar
-  /// geometries (e.g. LUXE); it does not touch the cylindrical code path.
-  Gaudi::Property<std::string> m_seedingMode{this, "SeedingMode", "Cylindrical",
-                                             "Seeding strategy: \"Cylindrical\" (default) or \"Telescope\"."};
-  ///@}
-
-  /// @name Telescope seeding configuration (only used when SeedingMode == "Telescope")
-  ///@{
+  Gaudi::Property<std::string> m_seedingMode{
+      this, "SeedingMode", "Cylindrical",
+      "Deprecated, only \"Cylindrical\" is supported. Use TelescopeCKFTrackingAlg for telescope geometries."};
   Gaudi::Property<float> m_telescope_layerZTolerance{
-      this, "Telescope_LayerZTolerance", 20.0,
-      "Maximum |dz| [mm] between space points assigned to the same telescope layer."};
+      this, "Telescope_LayerZTolerance", 20.0, "Deprecated, ignored. Use TelescopeCKFTrackingAlg.LayerZTolerance."};
   Gaudi::Property<float> m_telescope_collinearityCut{
-      this, "Telescope_CollinearityCut", 2.0,
-      "Maximum transverse distance [mm] of the middle space point from the bottom-top line for a triplet seed."};
+      this, "Telescope_CollinearityCut", 2.0, "Deprecated, ignored. Use TelescopeCKFTrackingAlg.CollinearityCut."};
   Gaudi::Property<float> m_telescope_nominalMomentum{
-      this, "Telescope_NominalMomentum", 5.0,
-      "Nominal seed momentum [GeV] used for the straight-line (field-free) seed parameters."};
-  Gaudi::Property<float> m_telescope_referenceZ{
-      this, "Telescope_ReferenceZ", 0.0,
-      "z [mm] of the beam-perpendicular reference plane the fitted tracks are extrapolated to for the AtIP track "
-      "state. Replaces the beamline perigee, which is unreachable for beam-parallel telescope tracks."};
+      this, "Telescope_NominalMomentum", 5.0, "Deprecated, ignored. Use TelescopeCKFTrackingAlg.NominalMomentum."};
+  Gaudi::Property<float> m_telescope_referenceZ{this, "Telescope_ReferenceZ", 0.0,
+                                                "Deprecated, ignored. Use TelescopeCKFTrackingAlg.ReferenceZ."};
   ///@}
 
   /// @name Seed-finding configuration
@@ -526,9 +463,15 @@ StatusCode CKFTrackingAlg::initialize() {
   m_seedSelector =
       k4ActsTracking::CellIDSelector(m_actsGeoSvc->cellIDEncodingString(), m_seedingSensorsCellIDs.value());
 
-  if (m_seedingMode.value() != "Cylindrical" && m_seedingMode.value() != "Telescope") {
-    error() << "Unknown SeedingMode '" << m_seedingMode.value() << "'; expected \"Cylindrical\" or \"Telescope\"."
+  if (m_seedingMode.value() == "Telescope") {
+    error() << "SeedingMode=\"Telescope\" is no longer supported by CKFTrackingAlg: telescope tracking moved to "
+               "TelescopeCKFTrackingAlg, which takes the same inputs and outputs. Its options drop the Telescope_ "
+               "prefix (e.g. Telescope_ReferenceZ -> ReferenceZ)."
             << endmsg;
+    return StatusCode::FAILURE;
+  }
+  if (m_seedingMode.value() != "Cylindrical") {
+    error() << "Unknown SeedingMode '" << m_seedingMode.value() << "'; only \"Cylindrical\" is supported." << endmsg;
     return StatusCode::FAILURE;
   }
 
@@ -582,19 +525,6 @@ StatusCode CKFTrackingAlg::initialize() {
               << endmsg;
   }
 
-  // In telescope mode the tracks run almost parallel to the beamline, so the
-  // default perigee (a line along z) is unreachable. Extrapolate the AtIP state
-  // to a plane perpendicular to the beam at Telescope_ReferenceZ instead; every
-  // forward track crosses it, and D0/Z0 then read as the track's (x, y) there.
-  std::shared_ptr<const Acts::Surface> referenceSurface; // null => CKFRunner keeps the beamline perigee
-  if (m_seedingMode.value() == "Telescope") {
-    // Unbounded plane at z = Telescope_ReferenceZ with its normal along the beam
-    // (identity rotation => local z = global z), so any forward track crosses it.
-    Acts::Transform3 refTransform = Acts::Transform3::Identity();
-    refTransform.translation() = Acts::Vector3(0, 0, m_telescope_referenceZ * Acts::UnitConstants::mm);
-    referenceSurface = Acts::Surface::makeShared<Acts::PlaneSurface>(refTransform);
-  }
-
   m_ckfRunner.emplace(*m_actsGeoSvc,
                       ACTSTracking::CKFRunner::Config{.chi2CutOff = m_CKF_chi2CutOff,
                                                       .numMeasurementsCutOff = m_CKF_numMeasurementsCutOff,
@@ -612,7 +542,6 @@ StatusCode CKFTrackingAlg::initialize() {
                                                       .doTwoWayCKF = m_doTwoWayCKF,
                                                       .inflateCovarianceTwoWay = m_inflateCovarianceTwoWay,
                                                       .twoWayInflateCovarianceFactor = m_twoWayInflateCovarianceFactor,
-                                                      .referenceSurface = referenceSurface,
                                                       .trackSelector = makeTrackSelectorConfig()});
 
   return StatusCode::SUCCESS;
@@ -688,14 +617,6 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
           << endmsg;
 
   Acts::MagneticFieldProvider::Cache magCache = m_actsGeoSvc->magneticField()->makeCache(magCtx);
-
-  // Telescope (straight-line) seeding path. Kept fully separate from the
-  // cylindrical seeder below so collider/barrel clients see no behaviour change.
-  if (m_seedingMode.value() == "Telescope") {
-    runTelescopeSeeding(seedInputs, measurements, sourceLinks, hits, seedCollection, trackCollection, magCache);
-    debug() << "Track Collection Size: " << trackCollection.size() << endmsg;
-    return std::make_tuple(std::move(seedCollection), std::move(trackCollection));
-  }
 
   static const Acts::Vector3 zeropos(0, 0, 0);
 
@@ -1023,123 +944,6 @@ CKFTrackingAlg::seedsToParameters(const Acts::SeedContainer& seeds, const Acts::
 
   debug() << "Seeds found: " << paramseeds.size() << endmsg;
   return paramseeds;
-}
-
-void CKFTrackingAlg::runTelescopeSeeding(const std::vector<SeedInput>& seedInputs,
-                                         const ACTSTracking::MeasurementContainer& measurements,
-                                         const ACTSTracking::SourceLinkContainer& sourceLinks,
-                                         const ACTSTracking::HitContainer& hits,
-                                         edm4hep::TrackCollection& seedCollection,
-                                         edm4hep::TrackCollection& trackCollection,
-                                         Acts::MagneticFieldProvider::Cache& magCache) const {
-  const Acts::GeometryContext geoCtx = Acts::GeometryContext::dangerouslyDefaultConstruct();
-
-  // -------------------------------------------------------------------------
-  // 1. Group the seed space points into layers along the beam (z) axis. The
-  //    points are sorted by z and split into a new layer whenever the gap to
-  //    the previous point exceeds the layer tolerance (telescope layers are
-  //    well separated in z, so this greedy clustering is unambiguous).
-  // -------------------------------------------------------------------------
-  std::vector<std::size_t> order(seedInputs.size());
-  std::iota(order.begin(), order.end(), 0);
-  std::ranges::sort(order, [&](std::size_t a, std::size_t b) { return seedInputs[a].z < seedInputs[b].z; });
-
-  std::vector<std::vector<std::size_t>> layers;
-  for (std::size_t k : order) {
-    if (layers.empty() ||
-        std::abs(seedInputs[k].z - seedInputs[layers.back().back()].z) > m_telescope_layerZTolerance) {
-      layers.emplace_back();
-    }
-    layers.back().push_back(k);
-  }
-
-  if (layers.size() < 3) {
-    debug() << "Telescope seeding: only " << layers.size() << " layer(s) with seed hits (need >= 3); no seeds."
-            << endmsg;
-    return;
-  }
-
-  const double collinearityCut = m_telescope_collinearityCut;
-  const double nominalP = m_telescope_nominalMomentum * Acts::UnitConstants::GeV;
-
-  auto pos = [&](std::size_t i) { return Acts::Vector3(seedInputs[i].x, seedInputs[i].y, seedInputs[i].z); };
-
-  std::vector<Acts::BoundTrackParameters> paramseeds;
-
-  // -------------------------------------------------------------------------
-  // 2. Form straight-line triplets over consecutive layer triplets. For each
-  //    bottom/top pair the middle hit closest to the bottom->top line is kept,
-  //    accepted only if within the collinearity cut. This replaces the helix
-  //    compatibility used by the cylindrical seeder.
-  // -------------------------------------------------------------------------
-  for (std::size_t l = 0; l + 2 < layers.size(); ++l) {
-    const std::vector<std::size_t>& botLayer = layers[l];
-    const std::vector<std::size_t>& midLayer = layers[l + 1];
-    const std::vector<std::size_t>& topLayer = layers[l + 2];
-
-    for (std::size_t bi : botLayer) {
-      const Acts::Vector3 bottom = pos(bi);
-      for (std::size_t ti : topLayer) {
-        const Acts::Vector3 top = pos(ti);
-        const double dz = top.z() - bottom.z();
-        if (std::abs(dz) < 1e-6) {
-          continue;
-        }
-
-        double bestResidual = collinearityCut;
-        std::size_t bestMid = std::numeric_limits<std::size_t>::max();
-        for (std::size_t mi : midLayer) {
-          const Acts::Vector3 mid = pos(mi);
-          const double t = (mid.z() - bottom.z()) / dz;
-          const Acts::Vector3 pred = bottom + t * (top - bottom);
-          const double resid = std::hypot(mid.x() - pred.x(), mid.y() - pred.y());
-          if (resid < bestResidual) {
-            bestResidual = resid;
-            bestMid = mi;
-          }
-        }
-        if (bestMid == std::numeric_limits<std::size_t>::max()) {
-          continue;
-        }
-
-        // PropagateBackward: start the (backward) CKF from the top SP, as in
-        // the cylindrical seeding path.
-        const ACTSTracking::SourceLink& bottomSL = seedInputs[bi].sourceLink;
-        const ACTSTracking::SourceLink& startSL = m_propagateBackward ? seedInputs[ti].sourceLink : bottomSL;
-        const Acts::Surface* surface = m_actsGeoSvc->trackingGeometry()->findSurface(startSL.geometryId());
-        if (surface == nullptr) {
-          warning() << "Surface with geoID " << startSL.geometryId() << " not found in tracking geometry" << endmsg;
-          continue;
-        }
-
-        std::optional<Acts::BoundTrackParameters> paramseed = estimateStraightLineSeedParameters(
-            geoCtx, *surface, bottom, top, hits[startSL.index()], nominalP, m_initialTrackError_pos,
-            m_initialTrackError_phi, m_initialTrackError_lambda, m_initialTrackError_relP, m_initialTrackError_time,
-            m_initialTrackError_qOverP, m_propagateBackward);
-        if (!paramseed) {
-          continue;
-        }
-        paramseeds.push_back(*paramseed);
-
-        auto seedTrackState = ACTSTracking::makeSeedTrackState(*this, *m_actsGeoSvc, geoCtx, *paramseed, magCache,
-                                                               m_propagateBackward ? edm4hep::TrackState::AtLastHit
-                                                                                   : edm4hep::TrackState::AtFirstHit);
-        ACTSTracking::appendSeedTrack(seedCollection, m_seedMutex, seedTrackState,
-                                      std::array{hits[bottomSL.index()], hits[seedInputs[bestMid].sourceLink.index()],
-                                                 hits[seedInputs[ti].sourceLink.index()]});
-      }
-    }
-  }
-
-  debug() << "Telescope seeding: found " << paramseeds.size() << " seeds across " << layers.size() << " layers."
-          << endmsg;
-
-  if (!m_runCKF) {
-    return;
-  }
-
-  m_ckfRunner->findTracks(*this, measurements, sourceLinks, hits, paramseeds, magCache, trackCollection, m_trackMutex,
-                          &m_caloMonitor);
 }
 
 DECLARE_COMPONENT(CKFTrackingAlg);
