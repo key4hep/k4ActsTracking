@@ -70,8 +70,8 @@ hit_merger, hit_rel_merger = make_hit_mergers(
 algList.extend([hit_merger, hit_rel_merger])
 
 # LUXE's tracker sits in a field-free region (the dipole is localized upstream),
-# so the collider helix seeder finds nothing. Use the straight-line telescope
-# seeder instead; this configuration does not affect the barrel/collider clients.
+# so the collider helix seeder of CKFTrackingAlg finds nothing. Use
+# TelescopeCKFTrackingAlg (straight-line telescope seeding) instead.
 ckf_tracking = make_telescope_ckf_tracking(
     hit_merger,
     hit_rel_merger,
