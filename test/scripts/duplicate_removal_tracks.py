@@ -85,7 +85,7 @@ if args.mode == "write":
     sys.exit(0)
 
 errors = []
-frames = list(get_reader(args.file).get("events"))
+frames = get_reader(args.file).get("events")
 if len(frames) != len(CASES):
     errors.append(f"{len(frames)} events, expected {len(CASES)}")
 for i_event, (frame, (_, expected)) in enumerate(zip(frames, CASES)):
