@@ -49,7 +49,9 @@
 #include <Acts/Geometry/TrackingGeometry.hpp>
 #include <Acts/MagneticField/MagneticFieldContext.hpp>
 #include <Acts/MagneticField/MagneticFieldProvider.hpp>
+#include <Acts/Propagator/ActorList.hpp>
 #include <Acts/Propagator/EigenStepper.hpp>
+#include <Acts/Propagator/MaterialInteractor.hpp>
 #include <Acts/Propagator/Navigator.hpp>
 #include <Acts/Propagator/Propagator.hpp>
 #include <Acts/Seeding/EstimateTrackParamsFromSeed.hpp>
@@ -57,6 +59,7 @@
 #include <Acts/Surfaces/Surface.hpp>
 #include <Acts/TrackFinding/CombinatorialKalmanFilter.hpp>
 #include <Acts/TrackFinding/MeasurementSelector.hpp>
+#include <Acts/TrackFinding/TrackSelector.hpp>
 #include <Acts/TrackFinding/TrackStateCreator.hpp>
 #include <Acts/TrackFitting/GainMatrixUpdater.hpp>
 #include <Acts/Utilities/TrackHelpers.hpp>
@@ -217,6 +220,10 @@ public:
     /// tracks - which never approach the z-axis line - still have a reachable,
     /// well-defined reference.
     std::shared_ptr<const Acts::Surface> referenceSurface{nullptr};
+
+    /// Optional ACTS track selection, applied to each track after the
+    /// extrapolation to the reference surface.
+    std::optional<Acts::TrackSelector::Config> trackSelector{};
   };
 
   /// Builds the event-independent propagators and CKF once. The event-local
@@ -244,7 +251,11 @@ public:
         m_extrapolator(std::make_unique<CKFPropagator>(makePropagator(geo, false))),
         m_caloAppender(
             geo, m_geoCtx, m_magCtx,
-            {.enabled = cfg.extrapolateToCalo, .addEndcapState = cfg.addEndcapCaloState, .maxSteps = cfg.maxSteps}) {}
+            {.enabled = cfg.extrapolateToCalo, .addEndcapState = cfg.addEndcapCaloState, .maxSteps = cfg.maxSteps}) {
+    if (cfg.trackSelector) {
+      m_trackSelector.emplace(*cfg.trackSelector);
+    }
+  }
 
   CKFRunner(const CKFRunner&) = delete;
   CKFRunner(CKFRunner&&) = delete;
@@ -479,14 +490,20 @@ public:
         // for telescope clients) so its track-level parameters (and hence
         // the AtIP edm4hep TrackState) are defined there, not at the
         // innermost measurement surface. Must happen before
-        // ACTS2edm4hep_track, which fills the AtIP state.
-        typename CKFPropagator::template Options<> exOptions(m_geoCtx, m_magCtx);
+        // ACTS2edm4hep_track, which fills the AtIP state. Include the material
+        // crossed on the way (beam pipe) in the covariance.
+        using ExtrapolationOptions =
+            typename CKFPropagator::template Options<Acts::ActorList<Acts::MaterialInteractor>>;
+        ExtrapolationOptions exOptions(m_geoCtx, m_magCtx);
         exOptions.maxSteps = m_maxSteps;
         const CKFPropagator& extrapolator = *m_extrapolator;
         auto exResult = Acts::extrapolateTrackToReferenceSurface(trackTip, *m_referenceSurface, extrapolator, exOptions,
                                                                  Acts::TrackExtrapolationStrategy::firstOrLast);
         if (!exResult.ok()) {
           alg.warning() << "Reference-surface extrapolation error: " << exResult.error() << endmsg;
+          continue;
+        }
+        if (m_trackSelector && !m_trackSelector->isValidTrack(trackTip)) {
           continue;
         }
 
@@ -568,6 +585,7 @@ private:
   std::shared_ptr<const Acts::Surface> m_referenceSurface;
   std::unique_ptr<CKFPropagator> m_extrapolator;
   CaloStateAppender m_caloAppender;
+  std::optional<Acts::TrackSelector> m_trackSelector;
 
   // Two-way CKF counters: findTracks() is const and runs concurrently.
   mutable std::atomic<std::size_t> m_nTwoWayStitched{0};
