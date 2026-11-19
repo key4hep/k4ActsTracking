@@ -415,7 +415,6 @@ std::shared_ptr<const Acts::IVertexFinder> VertexFindingAlg::makeSeeder() const 
 
 std::vector<VertexFindingAlg::ConvertedTrack>
 VertexFindingAlg::convertTracks(const edm4hep::TrackCollection& inputTracks) const {
-  namespace EDM4hepDetail = ActsPlugins::EDM4hepUtil::detail;
   auto fieldCache = m_magneticField->makeCache(m_mctx);
 
   std::vector<ConvertedTrack> convertedTracks;
@@ -432,18 +431,16 @@ VertexFindingAlg::convertTracks(const edm4hep::TrackCollection& inputTracks) con
       continue;
     }
 
-    // As readTrack does for this state: q/p needs the local Bz, taken where
-    // the particle is.
-    const EDM4hepDetail::Parameters edmParams = EDM4hepDetail::unpackTrackState(*ipState);
-    double bz = 0.;
+    // Throws if the field lookup fails.
+    std::optional<Acts::BoundTrackParameters> converted;
     try {
-      bz = EDM4hepDetail::localBz(*m_magneticField, fieldCache,
-                                  EDM4hepDetail::pointOfClosestApproach(m_gctx, edmParams), *m_actsLogger);
+      converted =
+          ActsPlugins::EDM4hepUtil::readTrackState(m_gctx, *ipState, *m_magneticField, fieldCache, *m_actsLogger);
     } catch (const std::exception& e) {
       warning() << "Track conversion failed, skipping track: " << e.what() << endmsg;
       continue;
     }
-    Acts::BoundTrackParameters params = EDM4hepDetail::convertTrackParametersFromEdm4hep(bz, edmParams);
+    Acts::BoundTrackParameters params = std::move(*converted);
 
     // Express the track at the beam line, see m_beamSpotPosition. The
     // straight-line intersection picks the direction, as in Acts'
