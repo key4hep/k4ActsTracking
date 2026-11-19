@@ -72,10 +72,8 @@
 #include <cmath>
 #include <filesystem>
 #include <numbers>
-#include <ranges>
 #include <string>
 #include <unordered_set>
-#include <vector>
 
 template <>
 struct fmt::formatter<Acts::GeometryIdentifier> : fmt::ostream_formatter {};
@@ -147,26 +145,6 @@ private:
   std::size_t m_nWithMaterial{0};
   std::size_t m_nProto{0};
 };
-
-/// Put sensor surfaces on the silicon: some drivers (e.g. CLD's endcaps) place the
-/// sensor DetElement on a passive module, with the silicon as a child DetElement.
-ActsPlugins::DD4hep::DD4hepBackend::DetectorElementPtr
-makeDetectorElement(const dd4hep::DetElement& detElement, ActsPlugins::DD4hep::DD4hepBackend::AxisDefinition axes,
-                    double lengthScale) {
-  dd4hep::DetElement source = detElement;
-  if (!detElement.volume().isSensitive()) {
-    // Only if unique: several sensitive slices share the module's volume ID, then none is the right surface
-    auto silicon =
-        detElement.children() | std::views::values | std::views::filter([&](const dd4hep::DetElement& child) {
-          return child.placement().isValid() && child.volume().isSensitive() &&
-                 child.volumeID() == detElement.volumeID();
-        });
-    if (std::ranges::distance(silicon) == 1) {
-      source = silicon.front();
-    }
-  }
-  return ActsPlugins::DD4hep::DD4hepBackend::defaultElementFactory(source, axes, lengthScale);
-}
 } // namespace
 
 ActsGeoSvc::ActsGeoSvc(const std::string& name, ISvcLocator* svcLoc) : base_class(name, svcLoc) {
@@ -215,11 +193,9 @@ StatusCode ActsGeoSvc::initialize() {
   const auto detName = dd4hepDet->header().name();
   info() << fmt::format("Constructing detector with name: {}", dd4hepDet->header().name()) << endmsg;
 
-  BlueprintBuilder builder{{.elementFactory = makeDetectorElement,
-                            .dd4hepDetector = dd4hepDet,
-                            .lengthScale = Acts::UnitConstants::cm / dd4hep::cm,
-                            .gctx = gctxt},
-                           gaudiLogger->cloneWithSuffix("|BlpBld")};
+  BlueprintBuilder builder{
+      {.dd4hepDetector = dd4hepDet, .lengthScale = Acts::UnitConstants::cm / dd4hep::cm, .gctx = gctxt},
+      gaudiLogger->cloneWithSuffix("|BlpBld")};
 
   // The calo-face surfaces are inserted into the tracking geometry as passive
   // surfaces of dedicated calo volumes, so they must be built before the
