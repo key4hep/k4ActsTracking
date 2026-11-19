@@ -359,7 +359,7 @@ overlaps.
 | `TrackBuilding` | `"connected-components"` | Track building algorithm, see below |
 | `WalkAddScore` | `0.6` | `"cc-and-walk"` only: score above which a neighbour is always followed |
 | `WalkMinScore` | `0.1` | `"cc-and-walk"` only: score below which the walk stops |
-| `WalkBestPredecessor` | `false` | `"cc-and-walk"` only: follow u -> v only if it is v's best edge from an unused hit |
+| `WalkBestPredecessor` | `false` | `"cc-and-walk"` only: move from hit u to hit v only if u -> v is v's best-scoring incoming edge among the hits not yet used |
 | `MinMeanEdgeScore` | `0` | `"cc-and-walk"` only: drop candidates whose mean internal edge score is below this |
 | `MinHitsPerTrack` | `3` | Minimum number of hits for a candidate to be fitted |
 | `PropagateBackward` | `false` | Extrapolate the fitted tracks towards the beamline |
