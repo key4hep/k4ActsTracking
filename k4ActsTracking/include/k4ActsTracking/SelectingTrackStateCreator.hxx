@@ -51,15 +51,12 @@ namespace ACTSTracking {
  * @brief CKF track state creator that selects the measurements on a surface
  *        before creating track states for them.
  *
- * Equivalent to Acts::TrackStateCreator with an Acts::MeasurementSelector
- * configured with a single global cut bin (chi2 cut, outlier chi2 cut and
- * maximum number of measurements), and gives the same selection. The ACTS
- * creator allocates and calibrates a temporary track state for every
- * measurement on the surface before computing its chi2. Here the chi2 is
- * computed directly from the MeasurementContainer, which already holds the
- * calibrated local parameters and covariance, and track states are only
- * created for the selected measurements, as the ATLAS ActsTrk measurement
- * selector does.
+ * Computes the chi2 of each measurement on the surface with respect to the
+ * predicted parameters and keeps up to numMeasurementsCutOff measurements
+ * with chi2 below chi2CutOff, smallest chi2 first. If none passes, the
+ * measurement with the smallest chi2 is kept as an outlier if its chi2 is
+ * below chi2CutOffOutlier. Track states are created only for the kept
+ * measurements.
  */
 template <typename track_container_t>
 class SelectingTrackStateCreator {
@@ -69,9 +66,9 @@ public:
   using BranchVector = Acts::CkfTypes::BranchVector<Acts::TrackIndexType>;
 
   struct Cuts {
-    double chi2CutOff = 15;
-    double chi2CutOffOutlier = std::numeric_limits<double>::max();
-    std::size_t numMeasurementsCutOff = 1;
+    double chi2CutOff;
+    double chi2CutOffOutlier;
+    std::size_t numMeasurementsCutOff;
   };
 
   SelectingTrackStateCreator(const SourceLinkContainer& sourceLinks, const MeasurementContainer& measurements,
@@ -97,9 +94,6 @@ public:
     const Acts::BoundVector& predicted = boundParams.parameters();
     const Acts::BoundMatrix& predictedCovariance = *boundParams.covariance();
 
-    // Same order, cuts and tie handling as Acts::MeasurementSelector::select:
-    // the candidates passing the chi2 cut keep their source link order, the
-    // outlier fallback is the first candidate with the smallest finite chi2.
     struct Candidate {
       const SourceLink* sourceLink;
       double chi2;
@@ -174,8 +168,7 @@ public:
   }
 
 private:
-  /// chi2 of a measurement with respect to the predicted parameters, as
-  /// Acts::MeasurementSelector::calculateChi2 computes it.
+  /// chi2 of a measurement with respect to the predicted parameters.
   static double calculateChi2(const Measurement& measurement, const Acts::BoundVector& predicted,
                               const Acts::BoundMatrix& predictedCovariance) {
     return Acts::visit_measurement(measurement.size(), [&](auto N) -> double {
