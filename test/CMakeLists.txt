@@ -245,6 +245,30 @@ add_k4run_test(material_validation_MAIA_v0
   FIXTURES_REQUIRED material_mapping_maia_fixture
 )
 
+# GreedyAmbiguityResolutionAlg on synthetic tracks: write -> resolve -> check
+add_test(NAME write_greedy_ambiguity_tracks
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  COMMAND python ${CMAKE_CURRENT_LIST_DIR}/scripts/greedy_ambiguity_tracks.py
+                 write greedy_ambiguity_input.edm4hep.root
+)
+set_tests_properties(write_greedy_ambiguity_tracks PROPERTIES FIXTURES_SETUP greedy_ambiguity_input_fixture)
+
+add_k4run_test(greedy_ambiguity_resolution
+  OPTIONS_FILE ${CMAKE_CURRENT_LIST_DIR}/options/greedy_ambiguity_resolution.py
+  EXTRA_ARGS --IOSvc.Input greedy_ambiguity_input.edm4hep.root
+             --IOSvc.Output greedy_ambiguity_output.edm4hep.root
+  USE_TEST_ENV
+  FIXTURES_REQUIRED greedy_ambiguity_input_fixture
+  FIXTURES_SETUP greedy_ambiguity_fixture
+)
+
+add_test(NAME check_greedy_ambiguity_resolution
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  COMMAND python ${CMAKE_CURRENT_LIST_DIR}/scripts/greedy_ambiguity_tracks.py
+                 check greedy_ambiguity_output.edm4hep.root
+)
+set_tests_properties(check_greedy_ambiguity_resolution PROPERTIES FIXTURES_REQUIRED greedy_ambiguity_fixture)
+
 
 
 # === LUXE chain (self-contained: particle gun + digitization + CKF) ===
