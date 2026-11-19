@@ -723,21 +723,19 @@ namespace {
   ///                       layer as a material receiver
   /// @param endcapMaterial If set, designate the IP-facing disc of every endcap
   ///                       layer as a material receiver
-  /// @param innerBarrelGap If true, the space between the endcaps' inner radius
-  ///                       and the first barrel layer becomes a gap volume
-  ///                       instead of part of that layer, so the layer's inner
-  ///                       cylinder stays at its sensors
+  ///
+  /// The space between the endcaps' inner radius and the first barrel layer
+  /// becomes a gap volume instead of part of that layer, so the layer's inner
+  /// cylinder stays at its sensors and can carry the layer's own material.
   ///
   /// @returns The tracker blueprint node
   std::shared_ptr<CylinderContainerBlueprintNode>
   makeRegularTracker(ActsPlugins::DD4hep::BlueprintBuilder& builder, const TrackerSpec& spec,
                      const std::string& trackerName, const std::optional<LayerMaterial>& barrelMaterial = std::nullopt,
-                     const std::optional<LayerMaterial>& endcapMaterial = std::nullopt, bool innerBarrelGap = false) {
+                     const std::optional<LayerMaterial>& endcapMaterial = std::nullopt) {
     auto tracker = std::make_shared<CylinderContainerBlueprintNode>(trackerName, AxisZ);
     auto barrel = makeBarrel(builder, spec, kTrackerEnvelope, identityKey, barrelMaterial);
-    if (innerBarrelGap) {
-      barrel->setResizeStrategies(Acts::VolumeResizeStrategy::Gap, Acts::VolumeResizeStrategy::Expand);
-    }
+    barrel->setResizeStrategies(Acts::VolumeResizeStrategy::Gap, Acts::VolumeResizeStrategy::Expand);
     tracker->addChild(barrel);
     addBothEndcapSides(builder, *tracker, spec.endcapContainer, spec.endcapPosFilter, spec.endcapNegFilter,
                        spec.endcapAxes, spec.endcapLayout, kTrackerEnvelope,
@@ -961,25 +959,26 @@ namespace MAIA_v0 {
     // has to be left out, because that depends on what else sits in the same
     // radial stack:
     //
-    // - VertexBarrel and OuterTrackerBarrel are plain layer stacks, so the
-    //   inner cylinder of their layer 0 *is* the container's inner cylinder.
-    //   Both containers are then children of a z-stack (Vertex and
-    //   OuterTracker), which merges its children's cylinder faces, so those
-    //   layers are skipped. Designating them aborts the construction with
+    // - VertexBarrel is a plain layer stack, so the inner cylinder of its
+    //   layer 0 *is* the container's inner cylinder. The container is a child
+    //   of a z-stack (Vertex), which merges its children's cylinder faces, so
+    //   that layer is skipped. Designating it aborts the construction with
     //   "Material is designated on portal faces that are merged when stacking
     //   child volumes in AxisZ direction".
     // - InnerTrackerBarrel encloses the whole vertex detector
     //   (makeNestedInnerTracker adds it as a radial child), so its layer0
     //   inner cylinder is an interior portal fused with Vertex's outer
     //   cylinder, which designates nothing. It is safe, and designated.
+    // - OuterTrackerBarrel gets a gap volume below layer0 (makeRegularTracker),
+    //   so its layer0 inner cylinder sits at the sensors, inside the container,
+    //   and is designated.
     //
-    // Nothing is lost by skipping: each excluded face survives as part of a
-    // receiver that is designated. VertexBarrel's is Beampipe.OuterCylinder
-    // (the same portal, shared through every enclosing container), and
-    // OuterTrackerBarrel's is InnerTracker.OuterCylinder.
+    // Nothing is lost by skipping VertexBarrel's layer 0: its inner cylinder
+    // is the same portal as Beampipe.OuterCylinder (shared through every
+    // enclosing container), which is designated.
     const auto vertexBarrelMaterial = Blueprints::LayerMaterial{.skipInnermost = std::regex{"layer_0"}};
     const auto innerBarrelMaterial = Blueprints::LayerMaterial{};
-    const auto outerBarrelMaterial = Blueprints::LayerMaterial{.skipInnermost = std::regex{"layer0"}};
+    const auto outerBarrelMaterial = Blueprints::LayerMaterial{};
     const auto endcapMaterial = Blueprints::LayerMaterial{};
 
     // Build the tracker detectors as radial children of the supplied
@@ -998,9 +997,9 @@ namespace MAIA_v0 {
       auto innerTracker = Blueprints::makeNestedInnerTracker(
           builder, std::move(vertex), Blueprints::NestedInnerTrackerSpec{}, innerBarrelMaterial, endcapMaterial);
       // The inner tracker's outer cylinder is fused with the outer tracker's
-      // inner cylinder, which carries no material (the innermost outer-tracker
-      // barrel layer is skipped), so it is free to receive the material of the
-      // services between the two subdetectors.
+      // inner cylinder, which carries no material (it belongs to the gap volume
+      // below the first outer-tracker barrel layer), so it is free to receive
+      // the material of the services between the two subdetectors.
       outer.addChild(Blueprints::withMaterial(innerTracker, "InnerTracker_Material",
                                               Acts::CylinderVolumeBounds::Face::OuterCylinder));
 
@@ -1152,12 +1151,9 @@ namespace CLD_o2_v07 {
                          ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo) {
     // Material receivers for CLD. The tree has the same shape as MAIA_v0's, so
     // the same faces are designated and skipped for the same reasons (see
-    // there), except for the first outer-tracker barrel layer: its modules sit
-    // ~280 mm outside the inner-tracker container, so it gets a gap volume
-    // below it and its own receiver. The vertex barrel is built from sensors
-    // here, so its layers are matched by their blueprint node name instead of
-    // a DetElement name: the group label from makeLayerGrouper, prefixed with
-    // the container name.
+    // there). The vertex barrel is built from sensors here, so its layers are
+    // matched by their blueprint node name instead of a DetElement name: the
+    // group label from makeLayerGrouper, prefixed with the container name.
     //
     // Unlike MAIA_v0 there is no solenoid volume: the CLD coil sits outside
     // the calorimeter (r = 3719 mm vs. an ECAL barrel face at 2150 mm), so the
@@ -1184,7 +1180,7 @@ namespace CLD_o2_v07 {
                                               Acts::CylinderVolumeBounds::Face::OuterCylinder));
 
       auto outerTracker = Blueprints::makeRegularTracker(builder, Blueprints::UngroupedOuterTrackerSpec, "OuterTracker",
-                                                         outerBarrelMaterial, endcapMaterial, /*innerBarrelGap=*/true);
+                                                         outerBarrelMaterial, endcapMaterial);
       outer.addChild(Blueprints::withMaterial(outerTracker, "OuterTracker_Material",
                                               Acts::CylinderVolumeBounds::Face::OuterCylinder));
     };
