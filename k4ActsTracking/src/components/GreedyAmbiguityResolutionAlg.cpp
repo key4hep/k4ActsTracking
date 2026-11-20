@@ -20,13 +20,12 @@
 #include "k4ActsTracking/ActsGaudiLogger.h"
 
 #include <edm4hep/TrackCollection.h>
+#include <edm4hep/TrackerHit.h>
 
 #include <Gaudi/Property.h>
 #include <k4FWCore/Transformer.h>
 
 #include <Acts/AmbiguityResolution/GreedyAmbiguityResolution.hpp>
-
-#include <podio/ObjectID.h>
 
 #include <cstdint>
 #include <limits>
@@ -56,7 +55,7 @@ struct GreedyAmbiguityResolutionAlg final
 
   edm4hep::TrackCollection operator()(const edm4hep::TrackCollection& tracks) const override {
     Acts::GreedyAmbiguityResolution::State state;
-    std::unordered_map<podio::ObjectID, std::size_t> measurementIndex;
+    std::unordered_map<edm4hep::TrackerHit, std::size_t> measurementIndex;
     for (std::size_t i = 0; i < tracks.size(); ++i) {
       const auto& track = tracks[i];
       if (track.getTrackerHits().size() < m_nMeasurementsMin) {
@@ -64,7 +63,7 @@ struct GreedyAmbiguityResolutionAlg final
       }
       std::vector<std::size_t> measurements;
       for (const auto& hit : track.getTrackerHits()) {
-        measurements.push_back(measurementIndex.try_emplace(hit.getObjectID(), measurementIndex.size()).first->second);
+        measurements.push_back(measurementIndex.try_emplace(hit, measurementIndex.size()).first->second);
       }
       state.trackTips.push_back(static_cast<int>(i));
       // chi2/ndf as ACTS; a track without degrees of freedom ranks last
