@@ -245,29 +245,30 @@ add_k4run_test(material_validation_MAIA_v0
   FIXTURES_REQUIRED material_mapping_maia_fixture
 )
 
-# ACTSDuplicateRemoval on synthetic tracks: write -> remove duplicates -> check
-add_test(NAME write_duplicate_removal_tracks
+# ACTSDuplicateRemoval and GreedyAmbiguityResolutionAlg on the same synthetic tracks:
+# write -> remove duplicates / resolve -> check
+add_test(NAME write_ambiguity_resolution_tracks
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-  COMMAND python ${CMAKE_CURRENT_LIST_DIR}/scripts/duplicate_removal_tracks.py
-                 write duplicate_removal_input.edm4hep.root
+  COMMAND python ${CMAKE_CURRENT_LIST_DIR}/scripts/ambiguity_resolution_tracks.py
+                 write ambiguity_resolution_input.edm4hep.root
 )
-set_tests_properties(write_duplicate_removal_tracks PROPERTIES FIXTURES_SETUP duplicate_removal_input_fixture)
+set_tests_properties(write_ambiguity_resolution_tracks PROPERTIES FIXTURES_SETUP ambiguity_resolution_input_fixture)
 
-add_k4run_test(duplicate_removal
-  OPTIONS_FILE ${CMAKE_CURRENT_LIST_DIR}/options/duplicate_removal.py
-  EXTRA_ARGS --IOSvc.Input duplicate_removal_input.edm4hep.root
-             --IOSvc.Output duplicate_removal_output.edm4hep.root
+add_k4run_test(ambiguity_resolution
+  OPTIONS_FILE ${CMAKE_CURRENT_LIST_DIR}/options/ambiguity_resolution.py
+  EXTRA_ARGS --IOSvc.Input ambiguity_resolution_input.edm4hep.root
+             --IOSvc.Output ambiguity_resolution_output.edm4hep.root
   USE_TEST_ENV
-  FIXTURES_REQUIRED duplicate_removal_input_fixture
-  FIXTURES_SETUP duplicate_removal_fixture
+  FIXTURES_REQUIRED ambiguity_resolution_input_fixture
+  FIXTURES_SETUP ambiguity_resolution_fixture
 )
 
-add_test(NAME check_duplicate_removal
+add_test(NAME check_ambiguity_resolution
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-  COMMAND python ${CMAKE_CURRENT_LIST_DIR}/scripts/duplicate_removal_tracks.py
-                 check duplicate_removal_output.edm4hep.root
+  COMMAND python ${CMAKE_CURRENT_LIST_DIR}/scripts/ambiguity_resolution_tracks.py
+                 check ambiguity_resolution_output.edm4hep.root
 )
-set_tests_properties(check_duplicate_removal PROPERTIES FIXTURES_REQUIRED duplicate_removal_fixture)
+set_tests_properties(check_ambiguity_resolution PROPERTIES FIXTURES_REQUIRED ambiguity_resolution_fixture)
 
 
 
