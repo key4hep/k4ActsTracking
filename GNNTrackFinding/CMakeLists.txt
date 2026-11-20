@@ -42,6 +42,7 @@ set(sources
     src/EdgePrintingHook.cpp
     src/GNNTrackFinder.cpp
     src/OnnxMetricLearning.cpp
+    src/OnnxSeededMetricLearning.cpp
     src/PaddedEdgeRemoval.cpp
 )
 
