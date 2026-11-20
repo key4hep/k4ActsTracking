@@ -26,10 +26,15 @@
 #include <Acts/Material/IAssignmentFinder.hpp>
 #include <Acts/Material/PropagatorMaterialAssigner.hpp>
 #include <Acts/Propagator/ActorList.hpp>
-#include <Acts/Propagator/StandardAborters.hpp>
 #include <Acts/Propagator/SurfaceCollector.hpp>
 #include <Acts/Utilities/Logger.hpp>
 #include <Acts/Utilities/VectorHelpers.hpp>
+
+#if __has_include(<Acts/Propagator/DefaultActor.hpp>)
+#include <Acts/Propagator/DefaultActor.hpp>
+#else
+#include <Acts/Propagator/StandardAborters.hpp>
+#endif
 
 #include <algorithm>
 #include <cstddef>
@@ -58,10 +63,8 @@ namespace ACTSTracking {
 /// A scan is a sampling of directions and a few pathological ones should cost
 /// their own entries, not the run.
 ///
-/// Acts discards the actor results when a propagation fails
-/// (@c Propagator::makeResult returns the error before moving the collectors
-/// into the result), so there is nothing to salvage for such a track. It is
-/// therefore reported as carrying no material, and counted: the validation
+/// Partial collector results are not used when a propagation fails. The
+/// track is reported as carrying no material, and counted: the validation
 /// still writes an entry, which keeps the output aligned entry by entry with
 /// the scan it is compared against, and @c stats() tells the caller how many
 /// entries are hollow so a silent deficit cannot be mistaken for physics.
@@ -122,14 +125,23 @@ public:
     // Same actors as Acts::PropagatorMaterialAssigner; the collectors and the
     // surface selector are reused from its header rather than duplicated.
     using MaterialSurfaceCollector = Acts::SurfaceCollector<Acts::MaterialSurfaceIdentifier>;
+#if __has_include(<Acts/Propagator/DefaultActor.hpp>)
+    using ActorList = Acts::ActorList<Acts::DefaultActor, MaterialSurfaceCollector, Acts::InteractionVolumeCollector>;
+#else
     using ActorList =
         Acts::ActorList<MaterialSurfaceCollector, Acts::InteractionVolumeCollector, Acts::EndOfWorldReached>;
+#endif
     using PropagatorOptions = typename propagator_t::template Options<ActorList>;
 
     PropagatorOptions options(gctx, mctx);
     options.maxSteps = m_maxSteps;
 
-    const auto result = m_propagator.propagate(start, options, false);
+#if __has_include(<Acts/Propagator/DefaultActor.hpp>)
+    auto state = m_propagator.makeState(options);
+    const auto result = m_propagator.propagate(state, start, nullptr, /*createFinalParameters=*/false);
+#else
+    const auto result = m_propagator.propagate(start, options, /*createFinalParameters=*/false);
+#endif
 
     ++m_stats->nTracks;
     if (!result.ok()) {
@@ -143,12 +155,17 @@ public:
 
     m_stats->maxStepsObserved = std::max(m_stats->maxStepsObserved, result.value().steps);
 
+#if __has_include(<Acts/Propagator/DefaultActor.hpp>)
+    const auto& surfaceResult = state.actor.template get<MaterialSurfaceCollector::State>();
+    const auto& volumeResult = state.actor.template get<Acts::InteractionVolumeCollector::State>();
+#else
     const auto& surfaceResult = result.value().template get<MaterialSurfaceCollector::result_type>();
+    const auto& volumeResult = result.value().template get<Acts::InteractionVolumeCollector::result_type>();
+#endif
     for (const auto& hit : surfaceResult.collected) {
       candidates.first.push_back(Acts::IAssignmentFinder::SurfaceAssignment{hit.surface, hit.position, direction});
     }
 
-    const auto& volumeResult = result.value().template get<Acts::InteractionVolumeCollector::result_type>();
     for (const auto& [geoId, assignment] : volumeResult.collected) {
       candidates.second.push_back(assignment);
     }

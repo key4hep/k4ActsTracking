@@ -43,6 +43,10 @@
 #include <Acts/Utilities/Intersection.hpp>
 #include <Acts/Utilities/Logger.hpp>
 
+#if __has_include(<Acts/Propagator/DefaultActor.hpp>)
+#include <Acts/Propagator/DefaultActor.hpp>
+#endif
+
 // ActsPlugins: centralised ACTS -> EDM4hep conversion
 #include <ActsPlugins/EDM4hep/EDM4hepUtil.hpp>
 
@@ -181,12 +185,16 @@ CaloExtrapolationResult extrapolateToCaloFace(const CaloFacePropagator& propagat
     return {std::nullopt, CaloExtrapolationStatus::NoSurfaces};
   }
 
-  using ActorList = Acts::ActorList<CaloSurfaceReached>;
-  using Options = CaloFacePropagator::Options<ActorList>;
-
+#if __has_include(<Acts/Propagator/DefaultActor.hpp>)
+  using Options = CaloFacePropagator::Options<Acts::ActorList<Acts::DefaultActor, CaloSurfaceReached>>;
   Options options{gctx, mctx};
-  options.maxSteps = maxSteps;
+  options.actor.get<CaloSurfaceReached>().caloIds = &caloSurfaceGeoIds;
+#else
+  using Options = CaloFacePropagator::Options<Acts::ActorList<CaloSurfaceReached>>;
+  Options options{gctx, mctx};
   options.actorList.get<CaloSurfaceReached>().caloIds = &caloSurfaceGeoIds;
+#endif
+  options.maxSteps = maxSteps;
 
   auto result = propagator.propagate(start, options);
   if (!result.ok()) {
