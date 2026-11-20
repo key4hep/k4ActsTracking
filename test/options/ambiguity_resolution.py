@@ -17,12 +17,16 @@
 # limitations under the License.
 #
 
-# ACTSDuplicateRemoval on a track collection, e.g. the synthetic tracks of
-# test/scripts/duplicate_removal_tracks.py:
-#   k4run duplicate_removal.py --IOSvc.Input <in> --IOSvc.Output <out>
+# ACTSDuplicateRemoval and GreedyAmbiguityResolutionAlg on the same track
+# collection, e.g. the synthetic tracks of test/scripts/ambiguity_resolution_tracks.py:
+#   k4run ambiguity_resolution.py --IOSvc.Input <in> --IOSvc.Output <out>
 
 from Gaudi.Configuration import INFO
-from Gaudi.Configurables import ACTSDuplicateRemoval, EventDataSvc
+from Gaudi.Configurables import (
+    ACTSDuplicateRemoval,
+    EventDataSvc,
+    GreedyAmbiguityResolutionAlg,
+)
 from k4FWCore import ApplicationMgr, IOSvc
 
 iosvc = IOSvc("IOSvc")
@@ -34,7 +38,12 @@ ApplicationMgr(
             "ACTSDuplicateRemoval",
             InputTrackCollectionName=["Tracks"],
             OutputTrackCollectionName=["DedupedTracks"],
-        )
+        ),
+        GreedyAmbiguityResolutionAlg(
+            "GreedyAmbiguityResolutionAlg",
+            InputTrackCollectionName=["Tracks"],
+            OutputTrackCollectionName=["ResolvedTracks"],
+        ),
     ],
     ExtSvc=[EventDataSvc("EventDataSvc")],
     OutputLevel=INFO,

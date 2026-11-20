@@ -50,6 +50,9 @@ set(_plugin_sources
   src/components/MaterialMappingAlg.cpp
   src/components/MaterialValidationAlg.cpp
   src/components/VertexFindingAlg.cpp
+  src/components/GreedyAmbiguityResolutionAlg.cpp
+  src/components/UnusedHitsAlg.cpp
+  src/components/SplitTrackRemovalAlg.cpp
 )
 
 gaudi_add_module(k4ActsTrackingPlugins
