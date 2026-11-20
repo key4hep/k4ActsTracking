@@ -59,7 +59,6 @@
 #include <ranges>
 #include <stdexcept>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -661,14 +660,14 @@ GNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*
   ACTSTracking::SourceLinkContainer sourceLinks;
   ACTSTracking::MeasurementContainer measurements;
   ACTSTracking::HitContainer hitContainer;
-  std::unordered_map<std::uint64_t, ACTSTracking::SourceLink> slByHit;
+  ACTSTracking::SourceLinksByHit slByHit;
   slByHit.reserve(allHits.size());
 
   ACTSTracking::prepareTrackerHits(
       *this, *m_actsGeoSvc, geoCtx, allHits, measurements, sourceLinks, hitContainer, /*numThreads=*/1,
       [&](const edm4hep::TrackerHitPlane& hit, const ACTSTracking::SourceLink& sl, const Acts::Vector3& /*globalPos*/,
           const Acts::Surface& /*surface*/,
-          const Acts::SquareMatrix2& /*localCov*/) { slByHit.emplace(ACTSTracking::trackerHitKey(hit), sl); });
+          const Acts::SquareMatrix2& /*localCov*/) { slByHit.emplace(hit, sl); });
 
   Acts::MagneticFieldProvider::Cache magCache = m_actsGeoSvc->magneticField()->makeCache(magCtx);
 
