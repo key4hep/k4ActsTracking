@@ -18,11 +18,10 @@
  */
 
 #include <edm4hep/TrackCollection.h>
+#include <edm4hep/TrackerHit.h>
 #include <edm4hep/TrackerHitPlaneCollection.h>
 
 #include <k4FWCore/Transformer.h>
-
-#include <podio/ObjectID.h>
 
 #include <string>
 #include <unordered_set>
@@ -42,18 +41,20 @@ struct UnusedHitsAlg final
   edm4hep::TrackerHitPlaneCollection
   operator()(const edm4hep::TrackerHitPlaneCollection& hits,
              const std::vector<const edm4hep::TrackCollection*>& trackCollections) const override {
-    std::unordered_set<podio::ObjectID> used;
+    // Hits are identified by their handles, not by their ObjectIDs: collections made in the same job (e.g. by the
+    // digitizers) have no collection ID until they are written, so hits of different collections can share one.
+    std::unordered_set<edm4hep::TrackerHit> used;
     for (const auto* tracks : trackCollections) {
       for (const auto& track : *tracks) {
         for (const auto& hit : track.getTrackerHits()) {
-          used.insert(hit.getObjectID());
+          used.insert(hit);
         }
       }
     }
     edm4hep::TrackerHitPlaneCollection unused;
     unused.setSubsetCollection();
     for (const auto& hit : hits) {
-      if (!used.contains(hit.getObjectID())) {
+      if (!used.contains(hit)) {
         unused.push_back(hit);
       }
     }
