@@ -80,7 +80,7 @@ yet found in the Key4hep stack. Specifically, you need
     ([acts#5646](https://github.com/acts-project/acts/pull/5646)) and to pass
     the selected features in the configured order
     ([acts#6142](https://github.com/acts-project/acts/pull/6142)), i.e. v48.1.0
-    or later; k4ActsTracking as a whole needs Acts >= 48.5.0 (or main).
+    or later.
 
 In particular the GNN plugin and the c++ library of pytorch_scatter are not yet
 available via spack, so they need some manual intervention.
