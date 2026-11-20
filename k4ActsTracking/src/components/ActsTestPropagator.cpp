@@ -33,17 +33,12 @@
 #include <Acts/MagneticField/MagneticFieldContext.hpp>
 #include <Acts/Material/MaterialInteraction.hpp>
 #include <Acts/Propagator/ActorList.hpp>
+#include <Acts/Propagator/DefaultActor.hpp>
 #include <Acts/Propagator/EigenStepper.hpp>
 #include <Acts/Propagator/MaterialInteractor.hpp>
 #include <Acts/Propagator/Navigator.hpp>
 #include <Acts/Propagator/Propagator.hpp>
 #include <Acts/Propagator/detail/SteppingLogger.hpp>
-
-#if __has_include(<Acts/Propagator/DefaultActor.hpp>)
-#include <Acts/Propagator/DefaultActor.hpp>
-#else
-#include <Acts/Propagator/StandardAborters.hpp>
-#endif
 
 #include <DD4hep/Detector.h>
 
@@ -126,11 +121,7 @@ std::vector<podio::UserDataCollection<double>> ActsTestPropagator::operator()() 
   using Navigator = Acts::Navigator;
   using Propagator = Acts::Propagator<Stepper, Navigator>;
 
-#if __has_include(<Acts/Propagator/DefaultActor.hpp>)
   using ActorList = Acts::ActorList<Acts::DefaultActor, SteppingLogger, MaterialInteractor>;
-#else
-  using ActorList = Acts::ActorList<SteppingLogger, MaterialInteractor, Acts::EndOfWorldReached>;
-#endif
   using PropagatorOptions = Propagator::template Options<ActorList>;
 
   // Configurations
@@ -177,22 +168,14 @@ std::vector<podio::UserDataCollection<double>> ActsTestPropagator::operator()() 
     const auto startParameters = Acts::BoundTrackParameters::createCurvilinear(
         startPos, direction, qOverP, std::nullopt, Acts::ParticleHypothesis::pion());
 
-#if __has_include(<Acts/Propagator/DefaultActor.hpp>)
     auto state = propagator.makeState(options);
     const auto result = propagator.propagate(state, startParameters);
-#else
-    const auto result = propagator.propagate(startParameters, options);
-#endif
     if (!result.ok()) {
       warning() << "Propagation failed for track " << i << ": " << result.error() << endmsg;
       continue;
     }
 
-#if __has_include(<Acts/Propagator/DefaultActor.hpp>)
     const auto& steppingResults = state.actor.get<SteppingLogger::State>();
-#else
-    const auto& steppingResults = result.value().get<SteppingLogger::result_type>();
-#endif
 
     // Store step results from this track
     for (const auto& step : steppingResults.steps) {

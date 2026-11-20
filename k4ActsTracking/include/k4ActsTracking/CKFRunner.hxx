@@ -50,9 +50,7 @@
 #include <Acts/MagneticField/MagneticFieldContext.hpp>
 #include <Acts/MagneticField/MagneticFieldProvider.hpp>
 #include <Acts/Propagator/ActorList.hpp>
-#if __has_include(<Acts/Propagator/DefaultActor.hpp>)
 #include <Acts/Propagator/DefaultActor.hpp>
-#endif
 #include <Acts/Propagator/EigenStepper.hpp>
 #include <Acts/Propagator/MaterialInteractor.hpp>
 #include <Acts/Propagator/Navigator.hpp>
@@ -495,12 +493,8 @@ public:
         // innermost measurement surface. Must happen before
         // ACTS2edm4hep_track, which fills the AtIP state. Include the material
         // crossed on the way (beam pipe) in the covariance.
-#if __has_include(<Acts/Propagator/DefaultActor.hpp>)
-        using ExtrapolationActors = Acts::ActorList<Acts::DefaultActor, Acts::MaterialInteractor>;
-#else
-        using ExtrapolationActors = Acts::ActorList<Acts::MaterialInteractor>;
-#endif
-        using ExtrapolationOptions = CKFPropagator::Options<ExtrapolationActors>;
+        using ExtrapolationOptions =
+            CKFPropagator::Options<Acts::ActorList<Acts::DefaultActor, Acts::MaterialInteractor>>;
         ExtrapolationOptions exOptions(m_geoCtx, m_magCtx);
         exOptions.maxSteps = m_maxSteps;
         const CKFPropagator& extrapolator = *m_extrapolator;

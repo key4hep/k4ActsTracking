@@ -35,6 +35,7 @@
 #include <Acts/EventData/ParticleHypothesis.hpp>
 #include <Acts/MagneticField/InterpolatedBFieldMap.hpp>
 #include <Acts/Propagator/ActorList.hpp>
+#include <Acts/Propagator/DefaultActor.hpp>
 #include <Acts/Propagator/PropagatorOptions.hpp>
 #include <Acts/Propagator/detail/CovarianceEngine.hpp>
 #include <Acts/Surfaces/BoundaryTolerance.hpp>
@@ -42,10 +43,6 @@
 #include <Acts/Surfaces/Surface.hpp>
 #include <Acts/Utilities/Intersection.hpp>
 #include <Acts/Utilities/Logger.hpp>
-
-#if __has_include(<Acts/Propagator/DefaultActor.hpp>)
-#include <Acts/Propagator/DefaultActor.hpp>
-#endif
 
 // ActsPlugins: centralised ACTS -> EDM4hep conversion
 #include <ActsPlugins/EDM4hep/EDM4hepUtil.hpp>
@@ -185,16 +182,10 @@ CaloExtrapolationResult extrapolateToCaloFace(const CaloFacePropagator& propagat
     return {std::nullopt, CaloExtrapolationStatus::NoSurfaces};
   }
 
-#if __has_include(<Acts/Propagator/DefaultActor.hpp>)
   using Options = CaloFacePropagator::Options<Acts::ActorList<Acts::DefaultActor, CaloSurfaceReached>>;
   Options options{gctx, mctx};
-  options.actor.get<CaloSurfaceReached>().caloIds = &caloSurfaceGeoIds;
-#else
-  using Options = CaloFacePropagator::Options<Acts::ActorList<CaloSurfaceReached>>;
-  Options options{gctx, mctx};
-  options.actorList.get<CaloSurfaceReached>().caloIds = &caloSurfaceGeoIds;
-#endif
   options.maxSteps = maxSteps;
+  options.actor.get<CaloSurfaceReached>().caloIds = &caloSurfaceGeoIds;
 
   auto result = propagator.propagate(start, options);
   if (!result.ok()) {
