@@ -32,9 +32,6 @@
 #include <edm4hep/TrackerHit.h>
 #include <edm4hep/TrackerHitPlaneCollection.h>
 
-// podio
-#include <podio/ObjectID.h>
-
 // Gaudi
 #include <Gaudi/Property.h>
 #include <GaudiKernel/SmartIF.h>
@@ -59,12 +56,10 @@
 // Standard
 #include <algorithm>
 #include <cmath>
-#include <cstdint>
 #include <mutex>
 #include <optional>
 #include <ranges>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 /**
@@ -235,14 +230,14 @@ CKFTrackingFromSeedsAlg::operator()(const edm4hep::TrackerHitPlaneCollection& tr
 
   // Build measurements + source links for all hits, and keep the source link of
   // each hit so the input track candidates can be turned into seeds.
-  std::unordered_map<std::uint64_t, ACTSTracking::SourceLink> slByHit;
+  ACTSTracking::SourceLinksByHit slByHit;
   slByHit.reserve(trackerHitCollection.size());
 
   ACTSTracking::prepareTrackerHits(
       *this, *m_actsGeoSvc, geoCtx, trackerHitCollection, measurements, sourceLinks, hitContainer, m_numThreads.value(),
       [&](const edm4hep::TrackerHitPlane& hit, const ACTSTracking::SourceLink& sl, const Acts::Vector3& /*globalPos*/,
           const Acts::Surface& /*surface*/,
-          const Acts::SquareMatrix2& /*localCov*/) { slByHit.emplace(ACTSTracking::trackerHitKey(hit), sl); });
+          const Acts::SquareMatrix2& /*localCov*/) { slByHit.emplace(hit, sl); });
 
   debug() << fmt::format("Created {} sourceLinks from {} hits", sourceLinks.size(), trackerHitCollection.size())
           << endmsg;
