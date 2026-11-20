@@ -68,9 +68,8 @@ The Gaudi plugin module `k4ActsTrackingPlugins` provides, among others:
   `.obj` file for visualization, and load a material map (`MaterialMapFile`, see
   [doc/material_mapping.md](doc/material_mapping.md)).
 * **`CKFTrackingAlg`** — seeding plus combinatorial Kalman filter (CKF) track
-  finding on EDM4hep tracker hits. Seeds are built either with the cylindrical
-  helix seeder (default, for collider/barrel geometries) or a straight-line
-  telescope seeder for field-free planar detectors (`SeedingMode`). Fitted tracks
+  finding on EDM4hep tracker hits, for collider (barrel/endcap) geometries:
+  seeds are built with the cylindrical triplet helix seeder. Fitted tracks
   can optionally be extrapolated to the calorimeter face to add an
   `AtCalorimeter` track state (`ExtrapolateToCalo`), placed at the first calo
   face the track reaches. A track entering the barrel face near the
@@ -80,6 +79,11 @@ The Gaudi plugin module `k4ActsTrackingPlugins` provides, among others:
   unless the consumer is prepared to see more than one state with that
   location, since looking the state up by location alone yields only the
   barrel one.
+* **`TelescopeCKFTrackingAlg`** — the same CKF for telescope geometries: planar
+  layers stacked along the beam in a field-free region (e.g. LUXE). Seeds are
+  collinear triplets over consecutive layers with a nominal momentum, and the
+  AtIP track state is defined on a beam-perpendicular plane (`ReferenceZ`)
+  instead of the beamline perigee. Same inputs and outputs as `CKFTrackingAlg`.
 * **`CKFTrackingFromSeedsAlg`** — runs the same CKF, but seeded from an existing
   input track collection (e.g. candidates from an upstream pattern-recognition
   stage) instead of the internal seed finder.
@@ -158,8 +162,8 @@ examples and the test option files for working configurations:
   [`test/options/_ckf_helpers.py`](test/options/_ckf_helpers.py).
 
 * [`test/options/LUXE_CKFTracking.py`](test/options/LUXE_CKFTracking.py) — CKF
-  tracking for the field-free LUXE telescope geometry, exercising the
-  straight-line telescope seeding mode (`SeedingMode="Telescope"`).
+  tracking for the field-free LUXE telescope geometry, exercising
+  `TelescopeCKFTrackingAlg`.
 
   > **Note:** the parameters in these option files are tuned only for technical
   > tests and are *not* a meaningful physics tracking configuration.

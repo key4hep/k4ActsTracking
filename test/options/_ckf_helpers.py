@@ -28,6 +28,7 @@ from Gaudi.Configurables import (
     CollectionMerger,
     EventDataSvc,
     GeoSvc,
+    TelescopeCKFTrackingAlg,
 )
 from k4FWCore.parseArgs import parser
 
@@ -142,14 +143,13 @@ def make_telescope_ckf_tracking(
     reference_z=0.0,
     **ckf_args,
 ):
-    """Configure the CKFTrackingAlg with the straight-line *telescope* seeder.
+    """Configure the TelescopeCKFTrackingAlg (straight-line telescope seeding).
 
-    For field-free planar geometries (e.g. LUXE), where the default collider
-    helix seeder finds nothing. This is a thin wrapper over make_ckf_tracking
-    that flips SeedingMode to "Telescope" and exposes the telescope-specific
-    knobs as named arguments (the cylindrical SeedFinding_* values set by
-    make_ckf_tracking are ignored in this mode). It does not affect the
-    collider/barrel configuration.
+    For field-free planar geometries (e.g. LUXE), where the collider helix
+    seeder of CKFTrackingAlg finds nothing. Uses the same CKF settings and
+    collection names as make_ckf_tracking and exposes the telescope-specific
+    knobs as named arguments. Additional TelescopeCKFTrackingAlg properties can
+    be passed as keyword arguments.
 
     Parameters
     ----------
@@ -165,14 +165,20 @@ def make_telescope_ckf_tracking(
         which is unreachable for beam-parallel tracks).
     """
 
-    return make_ckf_tracking(
-        hit_merger,
-        hit_rel_merger,
-        seeding_cellids,
-        SeedingMode="Telescope",
-        Telescope_LayerZTolerance=layer_z_tolerance,
-        Telescope_CollinearityCut=collinearity_cut,
-        Telescope_NominalMomentum=nominal_momentum,
-        Telescope_ReferenceZ=reference_z,
-        **ckf_args,
+    props = dict(
+        RunCKF=True,
+        CKF_Chi2CutOff=10,
+        CKF_NumMeasurementsCutOff=1,
+        LayerZTolerance=layer_z_tolerance,
+        CollinearityCut=collinearity_cut,
+        NominalMomentum=nominal_momentum,
+        ReferenceZ=reference_z,
+        SeedingSensorsCellIDs=seeding_cellids,
+        OutputTrackCollection="CKFTracks",
+        OutputSeedCollection="CKFTrackSeeds",
+        InputTrackerHitCollection=hit_merger.OutputCollection,
+        InputTrackerHitRelationCollection=hit_rel_merger.OutputCollection,
+        OutputLevel=INFO,
     )
+    props.update(ckf_args)
+    return TelescopeCKFTrackingAlg("CKFTracking", **props)
