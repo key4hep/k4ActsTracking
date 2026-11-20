@@ -19,6 +19,7 @@
 #pragma once
 
 #include "ONNXInferenceModel.h"
+#include "PipelineTensorUtils.h"
 
 #include <Acts/Utilities/Logger.hpp>
 #include <ActsPlugins/Gnn/Stages.hpp>
@@ -41,15 +42,12 @@ class OnnxMetricLearning final : public ActsPlugins::GraphConstructionBase {
 public:
   /// Number of node features the (optional) edge feature computation reads,
   /// see Config::edgeFeatureIndices
-  static constexpr std::size_t kNumEdgeFeatureInputs = 4;
+  static constexpr std::size_t kNumEdgeFeatureInputs = gnntracking::kNumEdgeFeatureInputs;
   /// Number of edge features it produces, see Config::edgeFeatureIndices
-  static constexpr std::size_t kNumEdgeFeatures = 6;
-  /// The scale the edge feature computation takes phi to be divided by: the
-  /// dphi wrap-around un-scales the difference by it, wraps it into [-pi, pi]
-  /// and scales it back. This is the convention of the ACORN training and of
-  /// Acts' makeEdgeFeatures(), so Config::edgeFeatureScales has to scale phi by
-  /// exactly this for the features to be what the classifier was trained on.
-  static constexpr float kEdgeFeaturePhiScale = std::numbers::pi_v<float>;
+  static constexpr std::size_t kNumEdgeFeatures = gnntracking::kNumEdgeFeatures;
+  /// See gnntracking::kEdgeFeaturePhiScale, Config::edgeFeatureScales has to
+  /// scale phi by exactly this
+  static constexpr float kEdgeFeaturePhiScale = gnntracking::kEdgeFeaturePhiScale;
 
   struct Config {
     std::string modelPath{};

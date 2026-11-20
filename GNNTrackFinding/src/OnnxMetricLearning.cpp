@@ -401,30 +401,10 @@ ActsPlugins::PipelineTensors OnnxMetricLearning::operator()(std::vector<float>& 
   }
   std::vector<float>& downstreamValues = paddedInputValues.empty() ? inputValues : paddedInputValues;
 
-  // Create the node-feature input tensor for EdgeClassifiers directly in ACTS memory on the
-  // target device, this should avoid further ORT-internal copies downstream + ensure that pipeline runs on CUDA if
-  // requested. This avoids the old procedure:
-  // vector -> Torch CPU tensor (-> move to CUDA) -> torchToActsTensor(execContext),
-  // which does not guarantee inputs on CUDA => OnnxEdgeClasifier running on CPU if inputs in host mem
-  const std::size_t downstreamNumNodes = downstreamValues.size() / fullNumFeatures;
-  auto downstreamNodeTensor = ActsPlugins::Tensor<float>::Create({downstreamNumNodes, fullNumFeatures}, execContext);
-  if (!execContext.device.isCuda()) {
-    std::copy(downstreamValues.begin(), downstreamValues.end(), downstreamNodeTensor.data());
-  } else {
-#ifdef ACTS_GNN_WITH_CUDA
-    const auto nbytes = downstreamValues.size() * sizeof(float);
-    const auto status =
-        execContext.stream.has_value()
-            ? cudaMemcpyAsync(downstreamNodeTensor.data(), downstreamValues.data(), nbytes, cudaMemcpyHostToDevice,
-                              *execContext.stream)
-            : cudaMemcpy(downstreamNodeTensor.data(), downstreamValues.data(), nbytes, cudaMemcpyHostToDevice);
-    if (status != cudaSuccess) {
-      throw std::runtime_error(fmt::format("Failed to copy node features to CUDA: {}", cudaGetErrorString(status)));
-    }
-#else
-    throw std::runtime_error("cannot run on CUDA, k4ActsTracking/ACTS was built without CUDA support");
-#endif
-  }
+  // Node features for the edge classifiers, in ACTS memory on the target device
+  // (see gnntracking::makeNodeFeatureTensor), so that the pipeline runs on CUDA
+  // if requested.
+  auto downstreamNodeTensor = gnntracking::makeNodeFeatureTensor(downstreamValues, fullNumFeatures, execContext);
 
   auto actsEdgeList = ActsPlugins::detail::torchToActsTensor<int64_t>(edgeList, execContext);
 
@@ -494,60 +474,9 @@ std::optional<torch::Tensor> OnnxMetricLearning::buildEdgeFeatures(const std::ve
   if (config().edgeFeatureIndices.empty()) {
     return std::nullopt;
   }
-
-  // The six features are the ones Acts' makeEdgeFeatures() (ModuleMapUtils.cuh)
-  // produces, which is the only place Acts fills them - but that one is CUDA
-  // only, so the CPU pipeline has to compute them itself. Note that the edge
-  // classifier scales its node input but passes the edge input through as it
-  // is, so these are computed from the already scaled node values.
-  enum EdgeFeatureInput { eR = 0, ePhi, eZ, eEta };
-  constexpr float pi = std::numbers::pi_v<float>;
-
-  const auto& indices = config().edgeFeatureIndices;
-  const auto& scales = config().edgeFeatureScales;
-
-  // (numNodes x 4) buffer of the scaled r, phi, z and eta of every node
-  std::vector<float> nodeValues(numNodes * kNumEdgeFeatureInputs);
-  for (std::size_t n = 0; n < numNodes; ++n) {
-    for (std::size_t f = 0; f < kNumEdgeFeatureInputs; ++f) {
-      const float value = inputValues[n * fullNumFeatures + static_cast<std::size_t>(indices[f])];
-      nodeValues[n * kNumEdgeFeatureInputs + f] = scales.empty() ? value : value / scales[f];
-    }
-  }
-
-  // Gathering the node values per edge with torch ops keeps the computation on
-  // whichever device the edge building ran on.
-  const auto nodeTensor =
-      ActsPlugins::detail::vectorToTensor2D(nodeValues, kNumEdgeFeatureInputs).to(edgeList.device());
-  const auto srcValues = nodeTensor.index_select(0, edgeList.select(0, 0).contiguous());
-  const auto tgtValues = nodeTensor.index_select(0, edgeList.select(0, 1).contiguous());
-
-  const auto dr = tgtValues.select(1, eR) - srcValues.select(1, eR);
-  const auto dz = tgtValues.select(1, eZ) - srcValues.select(1, eZ);
-  const auto deta = tgtValues.select(1, eEta) - srcValues.select(1, eEta);
-
-  // phi is scaled by kEdgeFeaturePhiScale (checked by the caller), so the
-  // difference is unscaled to wrap it back into [-pi, pi] and then scaled
-  // again. A single wrap is enough since the unscaled difference cannot leave
-  // [-2pi, 2pi].
-  auto dphi = kEdgeFeaturePhiScale * (tgtValues.select(1, ePhi) - srcValues.select(1, ePhi));
-  dphi = torch::where(dphi > pi, dphi - 2.f * pi, dphi);
-  dphi = torch::where(dphi < -pi, dphi + 2.f * pi, dphi);
-  dphi = dphi / kEdgeFeaturePhiScale;
-
-  // Doublets on the same radius have no defined slope and get a flat zero. The
-  // substitute denominator only keeps the discarded branch from producing infs.
-  const auto hasDr = dr != 0.f;
-  const auto phislope = torch::where(
-      hasDr, torch::clamp(dphi / torch::where(hasDr, dr, torch::ones_like(dr)), -100.f, 100.f), torch::zeros_like(dr));
-  const auto rphislope = 0.5f * (tgtValues.select(1, eR) + srcValues.select(1, eR)) * phislope;
-
-  // Left as a torch tensor so that the caller can still pad it before it is
-  // handed over to the pipeline.
-  auto edgeFeatures = torch::stack({dr, dphi, dz, deta, phislope, rphislope}, 1).contiguous();
-
   // The features go to the classifier unscaled, so this is what the model
   // actually sees. The EdgePrintingHook logs them at DEBUG, which is the way to
   // spot a mismatch with the scales the model was trained with.
-  return edgeFeatures;
+  return gnntracking::buildEdgeFeatures(inputValues, numNodes, fullNumFeatures, edgeList,
+                                        config().edgeFeatureIndices, config().edgeFeatureScales);
 }
