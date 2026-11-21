@@ -25,6 +25,7 @@
 #include "k4ActsTracking/Measurement.hxx"
 #include "k4ActsTracking/MeasurementCalibrator.hxx"
 #include "k4ActsTracking/RunnerCommon.hxx"
+#include "k4ActsTracking/SelectingTrackStateCreator.hxx"
 #include "k4ActsTracking/SourceLink.hxx"
 
 // edm4hep
@@ -172,6 +173,11 @@ public:
     double chi2CutOff = 15;
     std::int32_t numMeasurementsCutOff = 10;
     double chi2CutOffOutlier = std::numeric_limits<double>::max();
+    /// Compute the chi2 of the measurements on a surface before creating
+    /// track states, and create them only for the selected ones
+    /// (SelectingTrackStateCreator). Off: Acts::TrackStateCreator with
+    /// Acts::MeasurementSelector. Both select the same measurements.
+    bool selectBeforeCreate = true;
 
     /// Run the CKF backward (outside-in): from the OUTER seed SP inward,
     /// through the seed's middle and inner SPs towards the beamline. When
@@ -245,6 +251,8 @@ public:
         m_bsPtMin(cfg.bsPtMin), m_bsPtMinMeasurements(cfg.bsPtMinMeasurements), m_doTwoWayCKF(cfg.doTwoWayCKF),
         m_inflateCovarianceTwoWay(cfg.inflateCovarianceTwoWay),
         m_twoWayInflateCovarianceFactor(cfg.twoWayInflateCovarianceFactor), m_measSelConfig(makeSelectorConfig(cfg)),
+        m_selectBeforeCreate(cfg.selectBeforeCreate),
+        m_selectingCuts{cfg.chi2CutOff, cfg.chi2CutOffOutlier, static_cast<std::size_t>(cfg.numMeasurementsCutOff)},
         m_trackFinder(std::make_unique<CombKalmanFilter>(makePropagator(geo, false))),
         m_referenceSurface(cfg.referenceSurface
                                ? cfg.referenceSurface
@@ -299,9 +307,17 @@ public:
     trackStateCreator.measurementSelector
         .template connect<&Acts::MeasurementSelector::select<Acts::VectorMultiTrajectory>>(&measSel);
 
+    SelectingTrackStateCreator<CKFTrackContainer> selectingTrackStateCreator(sourceLinks, measurements, measCal,
+                                                                             m_selectingCuts);
+
     Acts::CombinatorialKalmanFilterExtensions<CKFTrackContainer> extensions;
     extensions.updater.connect<&Acts::GainMatrixUpdater::operator()<Acts::VectorMultiTrajectory>>(&kfUpdater);
-    extensions.createTrackStates.template connect<&TrackStateCreatorType::createTrackStates>(&trackStateCreator);
+    if (m_selectBeforeCreate) {
+      extensions.createTrackStates.template connect<&SelectingTrackStateCreator<CKFTrackContainer>::createTrackStates>(
+          &selectingTrackStateCreator);
+    } else {
+      extensions.createTrackStates.template connect<&TrackStateCreatorType::createTrackStates>(&trackStateCreator);
+    }
     if (m_useBranchStopper) {
       extensions.branchStopper.template connect<&CKFRunner::branchStopper>(this);
     }
@@ -581,6 +597,8 @@ private:
   bool m_inflateCovarianceTwoWay = true;
   double m_twoWayInflateCovarianceFactor = 100.0;
   Acts::MeasurementSelector::Config m_measSelConfig;
+  bool m_selectBeforeCreate = true;
+  SelectingTrackStateCreator<CKFTrackContainer>::Cuts m_selectingCuts;
 
   std::unique_ptr<CombKalmanFilter> m_trackFinder;
   std::shared_ptr<const Acts::Surface> m_referenceSurface;
