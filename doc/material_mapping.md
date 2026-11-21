@@ -62,8 +62,10 @@ makes the recorded material out of date. Redo the map after either.
 Receivers are designated in
 [`DD4hepBlueprintConstruction.cpp`](../k4ActsTracking/src/components/DD4hepBlueprintConstruction.cpp),
 in the `Material designation` block of the `Blueprints` namespace. This is done
-for **MAIA_v0** (and MAIA_v1 and MuSIC_v2, which share its blueprint); the
-other detectors carry no material yet.
+for **MAIA_v0** (and MAIA_v1 and MuSIC_v2, which share its blueprint) and
+**CLD_o2_v07** (and CLD_o2_v08, likewise); the other detectors carry no material
+yet. The MAIA case is described in detail below; CLD follows the same scheme, see
+[CLD](#cld).
 
 The scheme is: **on every layer volume, designate the face pointing towards the
 interaction point** (the inner cylinder of a barrel layer, the IP-facing disc of
@@ -85,19 +87,66 @@ shared with a neighbour inside it) is excluded with `LayerMaterial::skipInnermos
 Nothing is lost: that face is the same surface as a receiver designated from the
 other side (e.g. the beampipe's outer cylinder).
 
+In a tracker built with `makeRegularTracker` (barrel and endcaps stacked in z),
+the endcap discs set the inner radius of the container, which can lie well
+inside the first barrel layer. Stretched down to it, that layer would put its own
+material on the face below, far in front of its hits (in CLD 290 mm, and the fit
+underestimates the curvature errors in the barrel several times over). The
+barrel stack therefore fills this space with a gap volume (resize strategy
+`Gap`), so the first layer's inner face stays at its sensors and gets its own
+receiver.
+
 Passive structures without a volume of their own, such as MAIA's solenoid in
 front of the calorimeter, get one so that their faces can be designated
 (`addCylindricalSolenoid`).
 
-For MAIA_v0 this gives 51 receivers. `ActsGeoSvc` prints the count on every
+For MAIA_v0 this gives 52 receivers. `ActsGeoSvc` prints the count on every
 run:
 
 ```
-ActsGeoSvc INFO 51 of 76706 surfaces in the tracking geometry carry material, 51 of them a proto-material placeholder.
+ActsGeoSvc INFO 52 of 76707 surfaces in the tracking geometry carry material, 52 of them a proto-material placeholder.
 ```
 
 A designation that breaks one of the rules aborts geometry construction and
 names the portal.
+
+### CLD
+
+CLD's tree has the same shape as MAIA's — beampipe, vertex nested inside the
+inner tracker, a regular outer tracker — so the same faces are designated. Two
+differences:
+
+- The vertex barrel is built from sensors (`layersFromSensors`), so there is no
+  layer DetElement to match. `skipInnermost` is matched against the blueprint
+  node name instead, which is the `makeLayerGrouper` label prefixed with the
+  container: `VertexBarrel|VertexBarrel|doubleLayer_0`. The match is a full
+  `std::regex_match`, so a regex for just `VertexBarrel|doubleLayer_0` matches
+  nothing and construction aborts on the `Vertex` z-stack.
+- There is no solenoid volume. CLD's coil starts at r = 3719 mm, outside the
+  ECAL barrel face at 2150 mm, so the extrapolation to the calorimeter never
+  crosses it.
+
+This yields **39 receivers**:
+
+| receiver                                                  | count |
+| --------------------------------------------------------- | ----: |
+| `Beampipe` outer cylinder                                 |     1 |
+| `VertexBarrel` double layers (`doubleLayer_0` skipped)    |     2 |
+| `VertexEndcap` double layers                              |     6 |
+| `InnerTrackerBarrel` layers (none skipped: interior)      |     3 |
+| `InnerTrackerEndcap` layers                               |    14 |
+| `OuterTrackerBarrel` layers (gap volume below `layer0`)   |     3 |
+| `OuterTrackerEndcap` layers                               |     8 |
+| `InnerTracker` / `OuterTracker` outer cylinders           |     2 |
+
+```
+ActsGeoSvc INFO 39 of 97401 surfaces in the tracking geometry carry material, 39 of them a proto-material placeholder.
+```
+
+CLD has a lot of passive material at small radius and large |z| (conical
+beampipe, beampipe shells, vertex cables, synchrotron radiation masks) with no
+volume of its own. It ends up on the beampipe cylinder and the IP-facing endcap
+discs. Check the forward region specifically when validating a CLD map.
 
 ### Adding material designators to a detector
 
@@ -193,12 +242,12 @@ a directory is chained in sorted order, so there is no `hadd` step.
 Output for 1M rays from `MaterialRecordingAlg` (progress lines left out):
 
 ```
-MaterialMappingAlg INFO Mapping material onto 51 designated surfaces.
+MaterialMappingAlg INFO Mapping material onto 52 designated surfaces.
 MaterialMappingAlg INFO Mapping recorded material at r < 1857.0 mm, |z| < 2307.3 mm.
 MaterialMappingAlg INFO Reading 1000000 recorded material tracks from tree 'material_tracks'.
 MaterialMappingAlg INFO Mapped 1000000 recorded material tracks.
 MaterialMappingAlg INFO Material in x/X0 summed over all tracks: 1.811e+08 mapped, 0.285 outside the region, 0 on tracks crossing no receiver.
-MaterialMappingAlg INFO Wrote material for 51 surfaces to 'MAIA_v0_gen3_material_map.json'.
+MaterialMappingAlg INFO Wrote material for 52 surfaces to 'MAIA_v0_gen3_material_map.json'.
 ```
 
 - The surface counts on the first and last line should agree with the
@@ -238,7 +287,7 @@ k4run test/options/MAIA_CKFTrackingAlg.py \
 
 The `ActsGeoSvc` line shows whether the map applied:
 
-- `51 of them a proto-material placeholder`: none of its entries matched (map
+- `52 of them a proto-material placeholder`: none of its entries matched (map
   made for a different geometry or blueprint). The service warns.
 - `0 of them a proto-material placeholder`: every receiver got material, as
   it should.
