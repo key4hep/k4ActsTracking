@@ -236,8 +236,7 @@ CKFTrackingFromSeedsAlg::operator()(const edm4hep::TrackerHitPlaneCollection& tr
   ACTSTracking::prepareTrackerHits(
       *this, *m_actsGeoSvc, geoCtx, trackerHitCollection, measurements, sourceLinks, hitContainer, m_numThreads.value(),
       [&](const edm4hep::TrackerHitPlane& hit, const ACTSTracking::SourceLink& sl, const Acts::Vector3& /*globalPos*/,
-          const Acts::Surface& /*surface*/,
-          const Acts::SquareMatrix2& /*localCov*/) { slByHit.emplace(hit, sl); });
+          const Acts::Surface& /*surface*/, const Acts::SquareMatrix2& /*localCov*/) { slByHit.emplace(hit, sl); });
 
   debug() << fmt::format("Created {} sourceLinks from {} hits", sourceLinks.size(), trackerHitCollection.size())
           << endmsg;

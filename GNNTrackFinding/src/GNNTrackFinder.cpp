@@ -666,8 +666,7 @@ GNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*
   ACTSTracking::prepareTrackerHits(
       *this, *m_actsGeoSvc, geoCtx, allHits, measurements, sourceLinks, hitContainer, /*numThreads=*/1,
       [&](const edm4hep::TrackerHitPlane& hit, const ACTSTracking::SourceLink& sl, const Acts::Vector3& /*globalPos*/,
-          const Acts::Surface& /*surface*/,
-          const Acts::SquareMatrix2& /*localCov*/) { slByHit.emplace(hit, sl); });
+          const Acts::Surface& /*surface*/, const Acts::SquareMatrix2& /*localCov*/) { slByHit.emplace(hit, sl); });
 
   Acts::MagneticFieldProvider::Cache magCache = m_actsGeoSvc->magneticField()->makeCache(magCtx);
 

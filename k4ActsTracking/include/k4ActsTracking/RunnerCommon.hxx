@@ -658,7 +658,7 @@ struct SeedHit {
  */
 template <class HitRange>
 std::vector<SeedHit> collectSeedHits(const HitRange& candidateHits, const SourceLinksByHit& slByHit,
-                                    const ACTSTracking::HitContainer& hitContainer) {
+                                     const ACTSTracking::HitContainer& hitContainer) {
   std::vector<SeedHit> seedHits;
   for (const auto& hit : candidateHits) {
     auto it = slByHit.find(hit);
