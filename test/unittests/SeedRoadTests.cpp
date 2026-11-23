@@ -47,13 +47,13 @@ TEST_CASE("Straight seed road keeps only hits inside the cuts", "[SeedRoad]") {
 
   SeedRoad::HitGeometry hits;
   hits.xyz = {
-      {100., 0., 0.},   // 0: on the track
-      {100., 0.2, 0.},  // 1: inside d_perp
-      {100., 0., 0.5},  // 2: inside d_n
-      {100., 0.8, 0.},  // 3: outside d_perp
-      {-10., 0., 0.},   // 4: behind the perigee
-      {2500., 0., 0.},  // 5: further along than maxS
-      {100., 0., 1.2},  // 6: outside d_n, but a seed hit
+      {100., 0., 0.},  // 0: on the track
+      {100., 0.2, 0.}, // 1: inside d_perp
+      {100., 0., 0.5}, // 2: inside d_n
+      {100., 0.8, 0.}, // 3: outside d_perp
+      {-10., 0., 0.},  // 4: behind the perigee
+      {2500., 0., 0.}, // 5: further along than maxS
+      {100., 0., 1.2}, // 6: outside d_n, but a seed hit
   };
 
   const auto road = SeedRoad::buildRoadEdges({straightSeed()}, hits, opt, {{0, 6, 1}});
