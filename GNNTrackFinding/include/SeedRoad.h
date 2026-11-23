@@ -111,10 +111,10 @@ struct Options {
 
 /// Helix residuals of a hit with respect to one seed
 struct Residuals {
-  double s{0.};      // arc length of the closest point
-  double dPerp{0.};  // in the transverse plane, left of the direction of travel
-  double dN{0.};     // normal to the helix in the (tangent, z) plane
-  double dT{0.};     // hit time minus expected time, NaN without a hit time
+  double s{0.};     // arc length of the closest point
+  double dPerp{0.}; // in the transverse plane, left of the direction of travel
+  double dN{0.};    // normal to the helix in the (tangent, z) plane
+  double dT{0.};    // hit time minus expected time, NaN without a hit time
 };
 
 /// Flat road edges sorted by (seed, hit)
@@ -131,11 +131,11 @@ struct RoadEdges {
 
 /// The inputs of the seeded network for one event, in the order of its inputs
 struct NetworkInputs {
-  std::vector<float> seedInputs{};   // numSeeds x numSeedFeatures
-  std::vector<int64_t> seedHits{};   // numSeeds x 3
-  std::vector<int64_t> edgeSeed{};   // numEdges
-  std::vector<int64_t> edgeHit{};    // numEdges
-  std::vector<float> edgeInputs{};   // numEdges x numEdgeFeatures, or x1 without features
+  std::vector<float> seedInputs{}; // numSeeds x numSeedFeatures
+  std::vector<int64_t> seedHits{}; // numSeeds x 3
+  std::vector<int64_t> edgeSeed{}; // numEdges
+  std::vector<int64_t> edgeHit{};  // numEdges
+  std::vector<float> edgeInputs{}; // numEdges x numEdgeFeatures, or x1 without features
 };
 
 inline bool isStraight(double kappa) { return std::abs(kappa) < kKappaStraight; }
@@ -182,8 +182,7 @@ inline Residuals helixResiduals(const SeedParams& p, const Vec3& pos, std::optio
 
   auto dist2 = [&](double s) {
     const Vec3 h = helixPosition(p, s);
-    return (h[0] - pos[0]) * (h[0] - pos[0]) + (h[1] - pos[1]) * (h[1] - pos[1]) +
-           (h[2] - pos[2]) * (h[2] - pos[2]);
+    return (h[0] - pos[0]) * (h[0] - pos[0]) + (h[1] - pos[1]) * (h[1] - pos[1]) + (h[2] - pos[2]) * (h[2] - pos[2]);
   };
   // Starting point for the Newton iteration: the s that gives the smaller distance to the hit
   double s = dist2(sZ) < dist2(sXY) ? sZ : sXY;
@@ -194,7 +193,7 @@ inline Residuals helixResiduals(const SeedParams& p, const Vec3& pos, std::optio
     const Vec3 h = helixPosition(p, s);
     const Vec3 f{h[0] - pos[0], h[1] - pos[1], h[2] - pos[2]};
     const double ang = p.phi0 + kap * s;
-    const Vec3 tang{std::cos(ang), std::sin(ang), p.tanLambda}; // tangent vector of the helix at s
+    const Vec3 tang{std::cos(ang), std::sin(ang), p.tanLambda};     // tangent vector of the helix at s
     const Vec3 curv{-std::sin(ang) * kap, std::cos(ang) * kap, 0.}; // curvature vector of the helix at s
     const double t2 = tang[0] * tang[0] + tang[1] * tang[1] + tang[2] * tang[2];
     const double num = f[0] * tang[0] + f[1] * tang[1] + f[2] * tang[2]; // projection of f onto tang
@@ -203,8 +202,8 @@ inline Residuals helixResiduals(const SeedParams& p, const Vec3& pos, std::optio
     s -= num / (den > 1e-6 ? den : t2); // s - (f . t) / (t^2 + f . kappa)
   }
 
-  const double ang = p.phi0 + kap * s; // final angle at converged s
-  const Vec3 ePerp{-std::sin(ang), std::cos(ang), 0.}; // unit vector perp to helix at angle ang
+  const double ang = p.phi0 + kap * s;                            // final angle at converged s
+  const Vec3 ePerp{-std::sin(ang), std::cos(ang), 0.};            // unit vector perp to helix at angle ang
   const double normT = std::sqrt(1. + p.tanLambda * p.tanLambda); // norm of tangent incl. z slope
   // unit vector along the normal direction to the helix, including the z slope
   const Vec3 n2{-p.tanLambda * std::cos(ang) / normT, -p.tanLambda * std::sin(ang) / normT, 1. / normT};
@@ -221,41 +220,53 @@ inline Residuals helixResiduals(const SeedParams& p, const Vec3& pos, std::optio
 
 namespace detail {
 
-inline const std::vector<double>& roadColumn(const RoadEdges& road, std::string_view name) {
-  if (name == "s") return road.s;
-  if (name == "d_perp") return road.dPerp;
-  if (name == "d_n") return road.dN;
-  if (name == "d_t") return road.dT;
-  throw std::invalid_argument("Unknown edge feature '" + std::string(name) + "'");
-}
-
-// nan_to_num as in torch, after the cast to float32
-inline float nanToNumFloat(double x) {
-  if (std::isnan(x)) {
-    return 0.f;
+  inline const std::vector<double>& roadColumn(const RoadEdges& road, std::string_view name) {
+    if (name == "s")
+      return road.s;
+    if (name == "d_perp")
+      return road.dPerp;
+    if (name == "d_n")
+      return road.dN;
+    if (name == "d_t")
+      return road.dT;
+    throw std::invalid_argument("Unknown edge feature '" + std::string(name) + "'");
   }
-  const double maxF = static_cast<double>(std::numeric_limits<float>::max());
-  return static_cast<float>(std::clamp(x, -maxF, maxF));
-}
 
-// asinh(x / scale) in float32, as the training side
-inline float asinhScaled(double x, double scale) {
-  const float scaled = nanToNumFloat(x) / static_cast<float>(scale);
-  return std::asinh(scaled);
-}
+  // nan_to_num as in torch, after the cast to float32
+  inline float nanToNumFloat(double x) {
+    if (std::isnan(x)) {
+      return 0.f;
+    }
+    const double maxF = static_cast<double>(std::numeric_limits<float>::max());
+    return static_cast<float>(std::clamp(x, -maxF, maxF));
+  }
+
+  // asinh(x / scale) in float32, as the training side
+  inline float asinhScaled(double x, double scale) {
+    const float scaled = nanToNumFloat(x) / static_cast<float>(scale);
+    return std::asinh(scaled);
+  }
 
 } // namespace detail
 
 /// Value of a seed feature. sin_phi0 and cos_phi0 are taken from phi0.
 inline double seedFeatureValue(const SeedParams& p, std::string_view name) {
-  if (name == "d0") return p.d0;
-  if (name == "z0") return p.z0;
-  if (name == "phi0") return p.phi0;
-  if (name == "sin_phi0") return std::sin(p.phi0);
-  if (name == "cos_phi0") return std::cos(p.phi0);
-  if (name == "tan_lambda") return p.tanLambda;
-  if (name == "kappa") return p.kappa;
-  if (name == "t0") return p.t0;
+  if (name == "d0")
+    return p.d0;
+  if (name == "z0")
+    return p.z0;
+  if (name == "phi0")
+    return p.phi0;
+  if (name == "sin_phi0")
+    return std::sin(p.phi0);
+  if (name == "cos_phi0")
+    return std::cos(p.phi0);
+  if (name == "tan_lambda")
+    return p.tanLambda;
+  if (name == "kappa")
+    return p.kappa;
+  if (name == "t0")
+    return p.t0;
   throw std::invalid_argument("Unknown seed feature '" + std::string(name) + "'");
 }
 
@@ -321,8 +332,8 @@ inline HitGeometry hitGeometryFromFeatures(const std::vector<float>& nodeFeature
 /// helix than that arc length (mm). Those only exist for seeds that curl up or climb in z far
 /// outside the detector. maxDt (ns) additionally cuts on the time residual where it is defined.
 /// With maxPerSeed, only the hits with the smallest normalised residual are kept per seed.
-inline RoadEdges buildRoadEdges(const std::vector<SeedParams>& seeds, const HitGeometry& hits,
-                                const RoadOptions& opt, const std::vector<SeedHits>& seedHits) {
+inline RoadEdges buildRoadEdges(const std::vector<SeedParams>& seeds, const HitGeometry& hits, const RoadOptions& opt,
+                                const std::vector<SeedHits>& seedHits) {
   const std::size_t numHits = hits.xyz.size();
   if (!hits.t.empty() && hits.t.size() != numHits) {
     throw std::invalid_argument("HitGeometry needs one time per hit or none");
@@ -367,8 +378,8 @@ inline RoadEdges buildRoadEdges(const std::vector<SeedParams>& seeds, const HitG
         // too. The in-plane arc length is enough here, the exact residuals and cuts follow below.
         const double rx = hx - cx;
         const double ry = hy - cy;
-        const double sXY = straight ? (hx - xp) * cosPhi0 + (hy - yp) * sinPhi0
-                                    : std::atan2(wx * ry - wy * rx, wx * rx + wy * ry) / k;
+        const double sXY =
+            straight ? (hx - xp) * cosPhi0 + (hy - yp) * sinPhi0 : std::atan2(wx * ry - wy * rx, wx * rx + wy * ry) / k;
         window = 1.5 * (opt.maxPerp + opt.coneAngle * std::abs(sXY));
       }
       if (!(circ < window)) {
@@ -378,8 +389,7 @@ inline RoadEdges buildRoadEdges(const std::vector<SeedParams>& seeds, const HitG
       const std::optional<double> t = hasTime ? std::optional<double>(hits.t[j]) : std::nullopt;
       const Residuals res = helixResiduals(p, hits.xyz[j], t);
       const double cone = opt.coneAngle * std::abs(res.s); // allow larger d_perp, d_n for hits further along the helix
-      bool keep = std::abs(res.dPerp) < opt.maxPerp + cone && std::abs(res.dN) < opt.maxN + cone &&
-                  res.s >= opt.minS;
+      bool keep = std::abs(res.dPerp) < opt.maxPerp + cone && std::abs(res.dN) < opt.maxN + cone && res.s >= opt.minS;
       if (opt.maxS) {
         keep = keep && res.s <= *opt.maxS;
       }
@@ -394,9 +404,7 @@ inline RoadEdges buildRoadEdges(const std::vector<SeedParams>& seeds, const HitG
 
     if (opt.maxPerSeed && seedEntries.size() > static_cast<std::size_t>(*opt.maxPerSeed)) {
       // 3D norm distance in units of the cuts
-      auto score = [&](const Entry& e) {
-        return std::hypot(e.res.dPerp / opt.maxPerp, e.res.dN / opt.maxN);
-      };
+      auto score = [&](const Entry& e) { return std::hypot(e.res.dPerp / opt.maxPerp, e.res.dN / opt.maxN); };
       std::stable_sort(seedEntries.begin(), seedEntries.end(),
                        [&](const Entry& a, const Entry& b) { return score(a) < score(b); });
       seedEntries.resize(static_cast<std::size_t>(*opt.maxPerSeed));
@@ -407,16 +415,15 @@ inline RoadEdges buildRoadEdges(const std::vector<SeedParams>& seeds, const HitG
       if (hitIndex < 0 || static_cast<std::size_t>(hitIndex) >= numHits) {
         throw std::out_of_range("seed hit index outside of the hits");
       }
-      const bool present = std::any_of(seedEntries.begin(), seedEntries.end(),
-                                       [&](const Entry& e) { return e.hit == hitIndex; });
+      const bool present =
+          std::any_of(seedEntries.begin(), seedEntries.end(), [&](const Entry& e) { return e.hit == hitIndex; });
       if (!present) {
         const std::optional<double> t = hasTime ? std::optional<double>(hits.t[hitIndex]) : std::nullopt;
         seedEntries.push_back({hitIndex, helixResiduals(p, hits.xyz[hitIndex], t)});
       }
     }
 
-    std::sort(seedEntries.begin(), seedEntries.end(),
-              [](const Entry& a, const Entry& b) { return a.hit < b.hit; });
+    std::sort(seedEntries.begin(), seedEntries.end(), [](const Entry& a, const Entry& b) { return a.hit < b.hit; });
     for (const Entry& e : seedEntries) {
       out.seed.push_back(static_cast<int64_t>(i));
       out.hit.push_back(e.hit);
@@ -458,8 +465,7 @@ inline std::vector<float> buildSeedInputs(const std::vector<SeedParams>& seeds, 
   std::vector<float> out(seeds.size() * numFeatures);
   for (std::size_t i = 0; i < seeds.size(); ++i) {
     for (std::size_t f = 0; f < numFeatures; ++f) {
-      out[i * numFeatures + f] =
-          detail::asinhScaled(seedFeatureValue(seeds[i], opt.features[f]), opt.scales[f]);
+      out[i * numFeatures + f] = detail::asinhScaled(seedFeatureValue(seeds[i], opt.features[f]), opt.scales[f]);
     }
   }
   return out;

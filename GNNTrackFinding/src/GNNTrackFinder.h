@@ -56,8 +56,9 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
 
   StatusCode finalize() override;
 
-  edm4hep::TrackCollection operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*> const& inputTrackerHits,
-                                      std::vector<const edm4hep::TrackCollection*> const& inputSeedTracks) const override;
+  edm4hep::TrackCollection
+  operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*> const& inputTrackerHits,
+             std::vector<const edm4hep::TrackCollection*> const& inputSeedTracks) const override;
   Gaudi::Property<std::size_t> m_thetaBins{this, "ThetaBins", 1, "Number of theta bins for segmentation."};
   Gaudi::Property<std::size_t> m_phiBins{this, "PhiBins", 1, "Number of phi bins for segmentation."};
   Gaudi::Property<double> m_thetaOverlap{this, "ThetaOverlap", 0.0,
@@ -194,10 +195,11 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
 
   Gaudi::Property<std::string> m_graphConstruction{
       this, "GraphConstruction", "MetricLearning",
-      "Graph construction model: \"MetricLearning\" embeds the hits and builds the edges by radius, \"SeededMetricLearning\" "
+      "Graph construction model: \"MetricLearning\" embeds the hits and builds the edges by radius, "
+      "\"SeededMetricLearning\" "
       "uses the seeded object condensation model in NodeEmbeddingModelPath with the seed tracks of the second input."};
-  Gaudi::Property<float> m_seedScoreThreshold{
-      this, "SeedScoreThreshold", 0.5f, "Sigmoid of the seed logit above which a seed is kept"};
+  Gaudi::Property<float> m_seedScoreThreshold{this, "SeedScoreThreshold", 0.5f,
+                                              "Sigmoid of the seed logit above which a seed is kept"};
 
 private:
   /// Construct the pipeline stages from the (already validated) configuration.

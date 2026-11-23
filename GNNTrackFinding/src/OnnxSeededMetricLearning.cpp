@@ -52,11 +52,9 @@ std::vector<float> readFloatOutput(const Ort::Value& value) {
 /// Returns the pairs sorted and without duplicates.
 /// This is brute force over all hits per seed, which is probably fast enough
 /// because it only loops over the selected condensation points, not all hit pairs.
-std::vector<std::pair<int64_t, int64_t>> buildSeedBallEdges(const std::vector<float>& hitEmbedding,
-                                                            const std::vector<float>& seedEmbedding,
-                                                            std::size_t embeddingDim,
-                                                            const std::vector<int64_t>& selectedSeeds, float rVal,
-                                                            std::size_t knn) {
+std::vector<std::pair<int64_t, int64_t>>
+buildSeedBallEdges(const std::vector<float>& hitEmbedding, const std::vector<float>& seedEmbedding,
+                   std::size_t embeddingDim, const std::vector<int64_t>& selectedSeeds, float rVal, std::size_t knn) {
   const std::size_t numHits = hitEmbedding.size() / embeddingDim;
   const float rVal2 = rVal * rVal;
   std::vector<std::pair<int64_t, int64_t>> edges{};
@@ -77,8 +75,7 @@ std::vector<std::pair<int64_t, int64_t>> buildSeedBallEdges(const std::vector<fl
 
     // The knn nearest hits come first, sorted by distance
     const std::size_t numNearest = std::min(knn, numHits);
-    std::partial_sort(distances.begin(), distances.begin() + static_cast<std::ptrdiff_t>(numNearest),
-                      distances.end());
+    std::partial_sort(distances.begin(), distances.begin() + static_cast<std::ptrdiff_t>(numNearest), distances.end());
     std::size_t ballSize = 0;
     while (ballSize < numNearest && distances[ballSize].first <= rVal2) {
       ++ballSize;
@@ -212,9 +209,9 @@ ActsPlugins::PipelineTensors OnnxSeededMetricLearning::operator()(std::vector<fl
   // buildEdgeInputs gives one constant input per edge without edge features
   const std::size_t numEdgeFeatures = edgeInputs.size() / numEdges;
   if (m_inputLength > 0 && static_cast<int64_t>(numNodes) != m_inputLength) {
-    throw std::runtime_error(fmt::format(
-        "Seeded node model expects a fixed input length of {} nodes, but {} would be passed to it", m_inputLength,
-        numNodes));
+    throw std::runtime_error(
+        fmt::format("Seeded node model expects a fixed input length of {} nodes, but {} would be passed to it",
+                    m_inputLength, numNodes));
   }
 
   // Features the network takes, empty selects all of them
@@ -303,16 +300,16 @@ ActsPlugins::PipelineTensors OnnxSeededMetricLearning::operator()(std::vector<fl
     }
   }
 
-  auto ballEdges = buildSeedBallEdges(hitEmbedding, seedEmbedding, embeddingDim, selectedSeeds, config().rVal,
-                                      config().knn);
-  ACTS_DEBUG(fmt::format("Selected {} of {} seeds and built {} ball edges", selectedSeeds.size(), numSeeds,
-                         ballEdges.size()));
+  auto ballEdges =
+      buildSeedBallEdges(hitEmbedding, seedEmbedding, embeddingDim, selectedSeeds, config().rVal, config().knn);
+  ACTS_DEBUG(
+      fmt::format("Selected {} of {} seeds and built {} ball edges", selectedSeeds.size(), numSeeds, ballEdges.size()));
 
   // Orient every edge outwards by r and z, as in OnnxMetricLearning
   if (!config().distanceFeatureIndices.empty()) {
     gnntracking::checkDistanceFeatureIndices(config().distanceFeatureIndices, numFeatures);
-    const std::vector<float> distancesSq = gnntracking::nodeDistancesSq(inputValues, numNodes, numFeatures,
-                                                                        config().distanceFeatureIndices);
+    const std::vector<float> distancesSq =
+        gnntracking::nodeDistancesSq(inputValues, numNodes, numFeatures, config().distanceFeatureIndices);
     for (auto& [first, second] : ballEdges) {
       if (!gnntracking::pointsOutward(distancesSq, static_cast<int>(first), static_cast<int>(second))) {
         std::swap(first, second);

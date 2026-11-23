@@ -49,7 +49,7 @@ public:
     std::vector<int> selectedFeatures{};
     /// Divides the selected node features before the network, one per selected feature
     std::vector<float> featureScales{};
-    /// Declare the order of hit features in the inputs here! Needed for road building, 
+    /// Declare the order of hit features in the inputs here! Needed for road building,
     /// and r, phi, z, (t) have to to be present (in any order)
     std::vector<std::string> hitFeatures{"r", "phi", "z", "t"};
     std::string modelPath{};

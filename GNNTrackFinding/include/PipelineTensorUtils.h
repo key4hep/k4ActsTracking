@@ -78,7 +78,8 @@ inline torch::Tensor buildEdgeFeatures(const std::vector<float>& inputValues, st
 
   // Gathering the node values per edge with torch ops keeps the computation on
   // whichever device the edge building ran on.
-  const auto nodeTensor = ActsPlugins::detail::vectorToTensor2D(nodeValues, kNumEdgeFeatureInputs).to(edgeList.device());
+  const auto nodeTensor =
+      ActsPlugins::detail::vectorToTensor2D(nodeValues, kNumEdgeFeatureInputs).to(edgeList.device());
   const auto srcValues = nodeTensor.index_select(0, edgeList.select(0, 0).contiguous());
   const auto tgtValues = nodeTensor.index_select(0, edgeList.select(0, 1).contiguous());
 

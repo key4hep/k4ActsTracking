@@ -477,6 +477,6 @@ std::optional<torch::Tensor> OnnxMetricLearning::buildEdgeFeatures(const std::ve
   // The features go to the classifier unscaled, so this is what the model
   // actually sees. The EdgePrintingHook logs them at DEBUG, which is the way to
   // spot a mismatch with the scales the model was trained with.
-  return gnntracking::buildEdgeFeatures(inputValues, numNodes, fullNumFeatures, edgeList,
-                                        config().edgeFeatureIndices, config().edgeFeatureScales);
+  return gnntracking::buildEdgeFeatures(inputValues, numNodes, fullNumFeatures, edgeList, config().edgeFeatureIndices,
+                                        config().edgeFeatureScales);
 }
