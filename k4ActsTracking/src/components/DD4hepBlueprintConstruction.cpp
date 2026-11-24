@@ -1142,15 +1142,14 @@ namespace ILD_FCCee_v02 {
 namespace CLD_o2_v07 {
   void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
                          ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo) {
-    // Material receivers for CLD. The tree has the same shape as MAIA_v0's, so
-    // the same faces are designated and skipped for the same reasons (see
-    // there). The vertex barrel is built from sensors here, so its layers are
-    // matched by their blueprint node name instead of a DetElement name: the
-    // group label from makeLayerGrouper, prefixed with the container name.
+    // Material receivers for CLD, following the scheme of the "Material
+    // designation" block in the Blueprints namespace. The full list of
+    // receivers, and why the innermost vertex and outer-tracker barrel layers
+    // get none of their own, is in doc/material_mapping.md.
     //
-    // Unlike MAIA_v0 there is no solenoid volume: the CLD coil sits outside
-    // the calorimeter (r = 3719 mm vs. an ECAL barrel face at 2150 mm), so the
-    // extrapolation to the calorimeter face never crosses it.
+    // The vertex barrel is built from sensors, so its layers are matched by
+    // their blueprint node name (the makeLayerGrouper label prefixed with the
+    // container name) rather than by a DetElement name.
     const auto vertexBarrelMaterial =
         Blueprints::LayerMaterial{.skipInnermost = std::regex{"VertexBarrel\\|VertexBarrel\\|doubleLayer_0"}};
     const auto innerBarrelMaterial = Blueprints::LayerMaterial{};
