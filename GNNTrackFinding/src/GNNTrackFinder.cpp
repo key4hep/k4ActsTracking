@@ -511,7 +511,9 @@ void GNNTrackFinder::buildPipeline(const std::vector<float>& embeddingScales,
         CCAndWalkTrackBuilding::Config{.distanceFeatureIndices = m_distanceFeatureIndices,
                                        .addScore = m_walkAddScore.value(),
                                        .minScore = m_walkMinScore.value(),
-                                       .minCandidateSize = m_minHitsPerTrk.value()},
+                                       .minCandidateSize = m_minHitsPerTrk.value(),
+                                       .bestPredecessor = m_walkBestPredecessor.value(),
+                                       .minMeanScore = m_minMeanEdgeScore.value()},
         m_logger->clone(name() + ".TrackBuilder"));
   } else {
     trackBuilder = std::make_shared<ActsPlugins::BoostTrackBuilding>(ActsPlugins::BoostTrackBuilding::Config{},
