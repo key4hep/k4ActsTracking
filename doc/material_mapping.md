@@ -62,8 +62,10 @@ makes the recorded material out of date. Redo the map after either.
 Receivers are designated in
 [`DD4hepBlueprintConstruction.cpp`](../k4ActsTracking/src/components/DD4hepBlueprintConstruction.cpp),
 in the `Material designation` block of the `Blueprints` namespace. This is done
-for **MAIA_v0** (and MAIA_v1 and MuSIC_v2, which share its blueprint); the
-other detectors carry no material yet.
+for **MAIA_v0** (and MAIA_v1 and MuSIC_v2, which share its blueprint) and
+**CLD_o2_v07** (and CLD_o2_v08, likewise); the other detectors carry no material
+yet. Both follow the scheme below; the per-detector details are in
+[MAIA](#maia) and [CLD](#cld).
 
 The scheme is: **on every layer volume, designate the face pointing towards the
 interaction point** (the inner cylinder of a barrel layer, the IP-facing disc of
@@ -80,24 +82,94 @@ used:
 | r                      | fused (one side allowed)  | merged (not allowed)  |
 | z                      | merged (not allowed)      | fused (one side allowed) |
 
-A layer whose IP-facing face is the extreme face of its container (rather than
-shared with a neighbour inside it) is excluded with `LayerMaterial::skipInnermost`.
-Nothing is lost: that face is the same surface as a receiver designated from the
-other side (e.g. the beampipe's outer cylinder).
+**Skipped layers.** The innermost layer of a barrel can be a problem: if
+nothing else sits inside it in the same radial stack, its IP-facing face is the
+*extreme* face of the container. When that container is in turn stacked along z
+(e.g. a vertex barrel between its two endcaps), the face gets merged and may not
+carry material. Such a layer is *skipped*: listed in
+`LayerMaterial::skipInnermost`, it gets no designator of its own. The material in
+front of it is not lost, it still lands on a receiver: the face it would have
+had is the same surface as a receiver designated from the inward side, e.g. the
+beampipe's outer cylinder. Each skipped layer below names the receiver that
+takes its place. Whether a barrel needs this depends on what else sits in its
+radial stack, so it is decided per detector, not per layer index.
 
 Passive structures without a volume of their own, such as MAIA's solenoid in
 front of the calorimeter, get one so that their faces can be designated
 (`addCylindricalSolenoid`).
 
-For MAIA_v0 this gives 51 receivers. `ActsGeoSvc` prints the count on every
-run:
+`ActsGeoSvc` prints the number of receivers on every run, e.g. for MAIA_v0:
 
 ```
 ActsGeoSvc INFO 51 of 76706 surfaces in the tracking geometry carry material, 51 of them a proto-material placeholder.
 ```
 
 A designation that breaks one of the rules aborts geometry construction and
-names the portal.
+names the portal, e.g. "Material is designated on portal faces that are merged
+when stacking child volumes in AxisZ direction".
+
+### MAIA
+
+The tracker consists of the beampipe, the vertex detector nested inside the inner
+tracker (`makeNestedInnerTracker`) and a regular outer tracker, all as radial
+children of one container. Every endcap layer and every barrel layer is
+designated, except:
+
+- `VertexBarrel` `layer_0`, skipped. The vertex barrel is a plain layer stack
+  inside the `Vertex` z-stack, so its innermost inner cylinder is merged. Its
+  material goes to the `Beampipe` outer cylinder, the same portal shared
+  through every enclosing container.
+- `OuterTrackerBarrel` `layer0`, skipped for the same reason (`OuterTracker`
+  z-stack). Its material goes to the `InnerTracker` outer cylinder, which is
+  designated for exactly this purpose and also collects the services between
+  the two trackers.
+
+`InnerTrackerBarrel` `layer0` is *not* skipped: the inner-tracker barrel
+encloses the whole vertex detector, so its innermost inner cylinder is an
+interior portal shared with `Vertex`, which designates nothing there.
+
+The solenoid (r = 1500 to 1857 mm) sits between the outer tracker and the ECAL
+barrel face at 1857 mm, so every extrapolation to the calorimeter crosses it.
+It gets a volume of its own, so that the `OuterTracker` and `Solenoid` outer
+cylinders bracket the coil. In total MAIA_v0 has 51 receivers.
+
+### CLD
+
+CLD's tree has the same shape as [MAIA's](#maia), so the same faces are
+designated and the same two barrels skip their innermost layer, for the same
+reasons and with the same receivers taking their place. Two differences:
+
+- The vertex barrel is built from sensors (`layersFromSensors`), so there is no
+  layer DetElement to match. `skipInnermost` is matched against the blueprint
+  node name instead, which is the `makeLayerGrouper` label prefixed with the
+  container: `VertexBarrel|VertexBarrel|doubleLayer_0`. The match is a full
+  `std::regex_match`, so a regex for just `VertexBarrel|doubleLayer_0` matches
+  nothing and construction aborts on the `Vertex` z-stack.
+- There is no solenoid volume. CLD's calorimeters sit inside the coil, so the extrapolation to the calorimeter never
+  crosses it.
+
+This yields **38 receivers**:
+
+| receiver                                        | count | note |
+| ----------------------------------------------- | ----: | ---- |
+| `Beampipe` outer cylinder                       |     1 | also takes the place of `VertexBarrel` `doubleLayer_0` |
+| `VertexBarrel` double layers                    |     2 | all but `doubleLayer_0` |
+| `VertexEndcap` double layers                    |     6 | |
+| `InnerTrackerBarrel` layers                     |     3 | all, including `layer0` |
+| `InnerTrackerEndcap` layers                     |    14 | |
+| `OuterTrackerBarrel` layers                     |     2 | all but `layer0` |
+| `OuterTrackerEndcap` layers                     |     8 | |
+| `InnerTracker` outer cylinder                   |     1 | also takes the place of `OuterTrackerBarrel` `layer0` |
+| `OuterTracker` outer cylinder                   |     1 | |
+
+```
+ActsGeoSvc INFO 38 of 97400 surfaces in the tracking geometry carry material, 38 of them a proto-material placeholder.
+```
+
+CLD has a lot of passive material at small radius and large |z| (conical
+beampipe, beampipe shells, vertex cables, synchrotron radiation masks) with no
+volume of its own. It ends up on the beampipe cylinder and the IP-facing endcap
+discs. Check the forward region specifically when validating a CLD map.
 
 ### Adding material designators to a detector
 
