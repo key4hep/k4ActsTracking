@@ -3,7 +3,7 @@ name: ACTS master + k4ActsTracking
 on:
   push:
     branches:
-    - main
+      - main
   pull_request:
   workflow_dispatch:
 
@@ -14,6 +14,9 @@ concurrency:
 jobs:
   build-acts-master:
     runs-on: ubuntu-latest
+    outputs:
+      # 'true' once the k4ActsTracking build has started, i.e. build.log has to be uploaded
+      build-log-expected: ${{ steps.build.outputs.build-log-expected }}
     container:
       image: ghcr.io/key4hep/key4hep-images/alma9-cvmfs
       options: --privileged
@@ -45,6 +48,7 @@ jobs:
             ccache-acts-master-
 
       - name: Build and test
+        id: build
         run: |
           set -eo pipefail
           source /cvmfs/sw-nightlies.hsf.org/key4hep/setup.sh --lcg
@@ -86,6 +90,7 @@ jobs:
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_FLAGS="-Werror -Wno-error=cpp -Wno-error=deprecated-declarations" \
             -GNinja
+          echo "build-log-expected=true" >> "$GITHUB_OUTPUT"
           cmake --build . -- -k 0 -j$(nproc) 2>&1 | tee build.log
 
           echo "=== Running tests ==="
@@ -95,24 +100,15 @@ jobs:
 
           ccache -s
 
-      - name: Check k4ActsTracking compiler warnings
-        if: ${{ !cancelled() }}
-        run: |
-          log="$GITHUB_WORKSPACE/build/build.log"
-          if [[ -f "$log" ]] && grep -E -- '\[-W(deprecated-declarations|cpp)\]' "$log"; then
-            echo "::error::k4ActsTracking deprecation or #warning diagnostics found; see the build log above."
-            exit 1
-          fi
-
       - name: Upload build and CTest logs
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: CTest logs_acts-master_run${{ github.run_id }}_attempt${{ github.run_attempt }}
           path: |
-            ${{ github.workspace }}/build/build.log
-            ${{ github.workspace }}/build/Testing/Temporary
-            !${{ github.workspace }}/build/Testing/Temporary/CTestCostData.txt
+            build/build.log
+            build/Testing/Temporary
+            !build/Testing/Temporary/CTestCostData.txt
           if-no-files-found: warn
           retention-days: 3
 
@@ -121,3 +117,31 @@ jobs:
         with:
           path: /root/.cache/ccache
           key: ccache-acts-master-${{ env.NOW }}
+
+  check-deprecation-warnings:
+    needs: build-acts-master
+    if: ${{ !cancelled() && needs.build-acts-master.outputs.build-log-expected == 'true' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Download build log
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: CTest logs_acts-master_run${{ github.run_id }}_attempt${{ github.run_attempt }}
+          path: logs
+
+      - name: Check k4ActsTracking compiler warnings
+        run: |
+          log="logs/build.log"
+          if [[ ! -f "$log" ]]; then
+            echo "::error::Expected ${log} from the build job, but it is missing from the artifact."
+            find logs -type f || true
+            exit 1
+          fi
+          if grep -E -- '\[-W(deprecated-declarations|cpp)\]' "$log"; then
+            echo "::error::k4ActsTracking deprecation or #warning diagnostics found; see the log above."
+            exit 1
+          fi
+          echo "No deprecation or #warning diagnostics found in ${log}."
