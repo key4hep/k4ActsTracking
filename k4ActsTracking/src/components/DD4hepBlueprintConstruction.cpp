@@ -53,7 +53,9 @@
 #include <optional>
 #include <regex>
 #include <stdexcept>
+#include <string>
 #include <utility>
+#include <vector>
 
 using Acts::BlueprintNode;
 using Acts::ContainerBlueprintNode;
@@ -460,12 +462,36 @@ namespace {
   const std::string& identityKey(const std::string& m) { return m; }
   int doubleLayerKey(const std::string& m) { return std::stoi(m) / 2; }
 
+  /// Capture group 1 of @p rgx in the name of @p elem or, failing that, of its
+  /// closest ancestor whose name matches; std::nullopt if none does
+  std::optional<std::string> matchSelfOrAncestor(dd4hep::DetElement elem, const std::regex& rgx) {
+    for (; elem.isValid(); elem = elem.parent()) {
+      std::smatch match;
+      if (const std::string name = elem.name(); std::regex_match(name, match, rgx)) {
+        return match[1].str();
+      }
+    }
+    return std::nullopt;
+  }
+
+  /// The sensors for @c builder.layersFromSensors(): the sensitive DetElements in
+  /// @p container that match @p filter or lie inside a DetElement that does (as
+  /// in ACTS' Open Data Detector builder). The matching DetElement itself can be
+  /// a passive module with the silicon as a child, e.g. in CLD's endcaps.
+  std::vector<dd4hep::DetElement> findSensors(ActsPlugins::DD4hep::BlueprintBuilder& builder,
+                                              const std::string& container, const std::regex& filter) {
+    auto sensors = builder.resolveSensitives(builder.findDetElementByName(container).value());
+    std::erase_if(sensors, [&](const dd4hep::DetElement& sensor) { return !matchSelfOrAncestor(sensor, filter); });
+    return sensors;
+  }
+
   /// Build a LayerGrouper that assigns sensor DetElements to named layer groups.
   ///
-  /// The returned callable matches each DetElement name against @p groupRgx.
-  /// Capture group 1 is extracted, optionally transformed by @p transformMatch,
-  /// and appended to @p labelBase to form the group key
-  /// (e.g. `"VertexBarrel|doubleLayer_0"`).  Throws if the name does not match.
+  /// The returned callable matches each DetElement name, or that of its closest
+  /// matching ancestor, against @p groupRgx. Capture group 1 is extracted,
+  /// optionally transformed by @p transformMatch, and appended to @p labelBase to
+  /// form the group key (e.g. `"VertexBarrel|doubleLayer_0"`). Throws if no name
+  /// matches.
   ///
   /// @param groupRgx      Regex with exactly one capture group selecting the
   ///                      layer index or identifier within the element name
@@ -477,13 +503,10 @@ namespace {
   template <typename TransformF = decltype(identityKey)>
   LayerGrouper makeLayerGrouper(std::regex groupRgx, std::string labelBase, TransformF transformMatch = identityKey) {
     return [=](const auto& e) {
-      std::smatch match;
-      const std::string elemName = e.name();
-      if (std::regex_match(elemName, match, groupRgx)) {
-        const auto matchgroup = match[1].str();
-        return fmt::format("{}_{}", labelBase, transformMatch(match[1].str()));
+      if (const auto key = matchSelfOrAncestor(e, groupRgx)) {
+        return fmt::format("{}_{}", labelBase, transformMatch(*key));
       }
-      throw std::invalid_argument(fmt::format("Could not match regex for grouping layers. DetElem name: {}", elemName));
+      throw std::invalid_argument(fmt::format("Could not match regex for grouping layers. DetElem name: {}", e.name()));
     };
   }
 
@@ -547,8 +570,9 @@ namespace {
   /// @param builder     Blueprint builder driving the construction
   /// @param parent      Node to attach the endcap side to
   /// @param container   Name of the DetElement that contains the sensors
-  /// @param filter      Regex selecting sensor DetElements; capture group 1
-  ///                    is used as the layer discriminator
+  /// @param filter      Regex selecting the sensor DetElements or the modules
+  ///                    containing them; capture group 1 is used as the layer
+  ///                    discriminator
   /// @param side        Side of the IP, see @c attachTowardsIP
   /// @param axes        Sensor coordinate axes for this endcap side
   /// @param labelPrefix Prefix passed to @c makeLayerGrouper as the label base
@@ -562,8 +586,7 @@ namespace {
       const Acts::ExtentEnvelope& envelope,
       std::function<std::string(const std::string&)> keyXform = [](const std::string& m) { return m; },
       LayerCustomizer onLayer = {}) {
-    const auto detElem = builder.findDetElementByName(container);
-    auto sensors = builder.findDetElementByNamePattern(detElem.value(), filter);
+    auto sensors = findSensors(builder, container, filter);
     auto grouper = makeLayerGrouper(filter, labelPrefix, std::move(keyXform));
     builder.layersFromSensors()
         .endcap()
@@ -669,8 +692,7 @@ namespace {
       return makeGroupedBarrel(builder, spec.barrelContainer, spec.barrelFilter, spec.barrelAxes, envelope, material);
     }
 
-    const auto barrelDetElem = builder.findDetElementByName(spec.barrelContainer);
-    const auto barrelLayerElems = builder.findDetElementByNamePattern(barrelDetElem.value(), spec.barrelFilter);
+    auto barrelLayerElems = findSensors(builder, spec.barrelContainer, spec.barrelFilter);
     const auto doubleLayerName =
         makeLayerGrouper(spec.barrelFilter, fmt::format("{}|doubleLayer", spec.barrelContainer), keyXform);
 
