@@ -113,7 +113,7 @@ jobs:
           path: /root/.cache/ccache
           key: ccache-acts-master-${{ env.NOW }}
 
-  check-warnings:
+  check-deprecation-warnings:
     needs: build-acts-master
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
