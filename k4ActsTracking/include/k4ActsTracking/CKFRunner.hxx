@@ -50,6 +50,7 @@
 #include <Acts/MagneticField/MagneticFieldContext.hpp>
 #include <Acts/MagneticField/MagneticFieldProvider.hpp>
 #include <Acts/Propagator/ActorList.hpp>
+#include <Acts/Propagator/DefaultActor.hpp>
 #include <Acts/Propagator/EigenStepper.hpp>
 #include <Acts/Propagator/MaterialInteractor.hpp>
 #include <Acts/Propagator/Navigator.hpp>
@@ -493,7 +494,7 @@ public:
         // ACTS2edm4hep_track, which fills the AtIP state. Include the material
         // crossed on the way (beam pipe) in the covariance.
         using ExtrapolationOptions =
-            typename CKFPropagator::template Options<Acts::ActorList<Acts::MaterialInteractor>>;
+            CKFPropagator::Options<Acts::ActorList<Acts::DefaultActor, Acts::MaterialInteractor>>;
         ExtrapolationOptions exOptions(m_geoCtx, m_magCtx);
         exOptions.maxSteps = m_maxSteps;
         const CKFPropagator& extrapolator = *m_extrapolator;

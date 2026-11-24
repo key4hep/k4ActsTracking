@@ -82,6 +82,7 @@ CCAndWalkTrackBuilding::CCAndWalkTrackBuilding(const Config& cfg, std::unique_pt
 }
 
 std::vector<int> CCAndWalkTrackBuilding::longestPathFrom(int start, const std::vector<std::vector<OutEdge>>& outEdges,
+                                                         const std::vector<std::vector<OutEdge>>& inEdges,
                                                          const std::vector<bool>& used) const {
   std::vector<int> best{};
   std::vector<int> path{};
@@ -115,6 +116,25 @@ std::vector<int> CCAndWalkTrackBuilding::longestPathFrom(int start, const std::v
       }
       if (next.empty() && bestEdge != nullptr && bestEdge->score > m_cfg.minScore) {
         next.push_back(bestEdge->target);
+      }
+      if (m_cfg.bestPredecessor) {
+        // Keep a target only if no other free hit has a better edge into it.
+        // The path is a handful of hits, so a linear scan of it is cheapest.
+        const auto scoreTo = [&](int target) {
+          for (const auto& edge : outEdges[node]) {
+            if (edge.target == target) {
+              return edge.score;
+            }
+          }
+          return 0.f;
+        };
+        std::erase_if(next, [&](int target) {
+          const float score = scoreTo(target);
+          return std::ranges::any_of(inEdges[target], [&](const OutEdge& in) {
+            return in.target != node && !used[in.target] && std::ranges::find(path, in.target) == path.end() &&
+                   in.score > score;
+          });
+        });
       }
 
       for (const int target : next) {
@@ -202,11 +222,15 @@ std::vector<std::vector<int>> CCAndWalkTrackBuilding::operator()(PipelineTensors
   assert(eachPairOnce() && "CCAndWalkTrackBuilding got the same pair of hits twice");
 
   std::vector<std::vector<OutEdge>> outEdges(numNodes);
+  std::vector<std::vector<OutEdge>> inEdges(m_cfg.bestPredecessor ? numNodes : 0);
   std::vector<int> inDegree(numNodes, 0);
   UnionFind components(numNodes);
   for (const auto& [edge, score] : directed) {
     const auto [u, v] = edge;
     outEdges[u].push_back({v, score});
+    if (m_cfg.bestPredecessor) {
+      inEdges[v].push_back({u, score});
+    }
     ++inDegree[v];
     components.unite(u, v);
   }
@@ -235,6 +259,42 @@ std::vector<std::vector<int>> CCAndWalkTrackBuilding::operator()(PipelineTensors
   std::vector<bool> used(numNodes, false);
   std::size_t numSimple = 0;
   std::size_t numWalked = 0;
+  std::size_t numLowScore = 0;
+
+  // Retires the hits of @p nodes and emits them as a candidate, unless the mean
+  // score of the edges between them is below Config::minMeanScore.
+  std::vector<int> candidateOf(m_cfg.minMeanScore > 0.f ? numNodes : 0, -1);
+  const auto emit = [&](const std::vector<int>& nodes) {
+    for (const int node : nodes) {
+      used[node] = true;
+    }
+    if (m_cfg.minMeanScore > 0.f) {
+      const int id = static_cast<int>(numSimple + numWalked + numLowScore);
+      for (const int node : nodes) {
+        candidateOf[node] = id;
+      }
+      float sum = 0.f;
+      std::size_t count = 0;
+      for (const int node : nodes) {
+        for (const auto& edge : outEdges[node]) {
+          if (candidateOf[edge.target] == id) {
+            sum += edge.score;
+            ++count;
+          }
+        }
+      }
+      if (count == 0 || sum < m_cfg.minMeanScore * count) {
+        ++numLowScore;
+        return false;
+      }
+    }
+    candidates.emplace_back();
+    candidates.back().reserve(nodes.size());
+    for (const int node : nodes) {
+      candidates.back().push_back(spacePointIDs[node]);
+    }
+    return true;
+  };
 
   for (auto& nodes : componentNodes) {
     if (nodes.size() < m_cfg.minCandidateSize) {
@@ -246,13 +306,7 @@ std::vector<std::vector<int>> CCAndWalkTrackBuilding::operator()(PipelineTensors
     const bool isSimplePath =
         std::ranges::all_of(nodes, [&](int node) { return inDegree[node] <= 1 && outEdges[node].size() <= 1; });
     if (isSimplePath) {
-      candidates.emplace_back();
-      candidates.back().reserve(nodes.size());
-      for (const int node : nodes) {
-        candidates.back().push_back(spacePointIDs[node]);
-        used[node] = true;
-      }
-      ++numSimple;
+      numSimple += emit(nodes);
       continue;
     }
 
@@ -262,26 +316,21 @@ std::vector<std::vector<int>> CCAndWalkTrackBuilding::operator()(PipelineTensors
       if (used[start]) {
         continue;
       }
-      const std::vector<int> path = longestPathFrom(start, outEdges, used);
+      const std::vector<int> path = longestPathFrom(start, outEdges, inEdges, used);
       if (path.size() < m_cfg.minCandidateSize) {
         // Nothing worth keeping starts here. Only the starting hit is retired,
         // so the hits it reached stay available to a later, longer path.
         used[start] = true;
         continue;
       }
-      candidates.emplace_back();
-      candidates.back().reserve(path.size());
-      for (const int node : path) {
-        candidates.back().push_back(spacePointIDs[node]);
-        used[node] = true;
-      }
-      ++numWalked;
+      numWalked += emit(path);
     }
   }
 
   ACTS_DEBUG(fmt::format("Built {} track candidates from {} hits and {} edges: {} components were already paths, {} "
-                         "came out of walking the rest",
-                         candidates.size(), numNodes, directed.size(), numSimple, numWalked));
+                         "came out of walking the rest, {} dropped for a mean edge score below {}",
+                         candidates.size(), numNodes, directed.size(), numSimple, numWalked, numLowScore,
+                         m_cfg.minMeanScore));
 
   return candidates;
 }
