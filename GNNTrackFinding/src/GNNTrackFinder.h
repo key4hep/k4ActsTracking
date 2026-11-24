@@ -153,6 +153,14 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
       this, "WalkMinScore", 0.1f,
       "\"cc-and-walk\" only: if no neighbour reaches WalkAddScore, the best one is followed if it scores above this, "
       "otherwise the walk stops. Must not be above WalkAddScore."};
+  Gaudi::Property<bool> m_walkBestPredecessor{
+      this, "WalkBestPredecessor", false,
+      "\"cc-and-walk\" only: the walk moves from hit u to hit v only if u -> v is v's best-scoring incoming edge among "
+      "the hits not yet used (acorn's bestpred_walk). Stops a branch from taking the hits of another track."};
+  Gaudi::Property<float> m_minMeanEdgeScore{
+      this, "MinMeanEdgeScore", 0.f,
+      "\"cc-and-walk\" only: drop candidates whose mean edge score, over the edges between their own hits, is below "
+      "this (acorn's min_track_score). 0 keeps every candidate."};
 
   /// @name Kalman-fit configuration
   ///@{

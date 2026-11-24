@@ -35,9 +35,6 @@
 #include <edm4hep/TrackerHitPlane.h>
 #include <edm4hep/TrackerHitPlaneCollection.h>
 
-// podio
-#include <podio/ObjectID.h>
-
 // ACTS
 #include <Acts/Definitions/Units.hpp>
 #include <Acts/EventData/BoundTrackParameters.hpp>
@@ -75,7 +72,6 @@
 #include <atomic>
 #include <cmath>
 #include <cstddef>
-#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -419,12 +415,6 @@ private:
   std::unique_ptr<ACTSTracking::CaloFacePropagator> m_propagator;
 };
 
-/// Stable key for matching an edm4hep tracker hit across collections.
-inline std::uint64_t trackerHitKey(const edm4hep::TrackerHit& hit) {
-  const podio::ObjectID id = hit.getObjectID();
-  return (static_cast<std::uint64_t>(id.collectionID) << 32) | static_cast<std::uint32_t>(id.index);
-}
-
 /// Covariance of a planar hit in the local frame of @p surface. du/dv are given
 /// along the hit's own u/v axes, which need not match the surface's local x/y.
 inline Acts::SquareMatrix2 hitLocalCovariance(const Acts::GeometryContext& geoCtx, const Acts::Surface& surface,
@@ -637,6 +627,10 @@ estimateSeedParameters(const Alg& alg, const IActsGeoSvc& geo, const Acts::Geome
   return Acts::BoundTrackParameters(startSurface.getSharedPtr(), params, cov, Acts::ParticleHypothesis::pion());
 }
 
+/// Use hit handles so that hits at the same index in different collections
+/// remain distinct even before their collections have been assigned IDs.
+using SourceLinksByHit = std::unordered_map<edm4hep::TrackerHit, SourceLink>;
+
 /// A hit belonging to a seed candidate: global position, transverse radius and
 /// the source link of its ACTS measurement. Once the hits are ordered by
 /// radius the innermost, middle and outermost entries form the three-point
@@ -660,15 +654,14 @@ struct SeedHit {
  * Hits without a source link are skipped, so the result may be smaller than
  * @p candidateHits; callers apply their own minimum-hit requirement.
  *
- * @tparam HitRange Iterable of edm4hep hits accepted by trackerHitKey().
+ * @tparam HitRange Iterable of edm4hep hits convertible to edm4hep::TrackerHit.
  */
 template <class HitRange>
-std::vector<SeedHit> collectSeedHits(const HitRange& candidateHits,
-                                     const std::unordered_map<std::uint64_t, SourceLink>& slByHit,
+std::vector<SeedHit> collectSeedHits(const HitRange& candidateHits, const SourceLinksByHit& slByHit,
                                      const ACTSTracking::HitContainer& hitContainer) {
   std::vector<SeedHit> seedHits;
   for (const auto& hit : candidateHits) {
-    auto it = slByHit.find(trackerHitKey(hit));
+    auto it = slByHit.find(hit);
     if (it == slByHit.end()) {
       continue;
     }
