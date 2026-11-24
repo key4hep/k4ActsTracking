@@ -30,7 +30,7 @@ set(ExternalData_NO_SYMLINKS ON)
 set(data_files
   # Material maps
   MAIA_v0_gen3_material_map.json.zst
-  CLD_o2_v08_gen3_material_map.json
+  CLD_o2_v08_gen3_material_map.json.zst
 )
 
 set(data_args)
