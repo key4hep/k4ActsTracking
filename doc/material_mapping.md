@@ -110,7 +110,7 @@ when stacking child volumes in AxisZ direction".
 
 ### MAIA
 
-The tracker is the beampipe, the vertex detector nested inside the inner
+The tracker consists of the beampipe, the vertex detector nested inside the inner
 tracker (`makeNestedInnerTracker`) and a regular outer tracker, all as radial
 children of one container. Every endcap layer and every barrel layer is
 designated, except:
@@ -145,8 +145,7 @@ reasons and with the same receivers taking their place. Two differences:
   container: `VertexBarrel|VertexBarrel|doubleLayer_0`. The match is a full
   `std::regex_match`, so a regex for just `VertexBarrel|doubleLayer_0` matches
   nothing and construction aborts on the `Vertex` z-stack.
-- There is no solenoid volume. CLD's coil starts at r = 3719 mm, outside the
-  ECAL barrel face at 2150 mm, so the extrapolation to the calorimeter never
+- There is no solenoid volume. CLD's calorimeters sit inside the coil, so the extrapolation to the calorimeter never
   crosses it.
 
 This yields **38 receivers**:
