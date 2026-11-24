@@ -94,6 +94,15 @@ beampipe's outer cylinder. Each skipped layer below names the receiver that
 takes its place. Whether a barrel needs this depends on what else sits in its
 radial stack, so it is decided per detector, not per layer index.
 
+In a tracker built with `makeRegularTracker` (barrel and endcaps stacked in z),
+the endcap discs set the inner radius of the container, which can lie well
+inside the first barrel layer. Stretched down to it, that layer would put its own
+material on the face below, far in front of its hits (in CLD 290 mm, and the fit
+underestimates the curvature errors in the barrel several times over). The
+barrel stack therefore fills this space with a gap volume (resize strategy
+`Gap`), so the first layer's inner face stays at its sensors and gets its own
+receiver.
+
 Passive structures without a volume of their own, such as MAIA's solenoid in
 front of the calorimeter, get one so that their faces can be designated
 (`addCylindricalSolenoid`).
@@ -101,7 +110,7 @@ front of the calorimeter, get one so that their faces can be designated
 `ActsGeoSvc` prints the number of receivers on every run, e.g. for MAIA_v0:
 
 ```
-ActsGeoSvc INFO 51 of 76706 surfaces in the tracking geometry carry material, 51 of them a proto-material placeholder.
+ActsGeoSvc INFO 52 of 76707 surfaces in the tracking geometry carry material, 52 of them a proto-material placeholder.
 ```
 
 A designation that breaks one of the rules aborts geometry construction and
@@ -113,31 +122,32 @@ when stacking child volumes in AxisZ direction".
 The tracker consists of the beampipe, the vertex detector nested inside the inner
 tracker (`makeNestedInnerTracker`) and a regular outer tracker, all as radial
 children of one container. Every endcap layer and every barrel layer is
-designated, except:
+designated, except `VertexBarrel` `layer_0`, which is skipped. The vertex barrel
+is a plain layer stack inside the `Vertex` z-stack, so its innermost inner
+cylinder is merged. Its material goes to the `Beampipe` outer cylinder, the same
+portal shared through every enclosing container.
 
-- `VertexBarrel` `layer_0`, skipped. The vertex barrel is a plain layer stack
-  inside the `Vertex` z-stack, so its innermost inner cylinder is merged. Its
-  material goes to the `Beampipe` outer cylinder, the same portal shared
-  through every enclosing container.
-- `OuterTrackerBarrel` `layer0`, skipped for the same reason (`OuterTracker`
-  z-stack). Its material goes to the `InnerTracker` outer cylinder, which is
-  designated for exactly this purpose and also collects the services between
-  the two trackers.
+Two innermost barrel layers are *not* skipped:
 
-`InnerTrackerBarrel` `layer0` is *not* skipped: the inner-tracker barrel
-encloses the whole vertex detector, so its innermost inner cylinder is an
-interior portal shared with `Vertex`, which designates nothing there.
+- `InnerTrackerBarrel` `layer0`: the inner-tracker barrel encloses the whole
+  vertex detector, so its innermost inner cylinder is an interior portal shared
+  with `Vertex`, which designates nothing there.
+- `OuterTrackerBarrel` `layer0`: the gap volume below it (see above) sits in
+  the same radial stack, so its inner cylinder is an interior portal too. The
+  `InnerTracker` outer cylinder is fused with the `OuterTracker` inner cylinder,
+  which carries no material, so it is designated as well and collects the
+  services between the two trackers.
 
 The solenoid (r = 1500 to 1857 mm) sits between the outer tracker and the ECAL
 barrel face at 1857 mm, so every extrapolation to the calorimeter crosses it.
 It gets a volume of its own, so that the `OuterTracker` and `Solenoid` outer
-cylinders bracket the coil. In total MAIA_v0 has 51 receivers.
+cylinders bracket the coil. In total MAIA_v0 has 52 receivers.
 
 ### CLD
 
 CLD's tree has the same shape as [MAIA's](#maia), so the same faces are
-designated and the same two barrels skip their innermost layer, for the same
-reasons and with the same receivers taking their place. Two differences:
+designated and only the vertex barrel skips its innermost layer, for the same
+reason and with the same receiver taking its place. Two differences:
 
 - The vertex barrel is built from sensors (`layersFromSensors`), so there is no
   layer DetElement to match. `skipInnermost` is matched against the blueprint
@@ -148,7 +158,7 @@ reasons and with the same receivers taking their place. Two differences:
 - There is no solenoid volume. CLD's calorimeters sit inside the coil, so the extrapolation to the calorimeter never
   crosses it.
 
-This yields **38 receivers**:
+This yields **39 receivers**:
 
 | receiver                                        | count | note |
 | ----------------------------------------------- | ----: | ---- |
@@ -157,13 +167,13 @@ This yields **38 receivers**:
 | `VertexEndcap` double layers                    |     6 | |
 | `InnerTrackerBarrel` layers                     |     3 | all, including `layer0` |
 | `InnerTrackerEndcap` layers                     |    14 | |
-| `OuterTrackerBarrel` layers                     |     2 | all but `layer0` |
+| `OuterTrackerBarrel` layers                     |     3 | all, including `layer0` (gap volume below it) |
 | `OuterTrackerEndcap` layers                     |     8 | |
-| `InnerTracker` outer cylinder                   |     1 | also takes the place of `OuterTrackerBarrel` `layer0` |
+| `InnerTracker` outer cylinder                   |     1 | services between the two trackers |
 | `OuterTracker` outer cylinder                   |     1 | |
 
 ```
-ActsGeoSvc INFO 38 of 97400 surfaces in the tracking geometry carry material, 38 of them a proto-material placeholder.
+ActsGeoSvc INFO 39 of 97401 surfaces in the tracking geometry carry material, 39 of them a proto-material placeholder.
 ```
 
 CLD has a lot of passive material at small radius and large |z| (conical
@@ -265,12 +275,12 @@ a directory is chained in sorted order, so there is no `hadd` step.
 Output for 1M rays from `MaterialRecordingAlg` (progress lines left out):
 
 ```
-MaterialMappingAlg INFO Mapping material onto 51 designated surfaces.
+MaterialMappingAlg INFO Mapping material onto 52 designated surfaces.
 MaterialMappingAlg INFO Mapping recorded material at r < 1857.0 mm, |z| < 2307.3 mm.
 MaterialMappingAlg INFO Reading 1000000 recorded material tracks from tree 'material_tracks'.
 MaterialMappingAlg INFO Mapped 1000000 recorded material tracks.
 MaterialMappingAlg INFO Material in x/X0 summed over all tracks: 1.811e+08 mapped, 0.285 outside the region, 0 on tracks crossing no receiver.
-MaterialMappingAlg INFO Wrote material for 51 surfaces to 'MAIA_v0_gen3_material_map.json'.
+MaterialMappingAlg INFO Wrote material for 52 surfaces to 'MAIA_v0_gen3_material_map.json'.
 ```
 
 - The surface counts on the first and last line should agree with the
@@ -310,7 +320,7 @@ k4run test/options/MAIA_CKFTrackingAlg.py \
 
 The `ActsGeoSvc` line shows whether the map applied:
 
-- `51 of them a proto-material placeholder`: none of its entries matched (map
+- `52 of them a proto-material placeholder`: none of its entries matched (map
   made for a different geometry or blueprint). The service warns.
 - `0 of them a proto-material placeholder`: every receiver got material, as
   it should.
