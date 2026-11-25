@@ -80,6 +80,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -168,6 +169,13 @@ std::optional<typename track_proxy_t::ConstTrackStateProxy> findTwoWayAnchor(con
  */
 class CKFRunner {
 public:
+  /// Applied by findTracks() to a track after its conversion to edm4hep, e.g.
+  /// to append extra track states.
+  using TrackFinisher = std::function<void(edm4hep::MutableTrack&)>;
+
+  /// Per-track client customisation, see Config::trackHook.
+  using TrackHook = std::function<TrackFinisher(CKFTrackContainer::TrackProxy&, Acts::MagneticFieldProvider::Cache&)>;
+
   struct Config {
     double chi2CutOff = 15;
     std::int32_t numMeasurementsCutOff = 10;
@@ -225,6 +233,15 @@ public:
     /// Optional ACTS track selection, applied to each track after the
     /// extrapolation to the reference surface.
     std::optional<Acts::TrackSelector::Config> trackSelector{};
+
+    /// Optional per-track customisation by the client algorithm. Called once
+    /// per found track after smoothing (and two-way stitching / reordering),
+    /// before the reference-surface extrapolation: it may modify the track's
+    /// states, e.g. to set a momentum determined by an external constraint.
+    /// It may return a TrackFinisher, which is applied to the converted
+    /// edm4hep track once it has been built. Called concurrently from
+    /// findTracks(), so it must be thread-safe. Empty (the default): no hook.
+    TrackHook trackHook{};
   };
 
   /// Builds the event-independent propagators and CKF once. The event-local
@@ -256,6 +273,7 @@ public:
     if (cfg.trackSelector) {
       m_trackSelector.emplace(*cfg.trackSelector);
     }
+    m_trackHook = cfg.trackHook;
   }
 
   CKFRunner(const CKFRunner&) = delete;
@@ -486,6 +504,13 @@ public:
           trackTip.reverseTrackStates(true);
         }
 
+        // Client hook (Config::trackHook), e.g. a momentum constraint: may
+        // modify the track before the reference extrapolation below.
+        TrackFinisher finisher;
+        if (m_trackHook) {
+          finisher = m_trackHook(trackTip, magCache);
+        }
+
         // Extrapolate the (stitched or smoothed) track to the reference
         // surface (the IP perigee by default, or a beam-perpendicular plane
         // for telescope clients) so its track-level parameters (and hence
@@ -514,6 +539,10 @@ public:
         // single-pass) output track, so it runs at most once per emitted
         // track regardless of two-way mode.
         m_caloAppender.addCaloState(alg, trackTip, track, magCache, caloMonitor);
+
+        if (finisher) {
+          finisher(track);
+        }
 
         {
           std::lock_guard lock{trackMutex};
@@ -587,6 +616,7 @@ private:
   std::unique_ptr<CKFPropagator> m_extrapolator;
   CaloStateAppender m_caloAppender;
   std::optional<Acts::TrackSelector> m_trackSelector;
+  TrackHook m_trackHook;
 
   // Two-way CKF counters: findTracks() is const and runs concurrently.
   mutable std::atomic<std::size_t> m_nTwoWayStitched{0};
