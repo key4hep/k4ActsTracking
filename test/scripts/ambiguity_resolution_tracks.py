@@ -132,6 +132,10 @@ CASES = [
     ),
 ]
 
+# The number of tracker hits created for each case (regardless of whether all of
+# them are used in the end)
+N_HITS = 16
+
 parser = argparse.ArgumentParser(
     description="Synthetic tracks for ACTSDuplicateRemoval and GreedyAmbiguityResolutionAlg"
 )
@@ -148,7 +152,7 @@ if args.mode == "write":
     writer = root_io.Writer(args.file)
     for case in CASES:
         hits = edm4hep.TrackerHit3DCollection()
-        hit_list = [hits.create() for _ in range(16)]
+        hit_list = [hits.create() for _ in range(N_HITS)]
         track_coll = edm4hep.TrackCollection()
         for i, track in enumerate(case.tracks):
             edm_track = track_coll.create()
