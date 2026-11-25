@@ -124,7 +124,7 @@ CASES = [
         duplicate_removal={2},
         greedy={1},
     ),
-    # Track 1 has fewer hits than NMeasurementsMin: not in the greedy output.
+    # Track 1 has fewer hits than NMeasurementsMin (4): not in the greedy output.
     Case(
         tracks=[Track(1, range(0, 3), 3.0, 3), Track(2, range(10, 14), 4.0, 4)],
         duplicate_removal={1, 2},
