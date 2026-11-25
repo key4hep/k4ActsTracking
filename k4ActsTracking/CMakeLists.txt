@@ -21,6 +21,7 @@ set(ACTS_LIBRARY_TARGETS "Acts::Core" "Acts::PluginEDM4hep")
 gaudi_add_library(k4ActsTracking
   SOURCES
     src/ActsGaudiLogger.cpp
+    src/CKFRunner.cpp
     src/CellIDSelector.cxx
     src/HitFeatures.cxx
     src/components/Helpers.cxx
