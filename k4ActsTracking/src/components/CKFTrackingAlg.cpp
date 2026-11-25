@@ -132,6 +132,24 @@ std::optional<Acts::BoundTrackParameters> estimateStraightLineSeedParameters(
       ACTSTracking::makeInitialCovariance(nominalP, errPos, errPhi, errLambda, errRelP, errTime, errQOverP);
   return Acts::BoundTrackParameters(startSurface.getSharedPtr(), params, cov, Acts::ParticleHypothesis::pion());
 }
+
+/// True if @p pred holds for an element of @p sorted (ordered in phi) with phi
+/// in [lo, hi]. The range may extend beyond +-pi, in which case it wraps around.
+template <class T, class Pred>
+bool anyInPhiRange(const std::vector<T>& sorted, double lo, double hi, Pred pred) {
+  constexpr double pi = std::numbers::pi;
+  auto scan = [&](double from, double to) {
+    for (auto it = std::ranges::lower_bound(sorted, static_cast<float>(from), {}, &T::phi);
+         it != sorted.end() && it->phi <= to; ++it) {
+      if (pred(*it)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  return scan(std::max(lo, -pi), std::min(hi, pi)) || (lo < -pi && scan(lo + 2 * pi, pi)) ||
+         (hi > pi && scan(-pi, hi - 2 * pi));
+}
 } // namespace
 
 /**
@@ -562,7 +580,7 @@ StatusCode CKFTrackingAlg::initialize() {
   m_seedSelector =
       k4ActsTracking::CellIDSelector(m_actsGeoSvc->cellIDEncodingString(), m_seedingSensorsCellIDs.value());
 
-  m_miniDoubletSelectors.clear();
+  m_miniDoubletSelectors.reserve(m_miniDoubletLayers.value().size());
   for (const std::string& entry : m_miniDoubletLayers.value()) {
     const auto sep = entry.find(';');
     if (sep == std::string::npos || entry.find(';', sep + 1) != std::string::npos) {
@@ -1111,49 +1129,30 @@ void CKFTrackingAlg::filterMiniDoublets(std::vector<SeedInput>& seedInputs,
   const double nSigma = m_miniDoubletNSigma;
 
   for (auto& layer : partners) {
-    std::ranges::sort(layer, [](const MiniDoubletPartner& a, const MiniDoubletPartner& b) { return a.phi < b.phi; });
+    std::ranges::sort(layer, {}, &MiniDoubletPartner::phi);
   }
+
+  auto compatible = [&](const SeedInput& sp, const MiniDoubletPartner& o) {
+    const double dr = o.r - sp.r;
+    const double sigma2 = std::hypot(sp.sigma, o.sigma);
+    if (std::abs(dr) < 1e-3) {
+      return false;
+    }
+    const double z0 = sp.z - sp.r * (o.z - sp.z) / dr;
+    if (std::abs(z0) > z0Max + nSigma * sigma2 * sp.r / std::abs(dr)) {
+      return false;
+    }
+    const double dphi = std::remainder(o.phi - sp.phi, 2 * std::numbers::pi);
+    return std::abs(dphi) <= std::abs(dr) * halfCurvMax + nSigma * sigma2 / sp.r;
+  };
 
   std::size_t nCandidates = 0;
   auto hasPartner = [&](const SeedInput& sp) {
-    const auto& layer = partners[sp.miniDoubletLayer];
-    if (layer.empty()) {
-      return false;
-    }
     // azimuthal search window: generous bound on |r2 - r1| (both sensors of a double layer)
     const double maxDr = 0.25 * sp.r + 5 * Acts::UnitConstants::mm;
     const double window = maxDr * halfCurvMax + nSigma * 2 * sp.sigma / sp.r;
-    auto compatible = [&](const MiniDoubletPartner& o) {
-      const double dr = o.r - sp.r;
-      const double sigma2 = std::hypot(sp.sigma, o.sigma);
-      if (std::abs(dr) < 1e-3) {
-        return false;
-      }
-      const double z0 = sp.z - sp.r * (o.z - sp.z) / dr;
-      if (std::abs(z0) > z0Max + nSigma * sigma2 * sp.r / std::abs(dr)) {
-        return false;
-      }
-      const double dphi = std::remainder(o.phi - sp.phi, 2 * std::numbers::pi);
-      return std::abs(dphi) <= std::abs(dr) * halfCurvMax + nSigma * sigma2 / sp.r;
-    };
-    auto scan = [&](double lo, double hi) {
-      auto it = std::ranges::lower_bound(layer, static_cast<float>(lo), {}, &MiniDoubletPartner::phi);
-      for (; it != layer.end() && it->phi <= hi; ++it) {
-        if (compatible(*it)) {
-          return true;
-        }
-      }
-      return false;
-    };
-    const double lo = sp.phi - window;
-    const double hi = sp.phi + window;
-    if (scan(std::max(lo, -std::numbers::pi), std::min(hi, std::numbers::pi))) {
-      return true;
-    }
-    if (lo < -std::numbers::pi && scan(lo + 2 * std::numbers::pi, std::numbers::pi)) {
-      return true;
-    }
-    return hi > std::numbers::pi && scan(-std::numbers::pi, hi - 2 * std::numbers::pi);
+    return anyInPhiRange(partners[sp.miniDoubletLayer], sp.phi - window, sp.phi + window,
+                         [&](const MiniDoubletPartner& o) { return compatible(sp, o); });
   };
 
   std::erase_if(seedInputs, [&](const SeedInput& sp) {
