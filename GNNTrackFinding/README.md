@@ -79,10 +79,8 @@ yet found in the Key4hep stack. Specifically, you need
     scaling of `OnnxEdgeClassifier`
     ([acts#5646](https://github.com/acts-project/acts/pull/5646)) and to pass
     the selected features in the configured order
-    ([acts#6142](https://github.com/acts-project/acts/pull/6142)). No release
-    contains the latter yet (the last one checked is v48.0.1), so build Acts from
-    its main branch. CMake requires Acts >= 48.1.0, the first release cut from
-    main after acts#6142; main itself reports version 999.999.999 and passes.
+    ([acts#6142](https://github.com/acts-project/acts/pull/6142)), i.e. v48.1.0
+    or later.
 
 In particular the GNN plugin and the c++ library of pytorch_scatter are not yet
 available via spack, so they need some manual intervention.
@@ -359,6 +357,8 @@ overlaps.
 | `TrackBuilding` | `"connected-components"` | Track building algorithm, see below |
 | `WalkAddScore` | `0.6` | `"cc-and-walk"` only: score above which a neighbour is always followed |
 | `WalkMinScore` | `0.1` | `"cc-and-walk"` only: score below which the walk stops |
+| `WalkBestPredecessor` | `false` | `"cc-and-walk"` only: move from hit u to hit v only if u -> v is v's best-scoring incoming edge among the hits not yet used |
+| `MinMeanEdgeScore` | `0` | `"cc-and-walk"` only: drop candidates whose mean internal edge score is below this |
 | `MinHitsPerTrack` | `3` | Minimum number of hits for a candidate to be fitted |
 | `PropagateBackward` | `false` | Extrapolate the fitted tracks towards the beamline |
 | `ExtrapolateToCalo` | `true` | Extrapolate the fitted tracks to the calorimeter face and add an `AtCalorimeter` track state |

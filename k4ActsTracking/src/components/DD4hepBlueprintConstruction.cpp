@@ -53,7 +53,9 @@
 #include <optional>
 #include <regex>
 #include <stdexcept>
+#include <string>
 #include <utility>
+#include <vector>
 
 using Acts::BlueprintNode;
 using Acts::ContainerBlueprintNode;
@@ -460,12 +462,36 @@ namespace {
   const std::string& identityKey(const std::string& m) { return m; }
   int doubleLayerKey(const std::string& m) { return std::stoi(m) / 2; }
 
+  /// Capture group 1 of @p rgx in the name of @p elem or, failing that, of its
+  /// closest ancestor whose name matches; std::nullopt if none does
+  std::optional<std::string> matchSelfOrAncestor(dd4hep::DetElement elem, const std::regex& rgx) {
+    for (; elem.isValid(); elem = elem.parent()) {
+      std::smatch match;
+      if (const std::string name = elem.name(); std::regex_match(name, match, rgx)) {
+        return match[1].str();
+      }
+    }
+    return std::nullopt;
+  }
+
+  /// The sensors for @c builder.layersFromSensors(): the sensitive DetElements in
+  /// @p container that match @p filter or lie inside a DetElement that does (as
+  /// in ACTS' Open Data Detector builder). The matching DetElement itself can be
+  /// a passive module with the silicon as a child, e.g. in CLD's endcaps.
+  std::vector<dd4hep::DetElement> findSensors(ActsPlugins::DD4hep::BlueprintBuilder& builder,
+                                              const std::string& container, const std::regex& filter) {
+    auto sensors = builder.resolveSensitives(builder.findDetElementByName(container).value());
+    std::erase_if(sensors, [&](const dd4hep::DetElement& sensor) { return !matchSelfOrAncestor(sensor, filter); });
+    return sensors;
+  }
+
   /// Build a LayerGrouper that assigns sensor DetElements to named layer groups.
   ///
-  /// The returned callable matches each DetElement name against @p groupRgx.
-  /// Capture group 1 is extracted, optionally transformed by @p transformMatch,
-  /// and appended to @p labelBase to form the group key
-  /// (e.g. `"VertexBarrel|doubleLayer_0"`).  Throws if the name does not match.
+  /// The returned callable matches each DetElement name, or that of its closest
+  /// matching ancestor, against @p groupRgx. Capture group 1 is extracted,
+  /// optionally transformed by @p transformMatch, and appended to @p labelBase to
+  /// form the group key (e.g. `"VertexBarrel|doubleLayer_0"`). Throws if no name
+  /// matches.
   ///
   /// @param groupRgx      Regex with exactly one capture group selecting the
   ///                      layer index or identifier within the element name
@@ -477,14 +503,33 @@ namespace {
   template <typename TransformF = decltype(identityKey)>
   LayerGrouper makeLayerGrouper(std::regex groupRgx, std::string labelBase, TransformF transformMatch = identityKey) {
     return [=](const auto& e) {
-      std::smatch match;
-      const std::string elemName = e.name();
-      if (std::regex_match(elemName, match, groupRgx)) {
-        const auto matchgroup = match[1].str();
-        return fmt::format("{}_{}", labelBase, transformMatch(match[1].str()));
+      if (const auto key = matchSelfOrAncestor(e, groupRgx)) {
+        return fmt::format("{}_{}", labelBase, transformMatch(*key));
       }
-      throw std::invalid_argument(fmt::format("Could not match regex for grouping layers. DetElem name: {}", elemName));
+      throw std::invalid_argument(fmt::format("Could not match regex for grouping layers. DetElem name: {}", e.name()));
     };
+  }
+
+  /// Side of the interaction point an endcap lies on.
+  enum class EndcapSide { Positive, Negative };
+
+  /// Attachment strategy for the gaps between the layers of one endcap side.
+  ///
+  /// A gap goes to the layer closer to the IP, so that every layer volume
+  /// begins just in front of its sensors and its IP-facing face, the material
+  /// receiver, sits right in front of them, as in the barrels. The layers are
+  /// stacked in increasing z, so that is the first of two neighbours on the
+  /// positive side but the second on the negative side; @c First on both sides
+  /// would put the negative-side receivers right behind the previous layer
+  /// instead, and the material of each negative-side layer onto the receiver
+  /// behind it.
+  ///
+  /// @param side The endcap side
+  ///
+  /// @returns The attachment strategy for that side
+  Acts::VolumeAttachmentStrategy attachTowardsIP(EndcapSide side) {
+    return side == EndcapSide::Positive ? Acts::VolumeAttachmentStrategy::First
+                                        : Acts::VolumeAttachmentStrategy::Second;
   }
 
   /// Add one endcap side to @p parent using pre-grouped layer DetElements.
@@ -497,19 +542,20 @@ namespace {
   /// @param parent    Node to attach the endcap side to
   /// @param container Name of the DetElement that contains the endcap layers
   /// @param filter    Regex selecting the relevant layer DetElements
+  /// @param side      Side of the IP, see @c attachTowardsIP
   /// @param axes      Sensor coordinate axes for this endcap side
   /// @param envelope  Extent envelope applied to the resulting volume
   /// @param onLayer   Optional per-layer customization, e.g. from @c designateLayers
   void addGroupedEndcapSide(ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::BlueprintNode& parent,
-                            const std::string& container, const std::regex& filter, AxisDefinition axes,
-                            const Acts::ExtentEnvelope& envelope, LayerCustomizer onLayer = {}) {
+                            const std::string& container, const std::regex& filter, EndcapSide side,
+                            AxisDefinition axes, const Acts::ExtentEnvelope& envelope, LayerCustomizer onLayer = {}) {
     builder.layers()
         .endcap()
         .setSensorAxes(std::move(axes))
         .setContainer(container)
         .setLayerFilter(filter)
         .setEnvelope(envelope)
-        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+        .setAttachmentStrategy(attachTowardsIP(side))
         .onLayer(std::move(onLayer))
         .addTo(parent);
   }
@@ -524,8 +570,10 @@ namespace {
   /// @param builder     Blueprint builder driving the construction
   /// @param parent      Node to attach the endcap side to
   /// @param container   Name of the DetElement that contains the sensors
-  /// @param filter      Regex selecting sensor DetElements; capture group 1
-  ///                    is used as the layer discriminator
+  /// @param filter      Regex selecting the sensor DetElements or the modules
+  ///                    containing them; capture group 1 is used as the layer
+  ///                    discriminator
+  /// @param side        Side of the IP, see @c attachTowardsIP
   /// @param axes        Sensor coordinate axes for this endcap side
   /// @param labelPrefix Prefix passed to @c makeLayerGrouper as the label base
   /// @param envelope    Extent envelope applied to the resulting volume
@@ -534,12 +582,11 @@ namespace {
   /// @param onLayer     Optional per-layer customization, e.g. from @c designateLayers
   void addUngroupedEndcapSide(
       ActsPlugins::DD4hep::BlueprintBuilder& builder, Acts::BlueprintNode& parent, const std::string& container,
-      const std::regex& filter, AxisDefinition axes, const std::string& labelPrefix,
+      const std::regex& filter, EndcapSide side, AxisDefinition axes, const std::string& labelPrefix,
       const Acts::ExtentEnvelope& envelope,
       std::function<std::string(const std::string&)> keyXform = [](const std::string& m) { return m; },
       LayerCustomizer onLayer = {}) {
-    const auto detElem = builder.findDetElementByName(container);
-    auto sensors = builder.findDetElementByNamePattern(detElem.value(), filter);
+    auto sensors = findSensors(builder, container, filter);
     auto grouper = makeLayerGrouper(filter, labelPrefix, std::move(keyXform));
     builder.layersFromSensors()
         .endcap()
@@ -548,7 +595,7 @@ namespace {
         .setSensors(std::move(sensors))
         .groupBy(std::move(grouper))
         .setEnvelope(envelope)
-        .setAttachmentStrategy(Acts::VolumeAttachmentStrategy::First)
+        .setAttachmentStrategy(attachTowardsIP(side))
         .onLayer(std::move(onLayer))
         .addTo(parent);
   }
@@ -581,13 +628,15 @@ namespace {
     auto onNeg = designateLayers(material, PositiveDisc, container);
 
     if (layout == Layout::Grouped) {
-      addGroupedEndcapSide(builder, parent, container, posFilter, axes, envelope, std::move(onPos));
-      addGroupedEndcapSide(builder, parent, container, negFilter, axes, envelope, std::move(onNeg));
+      addGroupedEndcapSide(builder, parent, container, posFilter, EndcapSide::Positive, axes, envelope,
+                           std::move(onPos));
+      addGroupedEndcapSide(builder, parent, container, negFilter, EndcapSide::Negative, axes, envelope,
+                           std::move(onNeg));
     } else {
-      addUngroupedEndcapSide(builder, parent, container, posFilter, axes, posLabel, envelope, keyXform,
-                             std::move(onPos));
-      addUngroupedEndcapSide(builder, parent, container, negFilter, axes, negLabel, envelope, keyXform,
-                             std::move(onNeg));
+      addUngroupedEndcapSide(builder, parent, container, posFilter, EndcapSide::Positive, axes, posLabel, envelope,
+                             keyXform, std::move(onPos));
+      addUngroupedEndcapSide(builder, parent, container, negFilter, EndcapSide::Negative, axes, negLabel, envelope,
+                             keyXform, std::move(onNeg));
     }
   }
 
@@ -643,8 +692,7 @@ namespace {
       return makeGroupedBarrel(builder, spec.barrelContainer, spec.barrelFilter, spec.barrelAxes, envelope, material);
     }
 
-    const auto barrelDetElem = builder.findDetElementByName(spec.barrelContainer);
-    const auto barrelLayerElems = builder.findDetElementByNamePattern(barrelDetElem.value(), spec.barrelFilter);
+    auto barrelLayerElems = findSensors(builder, spec.barrelContainer, spec.barrelFilter);
     const auto doubleLayerName =
         makeLayerGrouper(spec.barrelFilter, fmt::format("{}|doubleLayer", spec.barrelContainer), keyXform);
 
@@ -691,17 +739,17 @@ namespace {
     auto onNeg = designateLayers(material, PositiveDisc, spec.endcapContainer);
 
     if (spec.endcapLayout == Layout::Grouped) {
-      addGroupedEndcapSide(builder, *node, spec.endcapContainer, spec.endcapPosFilter, spec.endcapAxes,
-                           kVertexEndcapEnvelope, std::move(onPos));
-      addGroupedEndcapSide(builder, *node, spec.endcapContainer, spec.endcapNegFilter, spec.endcapAxes,
-                           kVertexEndcapEnvelope, std::move(onNeg));
+      addGroupedEndcapSide(builder, *node, spec.endcapContainer, spec.endcapPosFilter, EndcapSide::Positive,
+                           spec.endcapAxes, kVertexEndcapEnvelope, std::move(onPos));
+      addGroupedEndcapSide(builder, *node, spec.endcapContainer, spec.endcapNegFilter, EndcapSide::Negative,
+                           spec.endcapAxes, kVertexEndcapEnvelope, std::move(onNeg));
     } else {
-      addUngroupedEndcapSide(builder, *node, spec.endcapContainer, spec.endcapPosFilter, spec.endcapAxes,
-                             fmt::format("{}|doubleLayer_pos", spec.endcapContainer), kUngroupedVertexEndcapEnvelope,
-                             keyXform, std::move(onPos));
-      addUngroupedEndcapSide(builder, *node, spec.endcapContainer, spec.endcapNegFilter, spec.endcapAxes,
-                             fmt::format("{}|doubleLayer_neg", spec.endcapContainer), kUngroupedVertexEndcapEnvelope,
-                             std::move(keyXform), std::move(onNeg));
+      addUngroupedEndcapSide(builder, *node, spec.endcapContainer, spec.endcapPosFilter, EndcapSide::Positive,
+                             spec.endcapAxes, fmt::format("{}|doubleLayer_pos", spec.endcapContainer),
+                             kUngroupedVertexEndcapEnvelope, keyXform, std::move(onPos));
+      addUngroupedEndcapSide(builder, *node, spec.endcapContainer, spec.endcapNegFilter, EndcapSide::Negative,
+                             spec.endcapAxes, fmt::format("{}|doubleLayer_neg", spec.endcapContainer),
+                             kUngroupedVertexEndcapEnvelope, std::move(keyXform), std::move(onNeg));
     }
     return node;
   }
@@ -724,13 +772,19 @@ namespace {
   /// @param endcapMaterial If set, designate the IP-facing disc of every endcap
   ///                       layer as a material receiver
   ///
+  /// The space between the endcaps' inner radius and the first barrel layer
+  /// becomes a gap volume instead of part of that layer, so the layer's inner
+  /// cylinder stays at its sensors and can carry the layer's own material.
+  ///
   /// @returns The tracker blueprint node
   std::shared_ptr<CylinderContainerBlueprintNode>
   makeRegularTracker(ActsPlugins::DD4hep::BlueprintBuilder& builder, const TrackerSpec& spec,
                      const std::string& trackerName, const std::optional<LayerMaterial>& barrelMaterial = std::nullopt,
                      const std::optional<LayerMaterial>& endcapMaterial = std::nullopt) {
     auto tracker = std::make_shared<CylinderContainerBlueprintNode>(trackerName, AxisZ);
-    tracker->addChild(makeBarrel(builder, spec, kTrackerEnvelope, identityKey, barrelMaterial));
+    auto barrel = makeBarrel(builder, spec, kTrackerEnvelope, identityKey, barrelMaterial);
+    barrel->setResizeStrategies(Acts::VolumeResizeStrategy::Gap, Acts::VolumeResizeStrategy::Expand);
+    tracker->addChild(barrel);
     addBothEndcapSides(builder, *tracker, spec.endcapContainer, spec.endcapPosFilter, spec.endcapNegFilter,
                        spec.endcapAxes, spec.endcapLayout, kTrackerEnvelope,
                        fmt::format("{}|layer_pos", spec.endcapContainer),
@@ -953,25 +1007,26 @@ namespace MAIA_v0 {
     // has to be left out, because that depends on what else sits in the same
     // radial stack:
     //
-    // - VertexBarrel and OuterTrackerBarrel are plain layer stacks, so the
-    //   inner cylinder of their layer 0 *is* the container's inner cylinder.
-    //   Both containers are then children of a z-stack (Vertex and
-    //   OuterTracker), which merges its children's cylinder faces, so those
-    //   layers are skipped. Designating them aborts the construction with
+    // - VertexBarrel is a plain layer stack, so the inner cylinder of its
+    //   layer 0 *is* the container's inner cylinder. The container is a child
+    //   of a z-stack (Vertex), which merges its children's cylinder faces, so
+    //   that layer is skipped. Designating it aborts the construction with
     //   "Material is designated on portal faces that are merged when stacking
     //   child volumes in AxisZ direction".
     // - InnerTrackerBarrel encloses the whole vertex detector
     //   (makeNestedInnerTracker adds it as a radial child), so its layer0
     //   inner cylinder is an interior portal fused with Vertex's outer
     //   cylinder, which designates nothing. It is safe, and designated.
+    // - OuterTrackerBarrel gets a gap volume below layer0 (makeRegularTracker),
+    //   so its layer0 inner cylinder sits at the sensors, inside the container,
+    //   and is designated.
     //
-    // Nothing is lost by skipping: each excluded face survives as part of a
-    // receiver that is designated. VertexBarrel's is Beampipe.OuterCylinder
-    // (the same portal, shared through every enclosing container), and
-    // OuterTrackerBarrel's is InnerTracker.OuterCylinder.
+    // Nothing is lost by skipping VertexBarrel's layer 0: its inner cylinder
+    // is the same portal as Beampipe.OuterCylinder (shared through every
+    // enclosing container), which is designated.
     const auto vertexBarrelMaterial = Blueprints::LayerMaterial{.skipInnermost = std::regex{"layer_0"}};
     const auto innerBarrelMaterial = Blueprints::LayerMaterial{};
-    const auto outerBarrelMaterial = Blueprints::LayerMaterial{.skipInnermost = std::regex{"layer0"}};
+    const auto outerBarrelMaterial = Blueprints::LayerMaterial{};
     const auto endcapMaterial = Blueprints::LayerMaterial{};
 
     // Build the tracker detectors as radial children of the supplied
@@ -990,9 +1045,9 @@ namespace MAIA_v0 {
       auto innerTracker = Blueprints::makeNestedInnerTracker(
           builder, std::move(vertex), Blueprints::NestedInnerTrackerSpec{}, innerBarrelMaterial, endcapMaterial);
       // The inner tracker's outer cylinder is fused with the outer tracker's
-      // inner cylinder, which carries no material (the innermost outer-tracker
-      // barrel layer is skipped), so it is free to receive the material of the
-      // services between the two subdetectors.
+      // inner cylinder, which carries no material (it belongs to the gap volume
+      // below the first outer-tracker barrel layer), so it is free to receive
+      // the material of the services between the two subdetectors.
       outer.addChild(Blueprints::withMaterial(innerTracker, "InnerTracker_Material",
                                               Acts::CylinderVolumeBounds::Face::OuterCylinder));
 
@@ -1142,22 +1197,39 @@ namespace ILD_FCCee_v02 {
 namespace CLD_o2_v07 {
   void populateBlueprint(const std::string& detName, Acts::Blueprint& root,
                          ActsPlugins::DD4hep::BlueprintBuilder& builder, const IActsGeoSvc::CaloFaceSurfaces& calo) {
+    // Material receivers for CLD, following the scheme of the "Material
+    // designation" block in the Blueprints namespace. The full list of
+    // receivers, and why the innermost vertex barrel layer gets none of its
+    // own, is in doc/material_mapping.md.
+    //
+    // The vertex barrel is built from sensors, so its layers are matched by
+    // their blueprint node name (the makeLayerGrouper label prefixed with the
+    // container name) rather than by a DetElement name.
+    const auto vertexBarrelMaterial =
+        Blueprints::LayerMaterial{.skipInnermost = std::regex{"VertexBarrel\\|VertexBarrel\\|doubleLayer_0"}};
+    const auto innerBarrelMaterial = Blueprints::LayerMaterial{};
+    const auto outerBarrelMaterial = Blueprints::LayerMaterial{};
+    const auto endcapMaterial = Blueprints::LayerMaterial{};
+
     // Build the tracker detectors as radial children of the supplied
     // container.
     auto buildTrackers = [&](ContainerBlueprintNode& outer) {
-      Blueprints::addCylindricalBeampipe(outer);
-      auto vtxBarrel = Blueprints::makeBarrel(builder, Blueprints::UngroupedDoubleBarrelLayerVertexSpec,
-                                              Blueprints::kBarrelEnvelope, Blueprints::doubleLayerKey);
-      auto vertex = Blueprints::attachEndcaps(builder, std::move(vtxBarrel),
-                                              Blueprints::UngroupedDoubleBarrelLayerVertexSpec, "Vertex");
+      Blueprints::addCylindricalBeampipe(outer, /*designateMaterial=*/true);
+      auto vtxBarrel =
+          Blueprints::makeBarrel(builder, Blueprints::UngroupedDoubleBarrelLayerVertexSpec, Blueprints::kBarrelEnvelope,
+                                 Blueprints::doubleLayerKey, vertexBarrelMaterial);
+      auto vertex = Blueprints::attachEndcaps(
+          builder, std::move(vtxBarrel), Blueprints::UngroupedDoubleBarrelLayerVertexSpec, "Vertex", endcapMaterial);
 
-      auto innerTracker =
-          Blueprints::makeNestedInnerTracker(builder, std::move(vertex), Blueprints::UngroupedNestedInnerTrackerSpec);
-      outer.addChild(innerTracker);
+      auto innerTracker = Blueprints::makeNestedInnerTracker(
+          builder, std::move(vertex), Blueprints::UngroupedNestedInnerTrackerSpec, innerBarrelMaterial, endcapMaterial);
+      outer.addChild(Blueprints::withMaterial(innerTracker, "InnerTracker_Material",
+                                              Acts::CylinderVolumeBounds::Face::OuterCylinder));
 
-      auto outerTracker =
-          Blueprints::makeRegularTracker(builder, Blueprints::UngroupedOuterTrackerSpec, "OuterTracker");
-      outer.addChild(outerTracker);
+      auto outerTracker = Blueprints::makeRegularTracker(builder, Blueprints::UngroupedOuterTrackerSpec, "OuterTracker",
+                                                         outerBarrelMaterial, endcapMaterial);
+      outer.addChild(Blueprints::withMaterial(outerTracker, "OuterTracker_Material",
+                                              Acts::CylinderVolumeBounds::Face::OuterCylinder));
     };
 
     if (calo.empty()) {

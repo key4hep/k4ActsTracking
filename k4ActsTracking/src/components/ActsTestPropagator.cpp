@@ -32,9 +32,12 @@
 #include <Acts/MagneticField/ConstantBField.hpp>
 #include <Acts/MagneticField/MagneticFieldContext.hpp>
 #include <Acts/Material/MaterialInteraction.hpp>
+#include <Acts/Propagator/ActorList.hpp>
+#include <Acts/Propagator/DefaultActor.hpp>
 #include <Acts/Propagator/EigenStepper.hpp>
 #include <Acts/Propagator/MaterialInteractor.hpp>
 #include <Acts/Propagator/Navigator.hpp>
+#include <Acts/Propagator/Propagator.hpp>
 #include <Acts/Propagator/detail/SteppingLogger.hpp>
 
 #include <DD4hep/Detector.h>
@@ -112,16 +115,13 @@ StatusCode ActsTestPropagator::initialize() {
 std::vector<podio::UserDataCollection<double>> ActsTestPropagator::operator()() const {
   // Largely taken from ActsExamples/Propagation/PropagatorInterface
 
-  // The step length logger for testing & end of world aborter
   using MaterialInteractor = Acts::MaterialInteractor;
   using SteppingLogger = Acts::detail::SteppingLogger;
-  using EndOfWorld = Acts::EndOfWorldReached;
-
   using Stepper = Acts::EigenStepper<>;
   using Navigator = Acts::Navigator;
   using Propagator = Acts::Propagator<Stepper, Navigator>;
 
-  using ActorList = Acts::ActorList<SteppingLogger, MaterialInteractor, EndOfWorld>;
+  using ActorList = Acts::ActorList<Acts::DefaultActor, SteppingLogger, MaterialInteractor>;
   using PropagatorOptions = Propagator::template Options<ActorList>;
 
   // Configurations
@@ -134,7 +134,9 @@ std::vector<podio::UserDataCollection<double>> ActsTestPropagator::operator()() 
   Navigator navigator(navigatorCfg, m_actsLogger->cloneWithSuffix(":Nav"));
   Propagator propagator(std::move(stepper), std::move(navigator), m_actsLogger->cloneWithSuffix(":Prop"));
 
-  auto options = PropagatorOptions{Acts::GeometryContext::dangerouslyDefaultConstruct(), Acts::MagneticFieldContext{}};
+  const auto gctx = Acts::GeometryContext::dangerouslyDefaultConstruct();
+  const Acts::MagneticFieldContext mctx{};
+  const PropagatorOptions options{gctx, mctx};
 
   std::vector<podio::UserDataCollection<double>> stepOutputs(5);
   auto& stepsX = stepOutputs[0].vec();
@@ -167,27 +169,13 @@ std::vector<podio::UserDataCollection<double>> ActsTestPropagator::operator()() 
         startPos, direction, qOverP, std::nullopt, Acts::ParticleHypothesis::pion());
 
     auto state = propagator.makeState(options);
-
-    auto initResult = propagator.initialize(state, startParameters, nullptr);
-    if (!initResult.ok()) {
-      warning() << "Failed to initialize propagator for track " << i << ": " << initResult.error() << endmsg;
-      continue;
-    }
-
-    // Propagate using the propagator
-    auto resultTmp = propagator.propagate(state);
-    if (!resultTmp.ok()) {
-      warning() << "Propagation failed for track " << i << ": " << resultTmp.error() << endmsg;
-      continue;
-    }
-
-    auto result = propagator.makeResult(std::move(state), resultTmp, options, true);
+    const auto result = propagator.propagate(state, startParameters);
     if (!result.ok()) {
-      warning() << "Failed to make result for track " << i << ": " << result.error() << endmsg;
+      warning() << "Propagation failed for track " << i << ": " << result.error() << endmsg;
       continue;
     }
 
-    const auto& steppingResults = result.value().get<SteppingLogger::result_type>();
+    const auto& steppingResults = state.actor.get<SteppingLogger::State>();
 
     // Store step results from this track
     for (const auto& step : steppingResults.steps) {

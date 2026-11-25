@@ -73,6 +73,14 @@ public:
     /// branching, so a pathological component would otherwise stall the job;
     /// hitting the bound returns the longest path found so far.
     std::size_t maxWalkSteps{10000};
+    /// Best-predecessor rule: the walk moves from hit u to hit v only if u -> v
+    /// scores at least as high as every other edge into v from a hit that is
+    /// neither used nor on the current path. Without it a branch that joins
+    /// another track's chain later takes that track's hits.
+    bool bestPredecessor{false};
+    /// Candidates whose mean edge score (over the edges between their own hits)
+    /// is below this are dropped. Their hits stay used. 0 keeps every candidate.
+    float minMeanScore{0.f};
   };
 
   CCAndWalkTrackBuilding(const Config& cfg, std::unique_ptr<const Acts::Logger> logger);
@@ -83,7 +91,7 @@ public:
   const Config& config() const { return m_cfg; }
 
 private:
-  /// One outgoing edge of a node, pointing at the hit further out
+  /// One edge of a node: the hit at its other end and its score
   struct OutEdge {
     int target{};
     float score{};
@@ -91,7 +99,10 @@ private:
 
   /// The longest path reachable from @p start, following the rules described in
   /// the class documentation. Returns the node indices in walking order.
+  /// @p inEdges lists, per node, the edges into it (OutEdge::target is then
+  /// the source hit); used only with Config::bestPredecessor.
   std::vector<int> longestPathFrom(int start, const std::vector<std::vector<OutEdge>>& outEdges,
+                                   const std::vector<std::vector<OutEdge>>& inEdges,
                                    const std::vector<bool>& used) const;
 
   Config m_cfg;
