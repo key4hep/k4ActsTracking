@@ -43,7 +43,6 @@
 #include <limits>
 #include <optional>
 #include <span>
-#include <vector>
 
 namespace ACTSTracking {
 
@@ -75,12 +74,17 @@ public:
                              const MeasurementCalibrator& calibrator, const Cuts& cuts)
       : m_sourceLinks(sourceLinks), m_measurements(measurements), m_calibrator(calibrator), m_cuts(cuts) {}
 
-  Acts::Result<BranchVector>
-  createTrackStates(const Acts::GeometryContext& gctx, const Acts::CalibrationContext& calibrationContext,
-                    const Acts::Surface& surface, const Acts::CkfTypes::BoundState& boundState,
-                    Acts::TrackIndexType prevTip, std::vector<TrackStateProxy>& /*trackStateCandidates*/,
-                    TrackStateContainerBackend& trajectory, const Acts::Logger& logger) const {
+  using Arguments = Acts::CkfTypes::TrackStateCreatorArguments<TrackStateContainerBackend>;
+
+  Acts::Result<BranchVector> createTrackStates(const Arguments& args, const Acts::Logger& logger) const {
     using PM = Acts::TrackStatePropMask;
+
+    const Acts::GeometryContext& gctx = args.geoContext;
+    const Acts::CalibrationContext& calibrationContext = args.calibrationContext;
+    const Acts::CkfTypes::BoundState& boundState = args.boundState;
+    const Acts::TrackIndexType prevTip = args.prevTip;
+    TrackStateContainerBackend& trajectory = args.trajectory;
+    const Acts::Surface& surface = boundState.parameters.referenceSurface();
 
     auto [slBegin, slEnd] = m_sourceLinks.equal_range(surface.geometryId());
     if (slBegin == slEnd) {
