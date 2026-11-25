@@ -36,7 +36,7 @@
 #include <Acts/Material/MaterialInteraction.hpp>
 #include <Acts/Material/MaterialMapper.hpp>
 #include <Acts/Material/TrackingGeometryMaterial.hpp>
-#include <ActsPlugins/Json/MaterialMapJsonConverter.hpp>
+#include <ActsPlugins/Json/TrackingGeometryMaterialJsonConverter.hpp>
 #include <ActsPlugins/Root/RootMaterialTrackIo.hpp>
 
 #include <TChain.h>
@@ -45,7 +45,7 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <fstream>
+#include <exception>
 #include <memory>
 #include <string>
 #include <vector>
@@ -260,36 +260,17 @@ StatusCode MaterialMappingAlg::finalize() {
 
   const Acts::TrackingGeometryMaterial maps = m_mapper->finalizeMaps(*m_state, m_gctx);
 
-  // In a Gen3 geometry the receivers are volume portals, the sensors carry no
-  // material, and there is no volume material, so the writer only needs to
-  // handle boundaries.
-  Acts::MaterialMapJsonConverter::Config converterCfg;
-  converterCfg.context = m_gctx;
-  converterCfg.processSensitives = false;
-  converterCfg.processApproaches = false;
-  converterCfg.processRepresenting = false;
-  converterCfg.processBoundaries = true;
-  converterCfg.processVolumes = false;
-
-  Acts::MaterialMapJsonConverter converter{converterCfg, Acts::Logging::INFO};
-
-  std::ofstream out{m_outputFile.value()};
-  if (!out.is_open()) {
-    error() << fmt::format("Could not open '{}' for writing.", m_outputFile.value()) << endmsg;
+  // ACTS' versioned material format; the encoding (.json, .cbor, optionally
+  // .zst compressed) follows the file extension.
+  try {
+    Acts::TrackingGeometryMaterialJsonConverter{}.toFile(maps, m_outputFile.value());
+  } catch (const std::exception& e) {
+    error() << fmt::format("Could not write the material map '{}': {}", m_outputFile.value(), e.what()) << endmsg;
     return StatusCode::FAILURE;
   }
-  out << converter.materialMapsToJson(maps).dump(2) << std::endl;
-  out.close();
 
-  const auto nSurfaces = [](const auto& material) {
-    // ACTS #6123 replaces the pair with named fields; support both APIs.
-    if constexpr (requires { material.surfaceMaterials; }) {
-      return material.surfaceMaterials.size();
-    } else {
-      return material.first.size();
-    }
-  }(maps);
-  info() << fmt::format("Wrote material for {} surfaces to '{}'.", nSurfaces, m_outputFile.value()) << endmsg;
+  info() << fmt::format("Wrote material for {} surfaces to '{}'.", maps.surfaceMaterials.size(), m_outputFile.value())
+         << endmsg;
 
   return Gaudi::Algorithm::finalize();
 }
