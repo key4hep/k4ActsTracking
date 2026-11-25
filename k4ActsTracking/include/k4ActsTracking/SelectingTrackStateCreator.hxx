@@ -129,7 +129,7 @@ public:
       isOutlier = true;
       passed.push_back({minSourceLink, minChi2});
     } else if (passed.size() > 1) {
-      std::sort(passed.begin(), passed.end(), [](const Candidate& a, const Candidate& b) { return a.chi2 < b.chi2; });
+      std::ranges::sort(passed, {}, &Candidate::chi2);
       passed.resize(std::min(m_cuts.numMeasurementsCutOff, passed.size()));
     }
 
