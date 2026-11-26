@@ -34,9 +34,9 @@ struct UnusedHitsAlg final
                                                                const std::vector<const edm4hep::TrackCollection*>&)> {
   UnusedHitsAlg(const std::string& name, ISvcLocator* svcLoc)
       : Transformer(name, svcLoc,
-                    {KeyValues("InputTrackerHitCollection", {"AllTrackerHits"}),
+                    {KeyValue("InputTrackerHitCollection", "AllTrackerHits"),
                      KeyValues("InputTrackCollections", {"CKFTracks"})},
-                    {KeyValues("OutputTrackerHitCollection", {"UnusedTrackerHits"})}) {}
+                    {KeyValue("OutputTrackerHitCollection", "UnusedTrackerHits")}) {}
 
   edm4hep::TrackerHitPlaneCollection
   operator()(const edm4hep::TrackerHitPlaneCollection& hits,

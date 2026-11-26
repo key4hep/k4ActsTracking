@@ -208,9 +208,9 @@ def make_multipass_tracking(
             algs.append(
                 UnusedHitsAlg(
                     f"UnusedHits{name}",
-                    InputTrackerHitCollection=[hits],
+                    InputTrackerHitCollection=hits,
                     InputTrackCollections=[kept[-1]],
-                    OutputTrackerHitCollection=[f"UnusedHits{name}"],
+                    OutputTrackerHitCollection=f"UnusedHits{name}",
                 )
             )
             hits = f"UnusedHits{name}"
@@ -239,9 +239,9 @@ def make_multipass_tracking(
         algs.append(
             SplitTrackRemovalAlg(
                 f"SplitTrackRemoval{name}",
-                InputTrackCollection=[f"CKFTracks{name}Resolved"],
+                InputTrackCollection=f"CKFTracks{name}Resolved",
                 KeptTrackCollections=list(kept),
-                OutputTrackCollection=[f"CKFTracks{name}Kept"],
+                OutputTrackCollection=f"CKFTracks{name}Kept",
                 MaxChi2=split_max_chi2,
             )
         )

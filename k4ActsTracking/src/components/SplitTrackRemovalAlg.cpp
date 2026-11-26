@@ -39,8 +39,8 @@ struct SplitTrackRemovalAlg final
                                                      const std::vector<const edm4hep::TrackCollection*>&)> {
   SplitTrackRemovalAlg(const std::string& name, ISvcLocator* svcLoc)
       : Transformer(name, svcLoc,
-                    {KeyValues("InputTrackCollection", {"Tracks"}), KeyValues("KeptTrackCollections", {"KeptTracks"})},
-                    {KeyValues("OutputTrackCollection", {"TracksNoSplits"})}) {}
+                    {KeyValue("InputTrackCollection", "Tracks"), KeyValues("KeptTrackCollections", {"KeptTracks"})},
+                    {KeyValue("OutputTrackCollection", "TracksNoSplits")}) {}
 
   edm4hep::TrackCollection
   operator()(const edm4hep::TrackCollection& tracks,
