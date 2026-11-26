@@ -427,10 +427,6 @@ private:
   Gaudi::Property<double> m_CKF_chi2CutOffOutlier{
       this, "CKF_Chi2CutOffOutlier", std::numeric_limits<double>::max(),
       "Maximum local chi2 for a failing hit to be kept as an outlier; above this it becomes a hole."};
-  Gaudi::Property<bool> m_CKF_selectBeforeCreate{
-      this, "CKF_SelectBeforeCreate", true,
-      "Compute the chi2 of the measurements on a surface before creating track states, and create them only for the "
-      "selected ones. Selects the same measurements as the ACTS TrackStateCreator, at a lower cost."};
   Gaudi::Property<unsigned int> m_maxPropagationSteps{
       this, "MaxPropagationSteps", ACTSTracking::kDefaultMaxPropagationSteps,
       "Maximum number of propagation steps for CKF track finding, IP/reference-surface extrapolation and "
@@ -606,7 +602,6 @@ StatusCode CKFTrackingAlg::initialize() {
                       ACTSTracking::CKFRunner::Config{.chi2CutOff = m_CKF_chi2CutOff,
                                                       .numMeasurementsCutOff = m_CKF_numMeasurementsCutOff,
                                                       .chi2CutOffOutlier = m_CKF_chi2CutOffOutlier,
-                                                      .selectBeforeCreate = m_CKF_selectBeforeCreate,
                                                       .propagateBackward = m_propagateBackward,
                                                       .extrapolateToCalo = m_extrapolateToCalo,
                                                       .maxSteps = m_maxPropagationSteps,
