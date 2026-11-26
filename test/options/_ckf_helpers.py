@@ -20,6 +20,9 @@
 
 import os
 import sys
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from typing import Any
 
 from Gaudi.Configuration import INFO
 from Gaudi.Configurables import (
@@ -135,9 +138,40 @@ def make_ckf_tracking(
     return CKFTrackingAlg("CKFTracking", **props)
 
 
+@dataclass(frozen=True)
+class CKFPass:
+    """One CKFTrackingAlg pass of make_multipass_tracking."""
+
+    name: str  # suffix of the names of the pass' algorithms and collections
+    seeding_cellids: tuple[str, ...]  # SeedingSensorsCellIDs
+    settings: Mapping[str, Any] = field(default_factory=dict)  # overrides of the common settings
+
+    def __post_init__(self):
+        if not self.name.isidentifier():
+            raise ValueError(f"CKFPass name {self.name!r} is not an identifier")
+        if isinstance(self.seeding_cellids, str) or not self.seeding_cellids:
+            raise ValueError(
+                f"CKFPass {self.name}: seeding_cellids must be a non-empty sequence of strings"
+            )
+        object.__setattr__(self, "seeding_cellids", tuple(self.seeding_cellids))
+
+
+# CKFTrackingAlg properties that make_multipass_tracking sets for every pass
+_WIRED_CKF_PROPERTIES = frozenset(
+    {
+        "SeedingSensorsCellIDs",
+        "InputTrackerHitCollection",
+        "InputTrackerHitRelationCollection",
+        "OutputTrackCollection",
+        "OutputSeedCollection",
+    }
+)
+
+
 def make_multipass_tracking(
     hit_merger,
     hit_rel_merger,
+    *,
     passes,
     common,
     ambiguity,
@@ -146,7 +180,7 @@ def make_multipass_tracking(
 ):
     """Configure several CKFTrackingAlg passes that together fill one track collection.
 
-    passes: (name, seeding_cellids, settings) per pass, in the order they run; settings override
+    passes: the CKFPass list, in the order the passes run; the settings of a pass override
     common. Each pass runs CKF -> GreedyAmbiguityResolutionAlg (configured by ambiguity). Every
     pass after the first only sees the hits not used by the tracks kept so far, and drops tracks
     that are pieces of those (SplitTrackRemovalAlg, MaxChi2 = split_max_chi2). The kept tracks of
@@ -154,25 +188,37 @@ def make_multipass_tracking(
 
     Returns the algorithms in execution order.
     """
+    if not passes:
+        raise ValueError("make_multipass_tracking needs at least one pass")
+    names = [p.name for p in passes]
+    if len(set(names)) != len(names):
+        raise ValueError(f"CKFPass names must be unique, got {names}")
+    for what, props in [("common", common)] + [(p.name, p.settings) for p in passes]:
+        wired = _WIRED_CKF_PROPERTIES.intersection(props)
+        if wired:
+            raise ValueError(f"{what}: {sorted(wired)} are set by make_multipass_tracking")
+
     algs = []
     kept = []
-    for i, (name, seeding, settings) in enumerate(passes):
-        hits = hit_merger.OutputCollection
+    hits = hit_merger.OutputCollection
+    for i, ckf_pass in enumerate(passes):
+        name = ckf_pass.name
         if i > 0:
-            hits = f"UnusedHits{name}"
+            # The hits left by the previous pass, without those of its kept tracks
             algs.append(
                 UnusedHitsAlg(
                     f"UnusedHits{name}",
-                    InputTrackerHitCollection=[hit_merger.OutputCollection],
-                    InputTrackCollections=list(kept),
-                    OutputTrackerHitCollection=[hits],
+                    InputTrackerHitCollection=[hits],
+                    InputTrackCollections=[kept[-1]],
+                    OutputTrackerHitCollection=[f"UnusedHits{name}"],
                 )
             )
+            hits = f"UnusedHits{name}"
         algs.append(
             CKFTrackingAlg(
                 f"CKFTracking{name}",
-                **{**common, **settings},
-                SeedingSensorsCellIDs=seeding,
+                **{**common, **ckf_pass.settings},
+                SeedingSensorsCellIDs=list(ckf_pass.seeding_cellids),
                 InputTrackerHitCollection=hits,
                 InputTrackerHitRelationCollection=hit_rel_merger.OutputCollection,
                 OutputTrackCollection=f"CKFTracks{name}",

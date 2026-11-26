@@ -30,6 +30,7 @@ from k4FWCore import ApplicationMgr, IOSvc
 sys.path.insert(0, os.path.dirname(__file__))
 
 from _ckf_helpers import (  # noqa: E402
+    CKFPass,
     make_hit_mergers,
     make_multipass_tracking,
     make_services,
@@ -72,13 +73,12 @@ COMMON = dict(
     OutputLevel=INFO,
 )
 
-# Seeding layers (system 1|2: vertex barrel|endcap, 3|4: inner tracker, 5|6: outer tracker)
-# and the settings that differ from COMMON, in the order the passes run
+# Seeding layers: system 1|2 vertex barrel|endcap, 3|4 inner tracker, 5|6 outer tracker
 PASSES = [
     # prompt tracks
-    ("Main", ["system:1|2", "system:3|4,layer:0"], {}),
+    CKFPass("Main", ["system:1|2", "system:3|4,layer:0"]),
     # soft prompt tracks; the seeding grid needs pT / (0.3 B) >= RMax / 2
-    (
+    CKFPass(
         "LowPt",
         ["system:1|2"],
         dict(
@@ -90,13 +90,13 @@ PASSES = [
         ),
     ),
     # tracks from decays inside the vertex detector
-    (
+    CKFPass(
         "Displaced",
         ["system:1|2", "system:3|4,layer:0"],
         dict(SeedFinding_MinPt=100, SeedFinding_ImpactMax=100, SeedFinding_CollisionRegion=200),
     ),
     # tracks starting outside the vertex detector
-    (
+    CKFPass(
         "Outer",
         ["system:3|4", "system:5,layer:0"],
         dict(
@@ -109,7 +109,7 @@ PASSES = [
         ),
     ),
     # tracks starting in the outer tracker
-    (
+    CKFPass(
         "OT",
         ["system:5|6"],
         dict(
@@ -122,11 +122,13 @@ PASSES = [
         ),
     ),
 ]
-AMBIGUITY = dict(MaximumSharedHits=0, NMeasurementsMin=4)
-SPLIT_MAX_CHI2 = 50
-
 algs = [hit_merger, hit_rel_merger] + make_multipass_tracking(
-    hit_merger, hit_rel_merger, PASSES, COMMON, AMBIGUITY, SPLIT_MAX_CHI2
+    hit_merger,
+    hit_rel_merger,
+    passes=PASSES,
+    common=COMMON,
+    ambiguity=dict(MaximumSharedHits=0, NMeasurementsMin=4),
+    split_max_chi2=50,
 )
 
 ApplicationMgr(

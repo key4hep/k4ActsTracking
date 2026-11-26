@@ -41,8 +41,6 @@ struct UnusedHitsAlg final
   edm4hep::TrackerHitPlaneCollection
   operator()(const edm4hep::TrackerHitPlaneCollection& hits,
              const std::vector<const edm4hep::TrackCollection*>& trackCollections) const override {
-    // Hits are identified by their handles, not by their ObjectIDs: collections made in the same job (e.g. by the
-    // digitizers) have no collection ID until they are written, so hits of different collections can share one.
     std::unordered_set<edm4hep::TrackerHit> used;
     for (const auto* tracks : trackCollections) {
       for (const auto& track : *tracks) {
