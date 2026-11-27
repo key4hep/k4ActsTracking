@@ -727,14 +727,14 @@ CKFTrackingAlg::operator()(const edm4hep::TrackerHitPlaneCollection& trackerHitC
         const float sigma = static_cast<float>(std::sqrt(std::max(localCov(0, 0), localCov(1, 1))));
         int miniDoubletLayer = -1;
         for (std::size_t k = 0; k < m_miniDoubletSelectors.size(); ++k) {
+          if (miniDoubletLayer < 0 && m_miniDoubletSelectors[k].first.accept(cellID)) {
+            miniDoubletLayer = static_cast<int>(k);
+          }
           if (m_miniDoubletSelectors[k].second.accept(cellID)) {
             const float px = static_cast<float>(globalPos[Acts::ePos0]);
             const float py = static_cast<float>(globalPos[Acts::ePos1]);
             miniDoubletPartners[k].push_back(
                 {std::hypot(px, py), std::atan2(py, px), static_cast<float>(globalPos[Acts::ePos2]), sigma});
-          }
-          if (miniDoubletLayer < 0 && m_miniDoubletSelectors[k].first.accept(cellID)) {
-            miniDoubletLayer = static_cast<int>(k);
           }
         }
         if (!m_seedSelector.accept(cellID)) {
@@ -1127,6 +1127,11 @@ void CKFTrackingAlg::filterMiniDoublets(std::vector<SeedInput>& seedInputs,
   const double halfCurvMax = std::abs(bFieldInZ) / (2 * ptMin);
   const double z0Max = m_miniDoubletZ0Max * Acts::UnitConstants::mm;
   const double nSigma = m_miniDoubletNSigma;
+  // Pairs closer than this in r give no usable z0.
+  constexpr double kMinDeltaR = 1 * Acts::UnitConstants::um;
+  // Generous bound on |r2 - r1| within a double layer, only used to size the phi search window.
+  constexpr double kMaxDeltaRFraction = 0.25;
+  constexpr double kMaxDeltaROffset = 5 * Acts::UnitConstants::mm;
 
   for (auto& layer : partners) {
     std::ranges::sort(layer, {}, &MiniDoubletPartner::phi);
@@ -1135,7 +1140,7 @@ void CKFTrackingAlg::filterMiniDoublets(std::vector<SeedInput>& seedInputs,
   auto compatible = [&](const SeedInput& sp, const MiniDoubletPartner& o) {
     const double dr = o.r - sp.r;
     const double sigma2 = std::hypot(sp.sigma, o.sigma);
-    if (std::abs(dr) < 1e-3) {
+    if (std::abs(dr) < kMinDeltaR) {
       return false;
     }
     const double z0 = sp.z - sp.r * (o.z - sp.z) / dr;
@@ -1148,8 +1153,7 @@ void CKFTrackingAlg::filterMiniDoublets(std::vector<SeedInput>& seedInputs,
 
   std::size_t nCandidates = 0;
   auto hasPartner = [&](const SeedInput& sp) {
-    // azimuthal search window: generous bound on |r2 - r1| (both sensors of a double layer)
-    const double maxDr = 0.25 * sp.r + 5 * Acts::UnitConstants::mm;
+    const double maxDr = kMaxDeltaRFraction * sp.r + kMaxDeltaROffset;
     const double window = maxDr * halfCurvMax + nSigma * 2 * sp.sigma / sp.r;
     return anyInPhiRange(partners[sp.miniDoubletLayer], sp.phi - window, sp.phi + window,
                          [&](const MiniDoubletPartner& o) { return compatible(sp, o); });
