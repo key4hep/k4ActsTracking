@@ -25,6 +25,7 @@
 #include "k4ActsTracking/Measurement.hxx"
 #include "k4ActsTracking/MeasurementCalibrator.hxx"
 #include "k4ActsTracking/RunnerCommon.hxx"
+#include "k4ActsTracking/SelectingTrackStateCreator.hxx"
 #include "k4ActsTracking/SourceLink.hxx"
 
 // edm4hep
@@ -59,9 +60,7 @@
 #include <Acts/Surfaces/PerigeeSurface.hpp>
 #include <Acts/Surfaces/Surface.hpp>
 #include <Acts/TrackFinding/CombinatorialKalmanFilter.hpp>
-#include <Acts/TrackFinding/MeasurementSelector.hpp>
 #include <Acts/TrackFinding/TrackSelector.hpp>
-#include <Acts/TrackFinding/TrackStateCreator.hpp>
 #include <Acts/TrackFitting/GainMatrixUpdater.hpp>
 #include <Acts/Utilities/TrackHelpers.hpp>
 
@@ -244,7 +243,8 @@ public:
         m_bsMaxHoles(cfg.bsMaxHoles), m_bsMaxOutliers(cfg.bsMaxOutliers), m_bsMinMeasurements(cfg.bsMinMeasurements),
         m_bsPtMin(cfg.bsPtMin), m_bsPtMinMeasurements(cfg.bsPtMinMeasurements), m_doTwoWayCKF(cfg.doTwoWayCKF),
         m_inflateCovarianceTwoWay(cfg.inflateCovarianceTwoWay),
-        m_twoWayInflateCovarianceFactor(cfg.twoWayInflateCovarianceFactor), m_measSelConfig(makeSelectorConfig(cfg)),
+        m_twoWayInflateCovarianceFactor(cfg.twoWayInflateCovarianceFactor),
+        m_selectingCuts{cfg.chi2CutOff, cfg.chi2CutOffOutlier, static_cast<std::size_t>(cfg.numMeasurementsCutOff)},
         m_trackFinder(std::make_unique<CombKalmanFilter>(makePropagator(geo, false))),
         m_referenceSurface(cfg.referenceSurface
                                ? cfg.referenceSurface
@@ -288,20 +288,15 @@ public:
     // findTracks() calls stay independent; the propagators, CKF and selector
     // config are shared read-only state.
     Acts::GainMatrixUpdater kfUpdater;
-    Acts::MeasurementSelector measSel{m_measSelConfig};
     ACTSTracking::MeasurementCalibrator measCal{measurements};
-    ACTSTracking::SourceLinkAccessor slAccessor;
-    slAccessor.container = &sourceLinks;
 
-    TrackStateCreatorType trackStateCreator;
-    trackStateCreator.sourceLinkAccessor.template connect<&ACTSTracking::SourceLinkAccessor::range>(&slAccessor);
-    trackStateCreator.calibrator.template connect<&ACTSTracking::MeasurementCalibrator::calibrate>(&measCal);
-    trackStateCreator.measurementSelector
-        .template connect<&Acts::MeasurementSelector::select<Acts::VectorMultiTrajectory>>(&measSel);
+    SelectingTrackStateCreator<CKFTrackContainer> selectingTrackStateCreator(sourceLinks, measurements, measCal,
+                                                                             m_selectingCuts);
 
     Acts::CombinatorialKalmanFilterExtensions<CKFTrackContainer> extensions;
     extensions.updater.connect<&Acts::GainMatrixUpdater::operator()<Acts::VectorMultiTrajectory>>(&kfUpdater);
-    extensions.createTrackStates.template connect<&TrackStateCreatorType::createTrackStates>(&trackStateCreator);
+    extensions.createTrackStates.template connect<&SelectingTrackStateCreator<CKFTrackContainer>::createTrackStates>(
+        &selectingTrackStateCreator);
     if (m_useBranchStopper) {
       extensions.branchStopper.template connect<&CKFRunner::branchStopper>(this);
     }
@@ -524,13 +519,6 @@ public:
   }
 
 private:
-  using TrackStateCreatorType = Acts::TrackStateCreator<ACTSTracking::SourceLinkAccessor::Iterator, CKFTrackContainer>;
-
-  static Acts::MeasurementSelector::Config makeSelectorConfig(const Config& cfg) {
-    return {{Acts::GeometryIdentifier(),
-             {{}, {cfg.chi2CutOff}, {static_cast<std::size_t>(cfg.numMeasurementsCutOff)}, {cfg.chi2CutOffOutlier}}}};
-  }
-
   /// CKF branch stopper: drop a branch whose |pT| falls below threshold, or
   /// that has too many holes/outliers (keeping it if it already has enough
   /// measurements). Only connected when Config::useBranchStopper is set.
@@ -580,7 +568,7 @@ private:
   bool m_doTwoWayCKF = false;
   bool m_inflateCovarianceTwoWay = true;
   double m_twoWayInflateCovarianceFactor = 100.0;
-  Acts::MeasurementSelector::Config m_measSelConfig;
+  SelectingTrackStateCreator<CKFTrackContainer>::Cuts m_selectingCuts;
 
   std::unique_ptr<CombKalmanFilter> m_trackFinder;
   std::shared_ptr<const Acts::Surface> m_referenceSurface;
