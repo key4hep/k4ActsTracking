@@ -191,6 +191,10 @@ ActsPlugins::PipelineTensors OnnxSeededMetricLearning::operator()(std::vector<fl
   const SeedRoad::HitGeometry hits = SeedRoad::hitGeometryFromFeatures(inputValues, numNodes, config().hitFeatures);
   const SeedRoad::RoadEdges road = SeedRoad::buildRoadEdges(seedParams, hits, config().road, seedHits);
   ACTS_DEBUG(fmt::format("Built {} seeds and {} road edges from {} nodes", seeds.size(), road.size(), numNodes));
+  if (road.size() == 0) {
+    ACTS_DEBUG("No road edges for these seeds");
+    throw ActsPlugins::NoEdgesError{};
+  }
 
   // Inputs of the seeded network, in the order of its inputs. Seed hit and
   // road edge indices are int64, the rest float.
@@ -277,7 +281,7 @@ ActsPlugins::PipelineTensors OnnxSeededMetricLearning::operator()(std::vector<fl
 #endif
   }
   const int cudaDeviceIndex = execContext.device.isCuda() ? static_cast<int>(execContext.device.index) : -1;
-  const auto outputs = m_model.runInference(networkInputs, cudaDeviceIndex);
+  const auto outputs = m_model.runInference(networkInputs, cudaDeviceIndex, /*outputsOnHost=*/true);
   ACTS_DEBUG(fmt::format("Seeded network ran on {} seeds and {} road edges", numSeeds, numEdges));
 
   // Output order: hit_embedding, seed_embedding, seed_logit, edge_logit
@@ -324,7 +328,12 @@ ActsPlugins::PipelineTensors OnnxSeededMetricLearning::operator()(std::vector<fl
     edgeIndexValues[e] = ballEdges[e].first;
     edgeIndexValues[ballEdges.size() + e] = ballEdges[e].second;
   }
-  const torch::Tensor edgeList = torch::tensor(edgeIndexValues, torch::kInt64).view({2, numBallEdges});
+  // On the device of execContext, as the ACTS tensor conversion below copies from a blob with the same device
+  const torch::Device torchDevice =
+      execContext.device.isCuda() ? torch::Device(torch::kCUDA, static_cast<int64_t>(execContext.device.index))
+                                  : torch::Device(torch::kCPU);
+  const torch::Tensor edgeList =
+      torch::tensor(edgeIndexValues, torch::kInt64).view({2, numBallEdges}).to(torchDevice);
 
   // Same guard as OnnxMetricLearning, too few edges to build any track candidate
   constexpr int64_t minUsableEdges = 2;

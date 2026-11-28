@@ -58,7 +58,8 @@ public:
   // of any element type the model declares (e.g. float or int64). Returns the
   // outputs in the order of outputShape(i). Throws if the number of tensors
   // does not match numInputs().
-  [[nodiscard]] std::vector<Ort::Value> runInference(const std::vector<Ort::Value>& inputs, int cudaDeviceIndex = -1);
+  [[nodiscard]] std::vector<Ort::Value> runInference(const std::vector<Ort::Value>& inputs, int cudaDeviceIndex = -1,
+                                                     bool outputsOnHost = false);
 
   template <typename DeviceT>
   [[nodiscard]] std::vector<Ort::Value> runInference(const std::vector<float>& inputData,

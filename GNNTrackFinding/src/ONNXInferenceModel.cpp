@@ -71,7 +71,8 @@ std::vector<Ort::Value> ONNXInferenceModel::runInference(const std::vector<float
   }
 }
 
-std::vector<Ort::Value> ONNXInferenceModel::runInference(const std::vector<Ort::Value>& inputs, int cudaDeviceIndex) {
+std::vector<Ort::Value> ONNXInferenceModel::runInference(const std::vector<Ort::Value>& inputs, int cudaDeviceIndex,
+                                                        bool outputsOnHost) {
   if (!m_modelLoaded) {
     throw std::runtime_error("Model not loaded");
   }
@@ -98,14 +99,16 @@ std::vector<Ort::Value> ONNXInferenceModel::runInference(const std::vector<Ort::
                             outputNames.data(), outputNames.size());
     }
 
-    // CUDA: bind outputs explicitly to CUDA so result tensors stay on GPU.
+    // CUDA: bind outputs explicitly so result tensors stay on GPU, unless the caller reads them on the host.
     Ort::IoBinding ioBinding(*m_session);
     for (std::size_t i = 0; i < inputs.size(); ++i) {
       ioBinding.BindInput(inputNames[i], inputs[i]);
     }
 
-    Ort::MemoryInfo cudaOutputMemoryInfo{"Cuda", OrtAllocatorType::OrtDeviceAllocator, cudaDeviceIndex,
-                                         OrtMemTypeDefault};
+    const Ort::MemoryInfo cudaOutputMemoryInfo =
+        outputsOnHost ? Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeCPU)
+                      : Ort::MemoryInfo{"Cuda", OrtAllocatorType::OrtDeviceAllocator, cudaDeviceIndex,
+                                        OrtMemTypeDefault};
     for (const auto* outputName : outputNames) {
       ioBinding.BindOutput(outputName, cudaOutputMemoryInfo);
     }
