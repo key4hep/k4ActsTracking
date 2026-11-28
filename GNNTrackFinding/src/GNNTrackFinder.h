@@ -48,14 +48,17 @@
 #include <vector>
 
 struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
-                            std::vector<const edm4hep::TrackerHitPlaneCollection*> const&)> {
+                            std::vector<const edm4hep::TrackerHitPlaneCollection*> const&,
+                            std::vector<const edm4hep::TrackCollection*> const&)> {
   GNNTrackFinder(const std::string& name, ISvcLocator* svcLoc);
 
   StatusCode initialize() override;
 
   StatusCode finalize() override;
 
-  edm4hep::TrackCollection operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*> const&) const override;
+  edm4hep::TrackCollection
+  operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*> const& inputTrackerHits,
+             std::vector<const edm4hep::TrackCollection*> const& inputSeedTracks) const override;
   Gaudi::Property<std::size_t> m_thetaBins{this, "ThetaBins", 1, "Number of theta bins for segmentation."};
   Gaudi::Property<std::size_t> m_phiBins{this, "PhiBins", 1, "Number of phi bins for segmentation."};
   Gaudi::Property<double> m_thetaOverlap{this, "ThetaOverlap", 0.0,
@@ -65,14 +68,17 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
 
   Gaudi::Property<std::string> m_nodeEmbeddingModelPath{
       this, "NodeEmbeddingModelPath", "",
-      "Path to the ONNX model file for the node embedding / graph construction metric model"};
+      "Path to the ONNX model file of the graph construction: the metric learning model, or the seeded object "
+      "condensation model if GraphConstruction is \"SeededMetricLearning\""};
   Gaudi::Property<float> m_edgeBuildingRadius{
-      this, "EdgeBuildingRadius", 1.6f, "Radius in embedding space within which two hits are connected by an edge"};
+      this, "EdgeBuildingRadius", 1.6f,
+      "Radius in embedding space within which two hits are connected by an edge. In the seeded path, the radius of "
+      "the ball around each selected seed"};
   Gaudi::Property<int> m_edgeBuildingKnn{
       this, "EdgeBuildingKnn", 500,
       "Maximum number of neighbours per hit in the edge building. Only the CUDA (FRNN) edge building applies it as a "
       "cap; the CPU (KD-tree) edge building keeps every neighbour within EdgeBuildingRadius and uses this only to "
-      "reserve memory. Must be > 0."};
+      "reserve memory. In the seeded path it caps the number of hits in the ball of each selected seed. Must be > 0."};
   Gaudi::Property<std::vector<std::string>> m_inputFeaturesEmbedding{
       this, "InputFeaturesEmbedding", {"r", "phi", "z", "t"}, "Hit features for the node embedding model."};
   Gaudi::Property<std::vector<float>> m_inputScalesEmbedding{
@@ -195,6 +201,14 @@ struct GNNTrackFinder : public k4FWCore::Transformer<edm4hep::TrackCollection(
       "Device to run the GNN pipeline on: \"cpu\" or \"cuda\" (optionally \"cuda:<index>\"). Requires a "
       "CUDA-enabled onnxruntime/torch build for \"cuda\"."};
 
+  Gaudi::Property<std::string> m_graphConstruction{
+      this, "GraphConstruction", "MetricLearning",
+      "Graph construction model: \"MetricLearning\" embeds the hits and builds the edges by radius, "
+      "\"SeededMetricLearning\" "
+      "uses the seeded object condensation model in NodeEmbeddingModelPath with the seed tracks of the second input."};
+  Gaudi::Property<float> m_seedScoreThreshold{this, "SeedScoreThreshold", 0.5f,
+                                              "Sigmoid of the seed logit above which a seed is kept"};
+
 private:
   /// Construct the pipeline stages from the (already validated) configuration.
   /// Loads the ONNX models and throws if that or the pipeline setup fails.
@@ -210,6 +224,8 @@ private:
   std::vector<std::size_t> m_distanceFeatureIndices{};
   std::vector<std::vector<int>> m_edgeClassifierFeatureIndices{};
   std::unique_ptr<ActsPlugins::GnnPipeline> m_pipeline{nullptr};
+  /// True if m_pipeline takes seeds, i.e. the seeded graph construction is used
+  bool m_seeded{false};
   std::unique_ptr<const Acts::Logger> m_logger{nullptr};
   /// Logger of the EdgePrintingHook, which prints the graph after every stage
   std::unique_ptr<const Acts::Logger> m_edgeLogger{nullptr};

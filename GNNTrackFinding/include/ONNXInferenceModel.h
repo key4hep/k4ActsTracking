@@ -53,6 +53,14 @@ public:
   [[nodiscard]] std::vector<Ort::Value> runInference(const std::vector<float>& inputData,
                                                      const std::vector<int64_t>& inputShape, int cudaDeviceIndex = -1);
 
+  // Run inference on one tensor per model input, given in the order of
+  // inputShape(i). The tensors must stay alive until this returns; they can be
+  // of any element type the model declares (e.g. float or int64). Returns the
+  // outputs in the order of outputShape(i). Throws if the number of tensors
+  // does not match numInputs().
+  [[nodiscard]] std::vector<Ort::Value> runInference(const std::vector<Ort::Value>& inputs, int cudaDeviceIndex = -1,
+                                                     bool outputsOnHost = false);
+
   template <typename DeviceT>
   [[nodiscard]] std::vector<Ort::Value> runInference(const std::vector<float>& inputData,
                                                      const std::vector<int64_t>& inputShape, const DeviceT& device);

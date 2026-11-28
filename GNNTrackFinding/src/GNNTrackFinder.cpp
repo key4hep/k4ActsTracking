@@ -22,6 +22,7 @@
 #include "EdgeDirection.h"
 #include "EdgePrintingHook.h"
 #include "OnnxMetricLearning.h"
+#include "OnnxSeededMetricLearning.h"
 #include "PaddedEdgeRemoval.h"
 
 #include <ActsPlugins/Gnn/BoostTrackBuilding.hpp>
@@ -74,6 +75,96 @@ const std::array<std::string, OnnxMetricLearning::kNumEdgeFeatureInputs> kEdgeFe
 constexpr const char* kTrackBuildingCC = "connected-components";
 /// Track building that additionally walks the components that are not paths
 constexpr const char* kTrackBuildingCCAndWalk = "cc-and-walk";
+
+/// Graph construction by the metric learning embedding and the radius
+constexpr const char* kGraphConstructionMetricLearning = "MetricLearning";
+/// Graph construction by the seeded object condensation model, which takes the seed tracks
+constexpr const char* kGraphConstructionSeeded = "SeededMetricLearning";
+
+/// Number of hits of a seed, innermost, middle and outermost
+constexpr std::size_t kHitsPerSeed = 3;
+
+/// Unique key of a hit across all input collections, from its EDM4hep object ID
+std::uint64_t hitKey(const edm4hep::TrackerHit& hit) {
+  const podio::ObjectID id = hit.getObjectID();
+  return (static_cast<std::uint64_t>(id.collectionID) << 32) | static_cast<std::uint32_t>(id.index);
+}
+
+/// A seed track as the seeded graph construction takes it
+struct SeedCandidate {
+  /// The track parameters, hitIndices are only set per segment
+  ActsPlugins::Seed seed{};
+  /// trackerHitKey() of the innermost, middle and outermost hit
+  std::array<std::uint64_t, kHitsPerSeed> hitKeys{};
+};
+
+/// Converts the seed tracks to seed candidates. The parameters are the ones of
+/// the AtFirstHit track state, and a track without that state or with fewer
+/// than kHitsPerSeed hits is skipped.
+std::vector<SeedCandidate> collectSeedCandidates(const std::vector<const edm4hep::TrackCollection*>& seedTracks) {
+  std::vector<SeedCandidate> candidates{};
+  for (const edm4hep::TrackCollection* seedTrackColl : seedTracks) {
+    for (const edm4hep::Track track : *seedTrackColl) {
+      const auto state = track.getTrackState(edm4hep::TrackState::AtFirstHit);
+      if (!state.has_value()) {
+        continue;
+      }
+
+      std::vector<edm4hep::TrackerHit> hits{};
+      for (const edm4hep::TrackerHit hit : track.getTrackerHits()) {
+        hits.push_back(hit);
+      }
+      if (hits.size() < kHitsPerSeed) {
+        continue;
+      }
+      std::ranges::sort(hits, {}, [](const edm4hep::TrackerHit& hit) {
+        return std::hypot(hit.getPosition().x, hit.getPosition().y);
+      });
+
+      SeedCandidate candidate{};
+      candidate.seed.d0 = state->D0;
+      candidate.seed.z0 = state->Z0;
+      candidate.seed.phi0 = state->phi;
+      candidate.seed.tanLambda = state->tanLambda;
+      // The EDM4hep omega is positive for a positive charge in Bz > 0, which bends clockwise.
+      // The seed convention (SeedRoad.h, seed_utils.py) is positive for counter-clockwise, so flip the sign.
+      candidate.seed.kappa = -state->omega;
+      candidate.seed.t0 = state->time;
+      candidate.hitKeys = {hitKey(hits.front()), hitKey(hits[hits.size() / 2]), hitKey(hits.back())};
+      candidates.push_back(std::move(candidate));
+    }
+  }
+  return candidates;
+}
+
+/// The seeds with all their hits in the segment, with the hit indices as rows
+/// of the segment's hits. A seed with a hit in another segment is dropped here.
+std::vector<ActsPlugins::Seed> seedsInSegment(const std::vector<SeedCandidate>& candidates,
+                                              const edm4hep::TrackerHitPlaneCollection& segmentHits) {
+  std::unordered_map<std::uint64_t, int> rowByKey{};
+  rowByKey.reserve(segmentHits.size());
+  int row = 0;
+  for (const auto& hit : segmentHits) {
+    rowByKey.emplace(hitKey(hit), row++);
+  }
+
+  std::vector<ActsPlugins::Seed> seeds{};
+  for (const SeedCandidate& candidate : candidates) {
+    ActsPlugins::Seed seed = candidate.seed;
+    seed.hitIndices.clear();
+    for (const std::uint64_t key : candidate.hitKeys) {
+      const auto it = rowByKey.find(key);
+      if (it == rowByKey.end()) {
+        break;
+      }
+      seed.hitIndices.push_back(it->second);
+    }
+    if (seed.hitIndices.size() == kHitsPerSeed) {
+      seeds.push_back(std::move(seed));
+    }
+  }
+  return seeds;
+}
 
 /// The hit features the distance from the interaction point is computed from.
 /// Both the edge ordering of the graph construction and the "cc-and-walk"
@@ -195,7 +286,10 @@ ActsPlugins::Device parseDevice(const std::string& deviceSpec) {
 } // namespace
 
 GNNTrackFinder::GNNTrackFinder(const std::string& name, ISvcLocator* svcLoc)
-    : Transformer(name, svcLoc, {KeyValues("InputHitCollections", {"populate-me-properly"})},
+    : Transformer(name, svcLoc,
+                  {KeyValues("InputHitCollections", {"populate-me-properly"}),
+                   // Optional: empty unless a seed track collection is configured
+                   KeyValues("InputSeedTrackCollections", {})},
                   {KeyValues("OutputTrackCandidates", {"GNNTrackCands"})}) {}
 
 StatusCode GNNTrackFinder::initialize() {
@@ -458,26 +552,56 @@ StatusCode GNNTrackFinder::initialize() {
 void GNNTrackFinder::buildPipeline(const std::vector<float>& embeddingScales,
                                    const std::vector<float>& edgeFeatureScales,
                                    const std::vector<std::vector<float>>& edgeClassifierScales) {
-  auto graphConstructor = std::make_shared<OnnxMetricLearning>(
-      OnnxMetricLearning::Config{.modelPath = m_nodeEmbeddingModelPath.value(),
-                                 .selectedFeatures = m_embeddingFeatureIndices,
-                                 .featureScales = embeddingScales,
-                                 .edgeFeatureIndices = m_edgeFeatureIndices,
-                                 .edgeFeatureScales = edgeFeatureScales,
-                                 // Not m_distanceFeatureIndices as it is: cc-and-walk needs them
-                                 // too, so they are filled even with SortEdges off, and an empty
-                                 // vector is what tells OnnxMetricLearning not to order the edges
-                                 .distanceFeatureIndices =
-                                     m_sortEdges.value() ? m_distanceFeatureIndices : std::vector<std::size_t>{},
-                                 .fixedInputLength = m_embeddingFixedInputLength.value(),
-                                 .keepPadding = m_keepEmbeddingPadding.value(),
-                                 .fixedEdgeLength = m_edgeClassifierFixedInputLength.value(),
-                                 .rVal = m_edgeBuildingRadius.value(),
-                                 .knnVal = m_edgeBuildingKnn.value(),
-                                 .device = m_runDevice},
-      m_logger->clone(name() + ".MetricLearning"));
+  if (m_graphConstruction.value() == kGraphConstructionSeeded) {
+    m_seeded = true;
+  } else if (m_graphConstruction.value() == kGraphConstructionMetricLearning) {
+    m_seeded = false;
+  } else {
+    throw std::invalid_argument(fmt::format("Unknown GraphConstruction \"{}\", expected \"{}\" or \"{}\"",
+                                            m_graphConstruction.value(), kGraphConstructionMetricLearning,
+                                            kGraphConstructionSeeded));
+  }
 
-  // The EdgePrintingHook labels its output by the stage it follows, in the
+  // Not m_distanceFeatureIndices as it is: cc-and-walk needs them too, so they
+  // are filled even with SortEdges off, and an empty vector is what tells the
+  // graph construction not to order the edges
+  const std::vector<std::size_t> distanceFeatureIndices =
+      m_sortEdges.value() ? m_distanceFeatureIndices : std::vector<std::size_t>{};
+
+  std::shared_ptr<ActsPlugins::GraphConstructionBase> graphConstructor{};
+  std::shared_ptr<ActsPlugins::SeededGraphConstructionBase> seededGraphConstructor{};
+  if (m_seeded) {
+    seededGraphConstructor = std::make_shared<OnnxSeededMetricLearning>(
+        OnnxSeededMetricLearning::Config{.selectedFeatures = m_embeddingFeatureIndices,
+                                         .featureScales = embeddingScales,
+                                         .hitFeatures = m_allHitFeatures,
+                                         .modelPath = m_nodeEmbeddingModelPath.value(),
+                                         .seedScoreThreshold = m_seedScoreThreshold.value(),
+                                         .rVal = m_edgeBuildingRadius.value(),
+                                         .knn = static_cast<std::size_t>(m_edgeBuildingKnn.value()),
+                                         .edgeFeatureIndices = m_edgeFeatureIndices,
+                                         .edgeFeatureScales = edgeFeatureScales,
+                                         .distanceFeatureIndices = distanceFeatureIndices,
+                                         .device = m_runDevice},
+        m_logger->clone(name() + ".SeededMetricLearning"));
+  } else {
+    graphConstructor = std::make_shared<OnnxMetricLearning>(
+        OnnxMetricLearning::Config{.modelPath = m_nodeEmbeddingModelPath.value(),
+                                   .selectedFeatures = m_embeddingFeatureIndices,
+                                   .featureScales = embeddingScales,
+                                   .edgeFeatureIndices = m_edgeFeatureIndices,
+                                   .edgeFeatureScales = edgeFeatureScales,
+                                   .distanceFeatureIndices = distanceFeatureIndices,
+                                   .fixedInputLength = m_embeddingFixedInputLength.value(),
+                                   .keepPadding = m_keepEmbeddingPadding.value(),
+                                   .fixedEdgeLength = m_edgeClassifierFixedInputLength.value(),
+                                   .rVal = m_edgeBuildingRadius.value(),
+                                   .knnVal = m_edgeBuildingKnn.value(),
+                                   .device = m_runDevice},
+        m_logger->clone(name() + ".MetricLearning"));
+  }
+  info() << fmt::format("Building the graph with the \"{}\" model", m_graphConstruction.value()) << endmsg;
+  // labels its output by the stage it follows, in the
   // order GnnPipeline::run() calls it: graph construction, then every link of
   // the classifier chain.
   m_pipelineStageNames = {"graph construction"};
@@ -521,12 +645,18 @@ void GNNTrackFinder::buildPipeline(const std::vector<float>& embeddingScales,
   }
   info() << fmt::format("Building track candidates with the \"{}\" algorithm", m_trackBuilding.value()) << endmsg;
 
-  m_pipeline = std::make_unique<ActsPlugins::GnnPipeline>(graphConstructor, edgeClassifiers, trackBuilder,
-                                                          m_logger->clone(name() + ".Pipeline"));
+  if (m_seeded) {
+    m_pipeline = std::make_unique<ActsPlugins::GnnPipeline>(seededGraphConstructor, edgeClassifiers, trackBuilder,
+                                                            m_logger->clone(name() + ".Pipeline"));
+  } else {
+    m_pipeline = std::make_unique<ActsPlugins::GnnPipeline>(graphConstructor, edgeClassifiers, trackBuilder,
+                                                            m_logger->clone(name() + ".Pipeline"));
+  }
 }
 
 edm4hep::TrackCollection
-GNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*> const& inputTrackerHits) const {
+GNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*> const& inputTrackerHits,
+                           std::vector<const edm4hep::TrackCollection*> const& inputSeedTracks) const {
   const auto allHits = [&inputTrackerHits]() {
     edm4hep::TrackerHitPlaneCollection hits{};
     hits.setSubsetCollection(true);
@@ -596,6 +726,17 @@ GNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*
 
   // Run GNN pipeline on all segments and collect the track candidates of all of
   // them in one flat list. The candidates refer to the indices in allHits.
+  std::size_t nSeedTracks = 0;
+  for (const edm4hep::TrackCollection* seedTracks : inputSeedTracks) {
+    nSeedTracks += seedTracks->size();
+  }
+  debug() << fmt::format("Received {} seed tracks", nSeedTracks) << endmsg;
+  const std::vector<SeedCandidate> seedCandidates =
+      m_seeded ? collectSeedCandidates(inputSeedTracks) : std::vector<SeedCandidate>{};
+  if (m_seeded) {
+    debug() << fmt::format("Converted {} seed tracks to seed candidates", seedCandidates.size()) << endmsg;
+  }
+
   const std::size_t nFeatures = m_resolvedHitFeatures.size();
   std::vector<std::vector<int>> trackCandIdcs;
   for (std::size_t segmentIdx = 0; segmentIdx < nSegments; ++segmentIdx) {
@@ -638,7 +779,13 @@ GNNTrackFinder::operator()(std::vector<const edm4hep::TrackerHitPlaneCollection*
     const ActsPlugins::GnnHook noHook{};
     const ActsPlugins::GnnHook& hook = edgePrinting.has_value() ? *edgePrinting : noHook;
 
-    auto segmentCandIdcs = m_pipeline->run(embeddingInputs, {}, segmentHitIdcs, m_runDevice, hook);
+    std::vector<ActsPlugins::Seed> segmentSeeds{};
+    if (m_seeded) {
+      segmentSeeds = seedsInSegment(seedCandidates, segmentHits);
+    }
+    auto segmentCandIdcs = m_seeded
+                               ? m_pipeline->run(embeddingInputs, segmentSeeds, {}, segmentHitIdcs, m_runDevice, hook)
+                               : m_pipeline->run(embeddingInputs, {}, segmentHitIdcs, m_runDevice, hook);
     debug() << fmt::format("Received {} track candidates", segmentCandIdcs.size()) << endmsg;
 
     // Full detailed output of track candidates
