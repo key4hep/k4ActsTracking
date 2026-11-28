@@ -329,11 +329,10 @@ ActsPlugins::PipelineTensors OnnxSeededMetricLearning::operator()(std::vector<fl
     edgeIndexValues[ballEdges.size() + e] = ballEdges[e].second;
   }
   // On the device of execContext, as the ACTS tensor conversion below copies from a blob with the same device
-  const torch::Device torchDevice =
-      execContext.device.isCuda() ? torch::Device(torch::kCUDA, static_cast<int64_t>(execContext.device.index))
-                                  : torch::Device(torch::kCPU);
-  const torch::Tensor edgeList =
-      torch::tensor(edgeIndexValues, torch::kInt64).view({2, numBallEdges}).to(torchDevice);
+  const torch::Device torchDevice = execContext.device.isCuda()
+                                        ? torch::Device(torch::kCUDA, static_cast<int64_t>(execContext.device.index))
+                                        : torch::Device(torch::kCPU);
+  const torch::Tensor edgeList = torch::tensor(edgeIndexValues, torch::kInt64).view({2, numBallEdges}).to(torchDevice);
 
   // Same guard as OnnxMetricLearning, too few edges to build any track candidate
   constexpr int64_t minUsableEdges = 2;

@@ -72,7 +72,7 @@ std::vector<Ort::Value> ONNXInferenceModel::runInference(const std::vector<float
 }
 
 std::vector<Ort::Value> ONNXInferenceModel::runInference(const std::vector<Ort::Value>& inputs, int cudaDeviceIndex,
-                                                        bool outputsOnHost) {
+                                                         bool outputsOnHost) {
   if (!m_modelLoaded) {
     throw std::runtime_error("Model not loaded");
   }
@@ -106,9 +106,9 @@ std::vector<Ort::Value> ONNXInferenceModel::runInference(const std::vector<Ort::
     }
 
     const Ort::MemoryInfo cudaOutputMemoryInfo =
-        outputsOnHost ? Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeCPU)
-                      : Ort::MemoryInfo{"Cuda", OrtAllocatorType::OrtDeviceAllocator, cudaDeviceIndex,
-                                        OrtMemTypeDefault};
+        outputsOnHost
+            ? Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeCPU)
+            : Ort::MemoryInfo{"Cuda", OrtAllocatorType::OrtDeviceAllocator, cudaDeviceIndex, OrtMemTypeDefault};
     for (const auto* outputName : outputNames) {
       ioBinding.BindOutput(outputName, cudaOutputMemoryInfo);
     }
